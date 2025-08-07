@@ -5,13 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Driftout2</title>
   <link rel="stylesheet" href="style.css" />
-  <!-- socket.io -->
+  <!-- Socket.io client -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 </head>
 <body>
   <div id="menu" class="overlay">
     <h1 class="title">Driftout2</h1>
-    <p>Select a car class to begin:</p>
+    <p>Select a car class and enter your name to begin:</p>
+    <input type="text" id="nameInput" placeholder="Your name" maxlength="20" />
     <div id="carSelection" class="selection">
       <label>
         <input type="radio" name="car" value="Speedster" checked />
@@ -28,6 +29,7 @@
 
   <canvas id="gameCanvas"></canvas>
 
+  <!-- HUD -->
   <div id="hud">
     <div id="stats">
       <span id="health">HP: 0/0</span>
