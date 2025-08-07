@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Driftout2</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- socket.io -->
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body>
+  <div id="menu" class="overlay">
+    <h1 class="title">Driftout2</h1>
+    <p>Select a car class to begin:</p>
+    <div id="carSelection" class="selection">
+      <label>
+        <input type="radio" name="car" value="Speedster" checked />
+        <span class="carLabel">Speedster (fast, low health)</span>
+      </label>
+      <label>
+        <input type="radio" name="car" value="Heavy" />
+        <span class="carLabel">Heavy (slow, high health)</span>
+      </label>
+    </div>
+    <button id="joinButton">Join Game</button>
+    <p class="note">Tip: Use the arrow keys or WASD to steer and accelerate.</p>
+  </div>
+
+  <canvas id="gameCanvas"></canvas>
+
+  <div id="hud">
+    <div id="stats">
+      <span id="health">HP: 0/0</span>
+      <span id="laps">Laps: 0</span>
+    </div>
+    <div id="upgrades" class="hidden">
+      <span>Upgrade points: <span id="upgradePoints">0</span></span>
+      <button data-stat="maxHealth">+ Health</button>
+      <button data-stat="acceleration">+ Accel</button>
+      <button data-stat="regen">+ Regen</button>
+    </div>
+  </div>
+
+  <div id="message" class="hidden"></div>
+
+  <script src="client.js"></script>
+</body>
+</html>
