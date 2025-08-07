@@ -1,21 +1,6 @@
-/*
- * Driftout2 client
- *
- * Handles client‑side UI, input collection, and rendering. The server is
- * authoritative over physics, so the client simply draws what it receives and
- * sends control inputs back. Drawing uses the HTML5 canvas API instead of
- * frameworks to keep dependencies minimal.
- */
-
 (() => {
   const socket = io();
-  // Track constants mirror server values for drawing. If you tweak these
-  // values on the server, update them here as well.
-  // These constants mirror those defined on the server. They determine the
-  // half lengths of the outer and inner square boundaries used to draw the
-  // track. Adjust these values if you modify the server track dimensions.
-  const TRACK_HALF_OUTER = 300;
-  const TRACK_HALF_INNER = 150;
+  let currentMap = null;
 
   const menu = document.getElementById('menu');
   const joinButton = document.getElementById('joinButton');
@@ -34,7 +19,6 @@
   let inputState = { cursor: { x: 0, y: 0 } };
   let sendInputInterval = null;
 
-  // Resize canvas to fill the window
   function resizeCanvas() {
     gameCanvas.width = window.innerWidth;
     gameCanvas.height = window.innerHeight;
@@ -42,7 +26,6 @@
   window.addEventListener('resize', resizeCanvas);
   resizeCanvas();
 
-  // Join the game when the button is clicked
   joinButton.addEventListener('click', () => {
     const selected = document.querySelector('input[name="car"]:checked');
     const carType = selected ? selected.value : 'Speedster';
@@ -50,28 +33,23 @@
     socket.emit('joinGame', { carType, name });
   });
 
-  // After server acknowledges joining, hide the menu and start sending inputs
   socket.on('joined', (data) => {
-    // The server returns the car ID but we rely on socket id for identification
     menu.style.display = 'none';
     gameCanvas.style.display = 'block';
     hud.style.display = 'flex';
-    // Start input transmission loop
     sendInputInterval = setInterval(() => {
       socket.emit('input', inputState);
     }, 1000 / 60);
   });
 
-  // Receive state updates from server
   socket.on('state', (data) => {
     players = data.players;
     mySocketId = data.mySocketId;
+    currentMap = data.map || currentMap;
     drawGame();
   });
 
-  // Handle return to menu (win or crash)
   socket.on('returnToMenu', ({ winner, crashed }) => {
-    // Show menu again and clear state
     clearInterval(sendInputInterval);
     sendInputInterval = null;
     menu.style.display = 'flex';
@@ -81,7 +59,6 @@
     inputState.cursor.x = 0;
     inputState.cursor.y = 0;
     upgradeContainer.classList.add('hidden');
-    // Show message
     if (winner) {
       messageDiv.textContent = `${winner} completed 10 laps!`;
     } else if (crashed) {
@@ -95,9 +72,7 @@
     }, 3000);
   });
 
-  // Mouse movement controls
   gameCanvas.addEventListener('mousemove', (e) => {
-    // Calculate cursor delta from centre of the canvas
     const rect = gameCanvas.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
@@ -105,7 +80,6 @@
     inputState.cursor.y = e.clientY - cy;
   });
 
-  // Upgrade button events
   upgradeContainer.addEventListener('click', (e) => {
     if (e.target.tagName === 'BUTTON') {
       const stat = e.target.dataset.stat;
@@ -113,73 +87,135 @@
     }
   });
 
-  // Drawing logic
   function drawGame() {
     const width = gameCanvas.width;
     const height = gameCanvas.height;
     ctx.clearRect(0, 0, width, height);
-    // Determine scale so the outer square fits in 40% of the smaller dimension
-    const scale = (Math.min(width, height) * 0.4) / (TRACK_HALF_OUTER * 2);
     const me = players.find((p) => p.socketId === mySocketId);
     const centerX = width / 2;
     const centerY = height / 2;
-    // Draw track (square) relative to camera centred on player
-    if (me) {
-      // Outer square corners relative to player
-      const cornersOuter = [
-        { x: -TRACK_HALF_OUTER - me.x, y: -TRACK_HALF_OUTER - me.y },
-        { x: TRACK_HALF_OUTER - me.x, y: -TRACK_HALF_OUTER - me.y },
-        { x: TRACK_HALF_OUTER - me.x, y: TRACK_HALF_OUTER - me.y },
-        { x: -TRACK_HALF_OUTER - me.x, y: TRACK_HALF_OUTER - me.y }
-      ];
-      const cornersInner = [
-        { x: -TRACK_HALF_INNER - me.x, y: -TRACK_HALF_INNER - me.y },
-        { x: TRACK_HALF_INNER - me.x, y: -TRACK_HALF_INNER - me.y },
-        { x: TRACK_HALF_INNER - me.x, y: TRACK_HALF_INNER - me.y },
-        { x: -TRACK_HALF_INNER - me.x, y: TRACK_HALF_INNER - me.y }
-      ];
-      ctx.strokeStyle = 'rgba(200,200,200,0.4)';
-      ctx.lineWidth = 3;
-      // Outer square
-      ctx.beginPath();
-      cornersOuter.forEach((c, i) => {
-        const sx = centerX + c.x * scale;
-        const sy = centerY - c.y * scale;
-        if (i === 0) ctx.moveTo(sx, sy);
-        else ctx.lineTo(sx, sy);
+    let scale = 1;
+    if (currentMap && Array.isArray(currentMap.shapes)) {
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      currentMap.shapes.forEach((shape) => {
+        if (shape.type === 'circle' && typeof shape.radius === 'number') {
+          const cx = (shape.center && typeof shape.center.x === 'number') ? shape.center.x : 0;
+          const cy = (shape.center && typeof shape.center.y === 'number') ? shape.center.y : 0;
+          minX = Math.min(minX, cx - shape.radius);
+          maxX = Math.max(maxX, cx + shape.radius);
+          minY = Math.min(minY, cy - shape.radius);
+          maxY = Math.max(maxY, cy + shape.radius);
+        } else if (Array.isArray(shape.vertices)) {
+          shape.vertices.forEach((v) => {
+            minX = Math.min(minX, v.x);
+            maxX = Math.max(maxX, v.x);
+            minY = Math.min(minY, v.y);
+            maxY = Math.max(maxY, v.y);
+          });
+        }
       });
-      ctx.closePath();
-      ctx.stroke();
-      // Inner square
-      ctx.beginPath();
-      cornersInner.forEach((c, i) => {
-        const sx = centerX + c.x * scale;
-        const sy = centerY - c.y * scale;
-        if (i === 0) ctx.moveTo(sx, sy);
-        else ctx.lineTo(sx, sy);
-      });
-      ctx.closePath();
-      ctx.stroke();
-      // Start/finish line (right side of outer square)
-      const startXWorld = TRACK_HALF_OUTER - me.x;
-      ctx.beginPath();
-      const sx1 = centerX + startXWorld * scale;
-      const sy1 = centerY - (-20 - me.y) * scale;
-      const sy2 = centerY - (20 - me.y) * scale;
-      ctx.moveTo(sx1, sy1);
-      ctx.lineTo(sx1, sy2);
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = '#ffffff';
-      ctx.stroke();
+      const sizeX = maxX - minX;
+      const sizeY = maxY - minY;
+      const size = Math.max(sizeX, sizeY) || 1;
+      scale = (Math.min(width, height) * 2.5) / size;
     }
-    // Draw cars
+    if (me && currentMap && Array.isArray(currentMap.shapes)) {
+      for (const shape of currentMap.shapes) {
+        const colors = (shape.borderColors && shape.borderColors.length > 0) ? shape.borderColors : (currentMap.borderColors || ['#ff0000', '#ffffff']);
+        const bWidth = (shape.borderWidth !== undefined ? shape.borderWidth : (currentMap.borderWidth || 3)) * scale;
+        ctx.lineWidth = bWidth;
+        if (shape.type === 'polygon' && Array.isArray(shape.vertices)) {
+          const verts = shape.vertices;
+          for (let i = 0; i < verts.length; i++) {
+            const a = verts[i];
+            const b = verts[(i + 1) % verts.length];
+            const dx = b.x - a.x;
+            const dy = b.y - a.y;
+            const length = Math.sqrt(dx * dx + dy * dy);
+            const stripeWorld = 20;
+            const numStripes = Math.max(1, Math.floor(length / stripeWorld));
+            for (let j = 0; j < numStripes; j++) {
+              const t1 = j / numStripes;
+              const t2 = (j + 1) / numStripes;
+              const sx1 = a.x + dx * t1 - me.x;
+              const sy1 = a.y + dy * t1 - me.y;
+              const sx2 = a.x + dx * t2 - me.x;
+              const sy2 = a.y + dy * t2 - me.y;
+              ctx.beginPath();
+              ctx.strokeStyle = colors[(i + j) % colors.length];
+              ctx.moveTo(centerX + sx1 * scale, centerY - sy1 * scale);
+              ctx.lineTo(centerX + sx2 * scale, centerY - sy2 * scale);
+              ctx.stroke();
+            }
+          }
+        } else if (shape.type === 'circle' && typeof shape.radius === 'number') {
+          const segments = 60;
+          const cxWorld = (shape.center && typeof shape.center.x === 'number') ? shape.center.x : 0;
+          const cyWorld = (shape.center && typeof shape.center.y === 'number') ? shape.center.y : 0;
+          for (let i = 0; i < segments; i++) {
+            const startAng = (i / segments) * 2 * Math.PI;
+            const endAng = ((i + 1) / segments) * 2 * Math.PI;
+            ctx.beginPath();
+            ctx.strokeStyle = colors[i % colors.length];
+            ctx.arc(
+              centerX + (cxWorld - me.x) * scale,
+              centerY - (cyWorld - me.y) * scale,
+              shape.radius * scale,
+              -endAng,
+              -startAng,
+              false
+            );
+            ctx.stroke();
+          }
+        } else if (shape.type === 'line' && Array.isArray(shape.vertices) && shape.vertices.length >= 2) {
+          const a = shape.vertices[0];
+          const b = shape.vertices[1];
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const length = Math.sqrt(dx * dx + dy * dy);
+          const stripeWorld = 20;
+          const numStripes = Math.max(1, Math.floor(length / stripeWorld));
+          for (let j = 0; j < numStripes; j++) {
+            const t1 = j / numStripes;
+            const t2 = (j + 1) / numStripes;
+            const sx1 = a.x + dx * t1 - me.x;
+            const sy1 = a.y + dy * t1 - me.y;
+            const sx2 = a.x + dx * t2 - me.x;
+            const sy2 = a.y + dy * t2 - me.y;
+            ctx.beginPath();
+            ctx.strokeStyle = colors[j % colors.length];
+            ctx.moveTo(centerX + sx1 * scale, centerY - sy1 * scale);
+            ctx.lineTo(centerX + sx2 * scale, centerY - sy2 * scale);
+            ctx.stroke();
+          }
+        }
+      }
+      let maxX = -Infinity;
+      currentMap.shapes.forEach((shape) => {
+        if (shape.hollow) return;
+        if (shape.type === 'circle' && typeof shape.radius === 'number') {
+          const cx = (shape.center && typeof shape.center.x === 'number') ? shape.center.x : 0;
+          maxX = Math.max(maxX, cx + shape.radius);
+        } else if (Array.isArray(shape.vertices)) {
+          shape.vertices.forEach((v) => { if (v.x > maxX) maxX = v.x; });
+        }
+      });
+      if (isFinite(maxX)) {
+        const sxWorld = maxX - me.x;
+        ctx.beginPath();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        const syRange = 20;
+        ctx.moveTo(centerX + sxWorld * scale, centerY - (-syRange - me.y) * scale);
+        ctx.lineTo(centerX + sxWorld * scale, centerY - (syRange - me.y) * scale);
+        ctx.stroke();
+      }
+    }
     players.forEach((p) => {
-      // Position relative to player
       const dx = p.x - (me ? me.x : 0);
       const dy = p.y - (me ? me.y : 0);
       const screenX = centerX + dx * scale;
       const screenY = centerY - dy * scale;
-      // Draw shape with rotation
       ctx.save();
       ctx.translate(screenX, screenY);
       ctx.rotate(-p.angle);
@@ -208,14 +244,12 @@
         ctx.stroke();
       }
       ctx.restore();
-      // Draw name below car (not rotated)
       ctx.fillStyle = '#ffffff';
       ctx.font = `${Math.max(12, 14 * scale)}px Arial`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       ctx.fillText(p.name || '', screenX, screenY + 15 * scale);
     });
-    // Update HUD
     if (me) {
       healthSpan.textContent = `HP: ${me.health.toFixed(0)}/${me.maxHealth}`;
       lapsSpan.textContent = `Laps: ${me.laps}`;
