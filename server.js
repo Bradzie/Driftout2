@@ -12,6 +12,8 @@ app.use(express.static('client'));
 
 const PORT = process.env.PORT || 3000;
 
+const HELPERS = require('./helpers');
+
 const MAP_TYPES = require('./mapTypes');
 const mapKeys = Object.keys(MAP_TYPES);
 let currentMapIndex = 0;
@@ -128,7 +130,6 @@ class Car {
     this.laps = 0;
     this.upgradePoints = 0;
     this.prevFinishCheck = null; // used for lap crossing on square track
-    this.angle = 0;
     this.cursor = { x: 0, y: 0 }; // direction and intensity from client
     this.justCrashed = false;
     const mapDef = MAP_TYPES[currentMapKey];
@@ -149,42 +150,67 @@ class Car {
     } else {
       const radius = 15;
       this.body = Matter.Bodies.polygon(startPos.x, startPos.y, 3, radius, {
-        friction: 0.5,
-        restitution: 0.2,
-        frictionAir: 0.05,
+        friction: 0.01,
+        restitution: 0.0,
+        frictionAir: 0.03,
         density: 1.0,
         label: `car-${this.id}`
       });
       this.displaySize = radius;
     }
-    Matter.Body.setAngle(this.body, this.angle);
+    Matter.Body.setAngle(this.body, 0);
     Matter.World.add(world, this.body);
     this.lastUpdate = Date.now();
   }
   update(dt) {
-    const CURSOR_MAX = 100;
-    const MAX_ROT_SPEED = Math.PI * 6; // radians per second (~1080°/s)
-    const cx = this.cursor.x;
-    const cy = -this.cursor.y; // invert y (screen y downwards)
-    const mag = Math.sqrt(cx * cx + cy * cy);
+    const CURSOR_MAX = 100
+    const MAX_ROT_SPEED = Math.PI * 6          // rad/s clamp
+    const STEER_GAIN = 5.0     // turn aggressiveness (higher = snappier)
+    const VEL_ALIGN = 0.15     // how heavy to apply turn force
+    const ANGULAR_DAMP = 20.0  // angular damping (turn friction)
+
+    const body = this.body
+    const cx = this.cursor.x
+    const cy = -this.cursor.y
+    const mag = Math.hypot(cx, cy)
+
     if (mag > 1) {
-      const normX = cx / mag;
-      const normY = cy / mag;
-      const throttle = Math.min(mag, CURSOR_MAX) / CURSOR_MAX;
-      const desiredAngle = Math.atan2(normY, normX);
-      let diff = desiredAngle - this.angle;
-      while (diff > Math.PI) diff -= 2 * Math.PI;
-      while (diff < -Math.PI) diff += 2 * Math.PI;
-      const maxTurn = MAX_ROT_SPEED * dt;
-      diff = Math.max(-maxTurn, Math.min(maxTurn, diff));
-      this.angle += diff;
-      Matter.Body.setAngle(this.body, this.angle);
-      const forceMag = this.stats.acceleration * throttle;
+      const normX = cx / mag
+      const normY = cy / mag
+      const throttle = Math.min(mag, CURSOR_MAX) / CURSOR_MAX
+
+      // Input heading (where the player wants to point)
+      const inputAngle = Math.atan2(normY, normX)
+
+      // Velocity heading (where the car is actually going)
+      const v = body.velocity
+      const speed = Math.hypot(v.x, v.y)
+      const velAngle = speed > 0.01 ? Math.atan2(v.y, v.x) : inputAngle
+
+      // Blend: mostly align to velocity, but still respect input
+      const desiredAngle = HELPERS.lerpAngle(velAngle, inputAngle, 1 - VEL_ALIGN)
+
+      // Smallest signed angle difference to desired
+      let diff = HELPERS.shortestAngle(desiredAngle - body.angle)
+
+      // Target angular velocity (proportional steering)
+      const targetAngVel = diff * STEER_GAIN     // rad/s
+
+      // Dampen current spin a bit (gives that soft "give")
+      let angVel = body.angularVelocity * Math.max(0, 1 - ANGULAR_DAMP * dt)
+
+      // Move current angVel toward target, respecting a max turn rate
+      const max = MAX_ROT_SPEED
+      angVel = HELPERS.clamp(angVel + targetAngVel * dt, -max, max)
+      Matter.Body.setAngularVelocity(body, angVel)
+
+      // Apply forward thrust along the body's current facing (not desiredAngle)
+      const forceMag = this.stats.acceleration * throttle
       const force = {
-        x: Math.cos(this.angle) * forceMag,
-        y: Math.sin(this.angle) * forceMag
-      };
-      Matter.Body.applyForce(this.body, this.body.position, force);
+        x: Math.cos(body.angle) * forceMag,
+        y: Math.sin(body.angle) * forceMag
+      }
+      Matter.Body.applyForce(body, body.position, force)
     }
     this.currentHealth = Math.min(
       this.stats.maxHealth,
@@ -237,11 +263,10 @@ class Car {
     this.laps = 0;
     this.currentHealth = this.stats.maxHealth;
     this.prevFinishCheck = null;
-    this.angle = 0;
     Matter.Body.setPosition(this.body, { x: startPos.x, y: startPos.y });
     Matter.Body.setVelocity(this.body, { x: 0, y: 0 });
     Matter.Body.setAngularVelocity(this.body, 0);
-    Matter.Body.setAngle(this.body, this.angle);
+    Matter.Body.setAngle(this.body, 0);
   }
 }
 
@@ -273,7 +298,7 @@ class Room {
         type: car.type,
         x: pos.x,
         y: pos.y,
-        angle: car.angle,
+        angle: car.body.angle,
         health: car.currentHealth,
         maxHealth: car.stats.maxHealth,
         laps: car.laps,

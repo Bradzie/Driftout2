@@ -13,7 +13,7 @@ module.exports = {
         ],
         hollow: false,
         borderColors: ['#ff0000', '#ffffff'],
-        borderWidth: 4
+        borderWidth: 12
       },
       {
         type: 'polygon',
@@ -25,7 +25,7 @@ module.exports = {
         ],
         hollow: false,
         borderColors: ['#ff0000', '#ffffff'],
-        borderWidth: 4
+        borderWidth: 12
       }
     ]
   },
@@ -40,7 +40,7 @@ module.exports = {
         radius: 300,
         hollow: false,
         borderColors: ['#ff0000', '#ffffff'],
-        borderWidth: 4
+        borderWidth: 20
       },
       {
         type: 'circle',
@@ -48,7 +48,7 @@ module.exports = {
         radius: 150,
         hollow: false,
         borderColors: ['#ff0000', '#ffffff'],
-        borderWidth: 4
+        borderWidth: 20
       }
     ]
   }
