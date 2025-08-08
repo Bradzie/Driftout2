@@ -249,6 +249,42 @@
         ctx.stroke();
       }
     }
+    if (currentMap.start?.vertices?.length >= 3) { //draw finish
+      const verts = currentMap.start.vertices.map(v => ({
+        x: centerX + (v.x - me.x) * scale,
+        y: centerY - (v.y - me.y) * scale
+      }));
+
+      const minX = Math.min(...verts.map(v => v.x));
+      const maxX = Math.max(...verts.map(v => v.x));
+      const minY = Math.min(...verts.map(v => v.y));
+      const maxY = Math.max(...verts.map(v => v.y));
+
+      const cellSize = 10 * scale;
+      const rows = Math.ceil((maxY - minY) / cellSize);
+      const cols = Math.ceil((maxX - minX) / cellSize);
+
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          const x = minX + col * cellSize;
+          const y = minY + row * cellSize;
+          const isBlack = (row + col) % 2 === 0;
+          ctx.fillStyle = isBlack ? '#000000' : '#ffffff';
+          ctx.fillRect(x, y, cellSize, cellSize);
+        }
+      }
+
+      ctx.beginPath();
+      ctx.moveTo(verts[0].x, verts[0].y);
+      for (let i = 1; i < verts.length; i++) {
+        ctx.lineTo(verts[i].x, verts[i].y);
+      }
+      ctx.closePath();
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
     players.forEach((p) => {
       const dx = p.x - (me ? me.x : 0);
       const dy = p.y - (me ? me.y : 0);
@@ -297,6 +333,20 @@
         ctx.strokeRect(barX, barY, barWidth, barHeight);
       }
     });
+    if (currentMap.checkpoints) {
+      for (const cp of currentMap.checkpoints) {
+        if (cp.type === 'line' && cp.vertices.length >= 2) {
+          const a = cp.vertices[0];
+          const b = cp.vertices[1];
+          ctx.beginPath();
+          ctx.moveTo(centerX + (a.x - me.x) * scale, centerY - (a.y - me.y) * scale);
+          ctx.lineTo(centerX + (b.x - me.x) * scale, centerY - (b.y - me.y) * scale);
+          ctx.strokeStyle = '#ffff00';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+      }
+    }
     if (me) {
       lapsSpan.textContent = `Laps: ${me.laps}`;
       upgradePointsSpan.textContent = me.upgradePoints;

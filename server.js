@@ -151,10 +151,18 @@ class Car {
     this.cursor = { x: 0, y: 0 }; // direction and intensity from client
     this.justCrashed = false;
     const mapDef = MAP_TYPES[currentMapKey];
-    const startPos = {
-      x: mapDef && mapDef.start ? mapDef.start.x : 0,
-      y: mapDef && mapDef.start ? mapDef.start.y : 0
-    };
+    let startPos = { x: 0, y: 0 };
+    if (mapDef && mapDef.start) {
+      if (mapDef.start.vertices && mapDef.start.vertices.length) {
+        const verts = mapDef.start.vertices;
+        const avgX = verts.reduce((sum, v) => sum + v.x, 0) / verts.length;
+        const avgY = verts.reduce((sum, v) => sum + v.y, 0) / verts.length;
+        startPos = { x: avgX, y: avgY };
+      } else if (typeof mapDef.start.x === 'number' && typeof mapDef.start.y === 'number') {
+        startPos = mapDef.start;
+      }
+    }
+    this.checkpointsVisited = new Set();
     const def = CAR_TYPES[this.type]
     const bodyOpts = {
       ...(def.bodyOptions || {}),
@@ -197,33 +205,17 @@ class Car {
       const normX = cx / mag
       const normY = cy / mag
       const throttle = Math.min(mag, CURSOR_MAX) / CURSOR_MAX
-
-      // Input heading (where the player wants to point)
       const inputAngle = Math.atan2(normY, normX)
-
-      // Velocity heading (where the car is actually going)
       const v = body.velocity
       const speed = Math.hypot(v.x, v.y)
       const velAngle = speed > 0.01 ? Math.atan2(v.y, v.x) : inputAngle
-
-      // Blend: mostly align to velocity, but still respect input
       const desiredAngle = HELPERS.lerpAngle(velAngle, inputAngle, 1 - VEL_ALIGN)
-
-      // Smallest signed angle difference to desired
       let diff = HELPERS.shortestAngle(desiredAngle - body.angle)
-
-      // Target angular velocity (proportional steering)
       const targetAngVel = diff * STEER_GAIN     // rad/s
-
-      // Dampen current spin a bit (gives that soft "give")
       let angVel = body.angularVelocity * Math.max(0, 1 - ANGULAR_DAMP * dt)
-
-      // Move current angVel toward target, respecting a max turn rate
       const max = MAX_ROT_SPEED
       angVel = HELPERS.clamp(angVel + targetAngVel * dt, -max, max)
       Matter.Body.setAngularVelocity(body, angVel)
-
-      // Apply forward thrust along the body's current facing (not desiredAngle)
       const forceMag = this.stats.acceleration * throttle
       const force = {
         x: Math.cos(body.angle) * forceMag,
@@ -236,15 +228,40 @@ class Car {
       this.currentHealth + this.stats.regen * dt
     );
     const pos = this.body.position;
-    const check = pos.y > 0 ? 1 : (pos.y < 0 ? -1 : 0);
-    if (this.prevFinishCheck !== null) {
-      if (this.prevFinishCheck > 0 && check <= 0 && pos.x > 0) {
-        this.laps += 1;
-        this.upgradePoints += 1;
+    const mapDef = MAP_TYPES[currentMapKey];
+    const checkpoints = MAP_TYPES[currentMapKey]?.checkpoints || [];
+
+    // Track checkpoint visits
+    for (const cp of checkpoints) {
+      if (cp.type === 'line' && cp.vertices.length >= 2) {
+        const [a, b] = cp.vertices;
+        const carPos = this.body.position;
+        const d = Math.abs(
+          (b.y - a.y) * carPos.x - (b.x - a.x) * carPos.y + b.x * a.y - b.y * a.x
+        ) / Math.hypot(b.y - a.y, b.x - a.x);
+
+        if (d < 10) {
+          this.checkpointsVisited.add(cp.id);
+        }
       }
     }
-    this.prevFinishCheck = check;
-    const mapDef = MAP_TYPES[currentMapKey];
+
+    // Check if car is inside the polygonal start area
+    let insideStart = false;
+    if (mapDef?.start?.vertices?.length) {
+      insideStart = pointInPolygon(
+        this.body.position.x,
+        this.body.position.y,
+        mapDef.start.vertices
+      );
+    }
+
+    // Lap complete if all checkpoints visited AND inside start polygon
+    if (insideStart && checkpoints.every(cp => this.checkpointsVisited.has(cp.id))) {
+      this.laps += 1;
+      this.upgradePoints += 1;
+      this.checkpointsVisited.clear();
+    }
     let outsideSolid = false;
     let insideHole = false;
     if (mapDef && Array.isArray(mapDef.shapes)) {
@@ -278,7 +295,16 @@ class Car {
   }
   resetCar() {
     const map = MAP_TYPES[currentMapKey];
-    const startPos = { x: map.start.x, y: map.start.y };
+    let startPos = { x: 0, y: 0 }
+    if (map.start?.vertices?.length) {
+      const verts = map.start.vertices
+      startPos = {
+        x: verts.reduce((sum, v) => sum + v.x, 0) / verts.length,
+        y: verts.reduce((sum, v) => sum + v.y, 0) / verts.length
+      }
+    } else if (typeof map.start?.x === 'number' && typeof map.start?.y === 'number') {
+      startPos = map.start
+    }
     this.laps = 0;
     this.currentHealth = this.stats.maxHealth;
     this.prevFinishCheck = null;
