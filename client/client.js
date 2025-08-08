@@ -216,34 +216,25 @@
       const dy = p.y - (me ? me.y : 0);
       const screenX = centerX + dx * scale;
       const screenY = centerY - dy * scale;
-      ctx.save();
-      ctx.translate(screenX, screenY);
-      ctx.rotate(-p.angle);
-      ctx.fillStyle = `rgb(${p.color.fill[0]},${p.color.fill[1]},${p.color.fill[2]})`;
-      ctx.strokeStyle = `rgb(${p.color.stroke[0]},${p.color.stroke[1]},${p.color.stroke[2]})`;
-      ctx.lineWidth = 3;
-      if (p.shape === 'circle') {
-        const r = 10 * scale;
-        ctx.beginPath();
-        ctx.arc(0, 0, r, 0, 2 * Math.PI);
-        ctx.fill();
-        ctx.stroke();
-      } else {
-        const verts = [
-          { x: 15 * scale, y: 0 },
-          { x: -10 * scale, y: 8 * scale },
-          { x: -10 * scale, y: -8 * scale }
-        ];
-        ctx.beginPath();
-        verts.forEach((v, i) => {
-          if (i === 0) ctx.moveTo(v.x, v.y);
-          else ctx.lineTo(v.x, v.y);
-        });
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
+      if (p.vertices && p.vertices.length) {
+        ctx.beginPath()
+        p.vertices.forEach((v, i) => {
+          const x = (p.x + v.x - me.x) * scale
+          const y = (p.y + v.y - me.y) * scale
+          if (i === 0) ctx.moveTo(centerX + x, centerY - y)
+          else ctx.lineTo(centerX + x, centerY - y)
+        })
+        ctx.closePath()
+        ctx.fillStyle = `rgb(${p.color.fill[0]},${p.color.fill[1]},${p.color.fill[2]})`
+        ctx.fill()
+      } else if (p.radius) {
+        ctx.beginPath()
+        ctx.arc(0, 0, p.radius * scale, 0, 2 * Math.PI)
+        ctx.fill()
       }
-      ctx.restore();
+
+      ctx.restore()
+
       ctx.fillStyle = '#ffffff';
       ctx.font = `${Math.max(12, 14 * scale)}px Arial`;
       ctx.textAlign = 'center';

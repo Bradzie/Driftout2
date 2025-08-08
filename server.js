@@ -137,27 +137,37 @@ class Car {
       x: mapDef && mapDef.start ? mapDef.start.x : 0,
       y: mapDef && mapDef.start ? mapDef.start.y : 0
     };
-    if (CAR_TYPES[type].shape === 'circle') {
-      const radius = 10;
-      this.body = Matter.Bodies.circle(startPos.x, startPos.y, radius, {
+    const def = CAR_TYPES[this.type]
+  if (def.shape === 'circle' && def.radius) {
+    this.body = Matter.Bodies.circle(startPos.x, startPos.y, def.radius, {
+      friction: 0.5,
+      restitution: 0.2,
+      frictionAir: 0.05,
+      density: 1.0,
+      label: `car-${this.id}`
+    })
+    this.displaySize = def.radius
+  } else if (def.shape === 'polygon' && def.vertices) {
+    this.body = Matter.Bodies.fromVertices(
+      startPos.x,
+      startPos.y,
+      [def.vertices],
+      {
         friction: 0.5,
         restitution: 0.2,
         frictionAir: 0.05,
         density: 1.0,
         label: `car-${this.id}`
-      });
-      this.displaySize = radius;
-    } else {
-      const radius = 15;
-      this.body = Matter.Bodies.polygon(startPos.x, startPos.y, 3, radius, {
-        friction: 0.01,
-        restitution: 0.0,
-        frictionAir: 0.03,
-        density: 1.0,
-        label: `car-${this.id}`
-      });
-      this.displaySize = radius;
-    }
+      },
+      true // automatically close the shape and clean
+    )
+    this.displaySize = 15 // optional, used for rendering health bars etc.
+  } else {
+    // fallback shape
+    const radius = 15
+    this.body = Matter.Bodies.polygon(startPos.x, startPos.y, 3, radius)
+    this.displaySize = radius
+  }
     Matter.Body.setAngle(this.body, 0);
     Matter.World.add(world, this.body);
     this.lastUpdate = Date.now();
@@ -305,7 +315,11 @@ class Room {
         upgradePoints: car.upgradePoints,
         color: CAR_TYPES[car.type].color,
         shape: CAR_TYPES[car.type].shape,
-        name: car.name
+        name: car.name,
+        vertices: car.body.vertices.map(v => ({
+          x: v.x - pos.x,
+          y: v.y - pos.y
+        }))
       });
     }
     return cars;
