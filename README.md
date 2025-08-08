@@ -1,3 +1,3 @@
 # Driftout2
 
-Super ealy development of a new Driftout game.
+Super early development of a new Driftout game.
