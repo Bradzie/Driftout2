@@ -7,7 +7,6 @@
   const nameInput = document.getElementById('nameInput');
   const gameCanvas = document.getElementById('gameCanvas');
   const hud = document.getElementById('hud');
-  const healthSpan = document.getElementById('health');
   const lapsSpan = document.getElementById('laps');
   const upgradeContainer = document.getElementById('upgrades');
   const upgradePointsSpan = document.getElementById('upgradePoints');
@@ -279,9 +278,26 @@
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       ctx.fillText(p.name || '', screenX, screenY + 15 * scale);
+
+      if (p.health < p.maxHealth) {
+        const barWidth = 20 * scale;
+        const barHeight = 3 * scale;
+        const barX = screenX - barWidth / 2;
+        const barY = screenY + 30 * scale;
+
+        const healthRatio = p.health / p.maxHealth;
+        ctx.fillStyle = '#333';
+        ctx.fillRect(barX, barY, barWidth, barHeight);
+
+        ctx.fillStyle = healthRatio > 0.5 ? '#0f0' : '#f00';
+        ctx.fillRect(barX, barY, barWidth * healthRatio, barHeight);
+
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(barX, barY, barWidth, barHeight);
+      }
     });
     if (me) {
-      healthSpan.textContent = `HP: ${me.health.toFixed(0)}/${me.maxHealth}`;
       lapsSpan.textContent = `Laps: ${me.laps}`;
       upgradePointsSpan.textContent = me.upgradePoints;
       if (me.upgradePoints > 0) {

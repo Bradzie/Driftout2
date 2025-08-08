@@ -37,6 +37,24 @@ engine.gravity.x = 0;
 engine.gravity.y = 0;
 const world = engine.world;
 
+Matter.Events.on(engine, 'collisionStart', (event) => {
+  for (const pair of event.pairs) {
+    const { bodyA, bodyB } = pair
+
+    const isCarA = bodyA.label?.startsWith?.('car-')
+    const isCarB = bodyB.label?.startsWith?.('car-')
+
+    const carA = isCarA ? [...rooms[0].players.values()].find(c => c.body === bodyA) : null
+    const carB = isCarB ? [...rooms[0].players.values()].find(c => c.body === bodyB) : null
+
+    const impulse = pair.collision.depth * 100 // crude impulse estimation
+
+    if (carA) carA.applyCollisionDamage(bodyB, impulse)
+    if (carB) carB.applyCollisionDamage(bodyA, impulse)
+  }
+})
+
+
 
 function setTrackBodies(mapKey) {
   for (const body of currentTrackBodies) {
@@ -165,9 +183,9 @@ class Car {
   }
   update(dt) {
     const CURSOR_MAX = 100
-    const MAX_ROT_SPEED = Math.PI * 6          // rad/s clamp
+    const MAX_ROT_SPEED = Math.PI * 8          // rad/s clamp
     const STEER_GAIN = 5.0     // turn aggressiveness (higher = snappier)
-    const VEL_ALIGN = 0.15     // how heavy to apply turn force
+    const VEL_ALIGN = 0.05     // how heavy to apply turn force
     const ANGULAR_DAMP = 20.0  // angular damping (turn friction)
 
     const body = this.body
@@ -268,6 +286,15 @@ class Car {
     Matter.Body.setVelocity(this.body, { x: 0, y: 0 });
     Matter.Body.setAngularVelocity(this.body, 0);
     Matter.Body.setAngle(this.body, 0);
+  }
+  applyCollisionDamage(otherBody, impulse) {
+    const DAMAGE_SCALE = 0.05 // adjust to tune how much damage per impulse
+    const damage = impulse * DAMAGE_SCALE
+    this.currentHealth -= damage
+
+    if (this.currentHealth <= 0) {
+      this.justCrashed = true
+    }
   }
 }
 
