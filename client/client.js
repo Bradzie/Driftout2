@@ -121,73 +121,112 @@
     }
     if (me && currentMap && Array.isArray(currentMap.shapes)) {
       for (const shape of currentMap.shapes) {
-        const colors = (shape.borderColors && shape.borderColors.length > 0) ? shape.borderColors : (currentMap.borderColors || ['#ff0000', '#ffffff']);
-        const bWidth = (shape.borderWidth !== undefined ? shape.borderWidth : (currentMap.borderWidth || 3)) * scale;
-        ctx.lineWidth = bWidth;
+        ctx.beginPath()
+
+        const color = Array.isArray(shape.fillColor)
+          ? `rgb(${shape.fillColor[0]}, ${shape.fillColor[1]}, ${shape.fillColor[2]})`
+          : 'rgb(50, 50, 50)'
+        ctx.fillStyle = color
+
         if (shape.type === 'polygon' && Array.isArray(shape.vertices)) {
-          const verts = shape.vertices;
-          for (let i = 0; i < verts.length; i++) {
-            const a = verts[i];
-            const b = verts[(i + 1) % verts.length];
-            const dx = b.x - a.x;
-            const dy = b.y - a.y;
-            const length = Math.sqrt(dx * dx + dy * dy);
-            const stripeWorld = 20;
-            const numStripes = Math.max(1, Math.floor(length / stripeWorld));
-            for (let j = 0; j < numStripes; j++) {
-              const t1 = j / numStripes;
-              const t2 = (j + 1) / numStripes;
-              const sx1 = a.x + dx * t1 - me.x;
-              const sy1 = a.y + dy * t1 - me.y;
-              const sx2 = a.x + dx * t2 - me.x;
-              const sy2 = a.y + dy * t2 - me.y;
-              ctx.beginPath();
-              ctx.strokeStyle = colors[(i + j) % colors.length];
-              ctx.moveTo(centerX + sx1 * scale, centerY - sy1 * scale);
-              ctx.lineTo(centerX + sx2 * scale, centerY - sy2 * scale);
-              ctx.stroke();
+          const verts = shape.vertices.map(v => ({
+            x: centerX + (v.x - me.x) * scale,
+            y: centerY - (v.y - me.y) * scale
+          }))
+          ctx.moveTo(verts[0].x, verts[0].y)
+          for (let i = 1; i < verts.length; i++) {
+            ctx.lineTo(verts[i].x, verts[i].y)
+          }
+          ctx.closePath()
+          ctx.fill()
+
+          if (Array.isArray(shape.borderColors) && shape.borderColors.length > 0) {
+            const lineWidth = shape.borderWidth || 8
+            const verts = shape.vertices.map(v => ({
+              x: centerX + (v.x - me.x) * scale,
+              y: centerY - (v.y - me.y) * scale
+            }))
+
+            const stripeLength = shape.stripeLength || 25
+
+            for (let i = 0; i < verts.length; i++) {
+              const a = verts[i]
+              const b = verts[(i + 1) % verts.length]
+
+              const dx = b.x - a.x
+              const dy = b.y - a.y
+              const len = Math.hypot(dx, dy)
+              const steps = Math.max(1, Math.floor(len / stripeLength))
+
+              for (let s = 0; s < steps; s++) {
+                const t0 = s / steps
+                const t1 = (s + 1) / steps
+                const x0 = a.x + dx * t0
+                const y0 = a.y + dy * t0
+                const x1 = a.x + dx * t1
+                const y1 = a.y + dy * t1
+
+                const perpX = -dy / len
+                const perpY = dx / len
+                const offsetX = (perpX * lineWidth) / 2
+                const offsetY = (perpY * lineWidth) / 2
+
+                ctx.beginPath()
+                ctx.moveTo(x0 + offsetX, y0 + offsetY)
+                ctx.lineTo(x1 + offsetX, y1 + offsetY)
+                ctx.lineTo(x1 - offsetX, y1 - offsetY)
+                ctx.lineTo(x0 - offsetX, y0 - offsetY)
+                ctx.closePath()
+                ctx.fillStyle = shape.borderColors[s % shape.borderColors.length]
+                ctx.fill()
+              }
             }
+
+
           }
         } else if (shape.type === 'circle' && typeof shape.radius === 'number') {
-          const segments = 60;
-          const cxWorld = (shape.center && typeof shape.center.x === 'number') ? shape.center.x : 0;
-          const cyWorld = (shape.center && typeof shape.center.y === 'number') ? shape.center.y : 0;
-          for (let i = 0; i < segments; i++) {
-            const startAng = (i / segments) * 2 * Math.PI;
-            const endAng = ((i + 1) / segments) * 2 * Math.PI;
-            ctx.beginPath();
-            ctx.strokeStyle = colors[i % colors.length];
-            ctx.arc(
-              centerX + (cxWorld - me.x) * scale,
-              centerY - (cyWorld - me.y) * scale,
-              shape.radius * scale,
-              -endAng,
-              -startAng,
-              false
-            );
-            ctx.stroke();
+          const cx = (shape.center?.x ?? 0) - me.x
+          const cy = (shape.center?.y ?? 0) - me.y
+          ctx.arc(centerX + cx * scale, centerY - cy * scale, shape.radius * scale, 0, 2 * Math.PI)
+          ctx.fill()
+
+          if (Array.isArray(shape.borderColors) && shape.borderColors.length > 0) {
+            const lineWidth = shape.borderWidth || 8
+            const numSegments = 64
+            const cx = centerX + ((shape.center?.x ?? 0) - me.x) * scale
+            const cy = centerY - ((shape.center?.y ?? 0) - me.y) * scale
+            const radius = shape.radius * scale
+
+            const stripeLength = shape.stripeLength || 25
+
+            for (let i = 0; i < verts.length; i++) {
+              const a = verts[i]
+              const b = verts[(i + 1) % verts.length]
+
+              const dx = b.x - a.x
+              const dy = b.y - a.y
+              const len = Math.hypot(dx, dy)
+              const steps = Math.max(1, Math.floor(len / stripeLength))
+
+              for (let s = 0; s < steps; s++) {
+                const t0 = Math.max(0, (s - 0.05) / steps)
+                const t1 = (s + 1.05) / steps
+                const x0 = a.x + dx * t0
+                const y0 = a.y + dy * t0
+                const x1 = a.x + dx * t1
+                const y1 = a.y + dy * t1
+
+                ctx.beginPath()
+                ctx.moveTo(x0, y0)
+                ctx.lineTo(x1, y1)
+                ctx.strokeStyle = shape.borderColors[s % shape.borderColors.length]
+                ctx.lineWidth = lineWidth
+                ctx.stroke()
+              }
+            }
+
           }
-        } else if (shape.type === 'line' && Array.isArray(shape.vertices) && shape.vertices.length >= 2) {
-          const a = shape.vertices[0];
-          const b = shape.vertices[1];
-          const dx = b.x - a.x;
-          const dy = b.y - a.y;
-          const length = Math.sqrt(dx * dx + dy * dy);
-          const stripeWorld = 20;
-          const numStripes = Math.max(1, Math.floor(length / stripeWorld));
-          for (let j = 0; j < numStripes; j++) {
-            const t1 = j / numStripes;
-            const t2 = (j + 1) / numStripes;
-            const sx1 = a.x + dx * t1 - me.x;
-            const sy1 = a.y + dy * t1 - me.y;
-            const sx2 = a.x + dx * t2 - me.x;
-            const sy2 = a.y + dy * t2 - me.y;
-            ctx.beginPath();
-            ctx.strokeStyle = colors[j % colors.length];
-            ctx.moveTo(centerX + sx1 * scale, centerY - sy1 * scale);
-            ctx.lineTo(centerX + sx2 * scale, centerY - sy2 * scale);
-            ctx.stroke();
-          }
+
         }
       }
       let maxX = -Infinity;

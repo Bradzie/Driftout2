@@ -12,8 +12,9 @@ module.exports = {
           { x: -600, y:  600 }
         ],
         hollow: false,
+        fillColor: [100, 100, 100],
         borderColors: ['#ff0000', '#ffffff'],
-        borderWidth: 12
+        borderWidth: 10
       },
       {
         type: 'polygon',
@@ -25,7 +26,7 @@ module.exports = {
         ],
         hollow: false,
         borderColors: ['#ff0000', '#ffffff'],
-        borderWidth: 12
+        borderWidth: 10
       }
     ]
   },

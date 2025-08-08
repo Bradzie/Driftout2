@@ -12,7 +12,7 @@ html, body {
   height: 100%;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   color: #ffffff;
-  background: linear-gradient(#84b5c4, #000000);
+  background: rgb(50, 50, 50);
   overflow: hidden;
 }
 

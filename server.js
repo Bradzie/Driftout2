@@ -138,28 +138,19 @@ class Car {
       y: mapDef && mapDef.start ? mapDef.start.y : 0
     };
     const def = CAR_TYPES[this.type]
-  if (def.shape === 'circle' && def.radius) {
-    this.body = Matter.Bodies.circle(startPos.x, startPos.y, def.radius, {
-      friction: 0.5,
-      restitution: 0.2,
-      frictionAir: 0.05,
-      density: 1.0,
+    const bodyOpts = {
+      ...(def.bodyOptions || {}),
       label: `car-${this.id}`
-    })
-    this.displaySize = def.radius
+    }
+  if (def.shape === 'circle' && def.radius) {
+    this.body = Matter.Bodies.circle(startPos.x, startPos.y, def.radius, bodyOpts)
   } else if (def.shape === 'polygon' && def.vertices) {
     this.body = Matter.Bodies.fromVertices(
       startPos.x,
       startPos.y,
       [def.vertices],
-      {
-        friction: 0.5,
-        restitution: 0.2,
-        frictionAir: 0.05,
-        density: 1.0,
-        label: `car-${this.id}`
-      },
-      true // automatically close the shape and clean
+      bodyOpts,
+      true
     )
     this.displaySize = 15 // optional, used for rendering health bars etc.
   } else {
