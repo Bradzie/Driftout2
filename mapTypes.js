@@ -4,10 +4,10 @@ module.exports = {
     start: {
       type: 'polygon',
       vertices: [
-        { x: 140, y: -20 },
-        { x: 160, y: -20 },
-        { x: 160, y: 20 },
-        { x: 140, y: 20 }
+        { x: 400, y: -10 },
+        { x: 600, y: -10 },
+        { x: 600, y: 10 },
+        { x: 400, y: 10 }
       ]
     },
     shapes: [
@@ -21,8 +21,8 @@ module.exports = {
         ],
         hollow: false,
         fillColor: [100, 100, 100],
-        borderColors: ['#ff0000', '#ffffff'],
-        borderWidth: 10
+        borderColors: ['#ff4d4d', '#ffffff'],
+        borderWidth: 20
       },
       {
         type: 'polygon',
@@ -33,44 +33,26 @@ module.exports = {
           { x: -400, y:  400 }
         ],
         hollow: false,
-        borderColors: ['#ff0000', '#ffffff'],
-        borderWidth: 10
+        borderColors: ['#ff4d4d', '#ffffff'],
+        borderWidth: 20
       }
     ],
     checkpoints: [
       {
         type: 'line',
-        vertices: [{ x: 100, y: -100 }, { x: 100, y: 100 }],
+        vertices: [{ x: 0, y: -400 }, { x: 0, y: -600 }],
         id: 'checkpoint-1'
       },
       {
         type: 'line',
-        vertices: [{ x: 0, y: -150 }, { x: 200, y: -150 }],
+        vertices: [{ x: -400, y: 0 }, { x: -600, y: 0 }],
         id: 'checkpoint-2'
-      }
-    ]
-  },
-
-  circle: {
-    displayName: 'Circle',
-    start: { x: (150 + 300) / 2, y: 0 },
-    shapes: [
-      {
-        type: 'circle',
-        center: { x: 0, y: 0 },
-        radius: 300,
-        hollow: false,
-        borderColors: ['#ff0000', '#ffffff'],
-        borderWidth: 20
       },
       {
-        type: 'circle',
-        center: { x: 0, y: 0 },
-        radius: 150,
-        hollow: false,
-        borderColors: ['#ff0000', '#ffffff'],
-        borderWidth: 20
-      }
+        type: 'line',
+        vertices: [{ x: 0, y: 400 }, { x: 0, y: 600 }],
+        id: 'checkpoint-3'
+      },
     ]
-  }
+  },
 };

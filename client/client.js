@@ -118,6 +118,7 @@
       const size = Math.max(sizeX, sizeY) || 1;
       scale = (Math.min(width, height) * 2.5) / size;
     }
+    // map
     if (me && currentMap && Array.isArray(currentMap.shapes)) {
       for (const shape of currentMap.shapes) {
         ctx.beginPath()
@@ -146,7 +147,7 @@
               y: centerY - (v.y - me.y) * scale
             }))
 
-            const stripeLength = shape.stripeLength || 25
+            const stripeLength = shape.stripeLength || shape.borderWidth * 1.8 || 25
 
             for (let i = 0; i < verts.length; i++) {
               const a = verts[i]
@@ -249,42 +250,33 @@
         ctx.stroke();
       }
     }
-    if (currentMap.start?.vertices?.length >= 3) { //draw finish
-      const verts = currentMap.start.vertices.map(v => ({
+
+    // start/finish poly
+    if (currentMap && currentMap.start && currentMap.start.vertices && me) {
+      const screenVerts = currentMap.start.vertices.map(v => ({
         x: centerX + (v.x - me.x) * scale,
         y: centerY - (v.y - me.y) * scale
-      }));
-
-      const minX = Math.min(...verts.map(v => v.x));
-      const maxX = Math.max(...verts.map(v => v.x));
-      const minY = Math.min(...verts.map(v => v.y));
-      const maxY = Math.max(...verts.map(v => v.y));
-
-      const cellSize = 10 * scale;
-      const rows = Math.ceil((maxY - minY) / cellSize);
-      const cols = Math.ceil((maxX - minX) / cellSize);
-
-      for (let row = 0; row < rows; row++) {
-        for (let col = 0; col < cols; col++) {
-          const x = minX + col * cellSize;
-          const y = minY + row * cellSize;
-          const isBlack = (row + col) % 2 === 0;
-          ctx.fillStyle = isBlack ? '#000000' : '#ffffff';
-          ctx.fillRect(x, y, cellSize, cellSize);
-        }
-      }
-
-      ctx.beginPath();
-      ctx.moveTo(verts[0].x, verts[0].y);
-      for (let i = 1; i < verts.length; i++) {
-        ctx.lineTo(verts[i].x, verts[i].y);
-      }
-      ctx.closePath();
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 2;
-      ctx.stroke();
+      }))
+      drawCheckerboard(ctx, screenVerts, 20, { x: 0, y: 0 }, scale, me, centerX, centerY)
     }
 
+    // checkpoints
+    if (currentMap.checkpoints) {
+      for (const cp of currentMap.checkpoints) {
+        if (cp.type === 'line' && cp.vertices.length >= 2) {
+          const a = cp.vertices[0];
+          const b = cp.vertices[1];
+          ctx.beginPath();
+          ctx.moveTo(centerX + (a.x - me.x) * scale, centerY - (a.y - me.y) * scale);
+          ctx.lineTo(centerX + (b.x - me.x) * scale, centerY - (b.y - me.y) * scale);
+          ctx.strokeStyle = '#ffff00';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+      }
+    }
+
+    // players
     players.forEach((p) => {
       const dx = p.x - (me ? me.x : 0);
       const dy = p.y - (me ? me.y : 0);
@@ -306,6 +298,11 @@
         ctx.arc(0, 0, p.radius * scale, 0, 2 * Math.PI)
         ctx.fill()
       }
+
+      ctx.strokeStyle = `rgb(${p.color.stroke[0]}, ${p.color.stroke[1]}, ${p.color.stroke[2]})`
+      ctx.lineWidth = p.color.strokeWidth * scale
+      ctx.lineJoin = 'round'
+      ctx.stroke()
 
       ctx.restore()
 
@@ -333,20 +330,6 @@
         ctx.strokeRect(barX, barY, barWidth, barHeight);
       }
     });
-    if (currentMap.checkpoints) {
-      for (const cp of currentMap.checkpoints) {
-        if (cp.type === 'line' && cp.vertices.length >= 2) {
-          const a = cp.vertices[0];
-          const b = cp.vertices[1];
-          ctx.beginPath();
-          ctx.moveTo(centerX + (a.x - me.x) * scale, centerY - (a.y - me.y) * scale);
-          ctx.lineTo(centerX + (b.x - me.x) * scale, centerY - (b.y - me.y) * scale);
-          ctx.strokeStyle = '#ffff00';
-          ctx.lineWidth = 2;
-          ctx.stroke();
-        }
-      }
-    }
     if (me) {
       lapsSpan.textContent = `Laps: ${me.laps}`;
       upgradePointsSpan.textContent = me.upgradePoints;
@@ -357,4 +340,43 @@
       }
     }
   }
+
+  // HELPERS
+
+  function drawCheckerboard(ctx, screenVerts, cellSize = 10, originWorld = { x: 0, y: 0 }, scale = 1, me = null, centerX = 0, centerY = 0) {
+    ctx.save()
+    ctx.beginPath()
+    screenVerts.forEach((v, i) => {
+      if (i === 0) ctx.moveTo(v.x, v.y)
+      else ctx.lineTo(v.x, v.y)
+    })
+    ctx.closePath()
+    ctx.clip()
+
+    const xs = screenVerts.map(v => v.x)
+    const ys = screenVerts.map(v => v.y)
+    const minX = Math.min(...xs)
+    const maxX = Math.max(...xs)
+    const minY = Math.min(...ys)
+    const maxY = Math.max(...ys)
+
+    for (let y = minY; y < maxY; y += cellSize) {
+      for (let x = minX; x < maxX; x += cellSize) {
+        // Convert screen coords back to world coords to get stable checker alignment
+        const worldX = (x - centerX) / scale + me.x
+        const worldY = -(y - centerY) / scale + me.y
+
+        const col = Math.floor((worldX - originWorld.x) / (cellSize / scale))
+        const row = Math.floor((worldY - originWorld.y) / (cellSize / scale))
+
+        const isBlack = (row + col) % 2 === 0
+        ctx.fillStyle = isBlack ? '#333333' : '#ffffff'
+        ctx.fillRect(x, y, cellSize, cellSize)
+      }
+    }
+
+    ctx.restore()
+  }
+
+
 })();

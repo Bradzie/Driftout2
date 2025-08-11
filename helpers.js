@@ -10,5 +10,9 @@ module.exports = {
 
     clamp: function(v, lo, hi) {
         return Math.max(lo, Math.min(hi, v))
+    },
+
+    segmentSide: function(ax, ay, bx, by, px, py) {
+      return Math.sign((bx - ax) * (py - ay) - (by - ay) * (px - ax))
     }
 }

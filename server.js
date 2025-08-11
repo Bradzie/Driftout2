@@ -152,6 +152,9 @@ class Car {
     this.justCrashed = false;
     const mapDef = MAP_TYPES[currentMapKey];
     let startPos = { x: 0, y: 0 };
+    this.checkpointsVisited = new Set()
+    this._cpLastSides = new Map()
+    this.hasLeftStartSinceLap = false
     if (mapDef && mapDef.start) {
       if (mapDef.start.vertices && mapDef.start.vertices.length) {
         const verts = mapDef.start.vertices;
@@ -168,22 +171,15 @@ class Car {
       ...(def.bodyOptions || {}),
       label: `car-${this.id}`
     }
-  if (def.shape === 'circle' && def.radius) {
-    this.body = Matter.Bodies.circle(startPos.x, startPos.y, def.radius, bodyOpts)
-  } else if (def.shape === 'polygon' && def.vertices) {
+  if (def.shape && def.shape.vertices.length > 2) {
     this.body = Matter.Bodies.fromVertices(
       startPos.x,
       startPos.y,
-      [def.vertices],
+      [def.shape.vertices],
       bodyOpts,
       true
     )
     this.displaySize = 15 // optional, used for rendering health bars etc.
-  } else {
-    // fallback shape
-    const radius = 15
-    this.body = Matter.Bodies.polygon(startPos.x, startPos.y, 3, radius)
-    this.displaySize = radius
   }
     Matter.Body.setAngle(this.body, 0);
     Matter.World.add(world, this.body);
@@ -227,41 +223,65 @@ class Car {
       this.stats.maxHealth,
       this.currentHealth + this.stats.regen * dt
     );
-    const pos = this.body.position;
-    const mapDef = MAP_TYPES[currentMapKey];
-    const checkpoints = MAP_TYPES[currentMapKey]?.checkpoints || [];
 
-    // Track checkpoint visits
+    const pos = this.body.position
+    const checkpoints = MAP_TYPES[currentMapKey]?.checkpoints || []
+
+    for (let i = 0; i < checkpoints.length; i++) {
+      if (checkpoints[i].id == null)
+        checkpoints[i].id = i
+    }
+
+    //track checkpoint visits (segment distance + crossing)
     for (const cp of checkpoints) {
-      if (cp.type === 'line' && cp.vertices.length >= 2) {
-        const [a, b] = cp.vertices;
-        const carPos = this.body.position;
-        const d = Math.abs(
-          (b.y - a.y) * carPos.x - (b.x - a.x) * carPos.y + b.x * a.y - b.y * a.x
-        ) / Math.hypot(b.y - a.y, b.x - a.x);
+      if (cp.type !== 'line' || cp.vertices.length < 2 || !cp.id) continue
 
-        if (d < 10) {
-          this.checkpointsVisited.add(cp.id);
-        }
+      const [a, b] = cp.vertices
+      const abx = b.x - a.x
+      const aby = b.y - a.y
+      const apx = pos.x - a.x
+      const apy = pos.y - a.y
+
+      const abLen2 = abx * abx + aby * aby || 1
+      let t = (apx * abx + apy * aby) / abLen2
+
+      if (t < 0 || t > 1) continue
+
+      const projx = a.x + t * abx
+      const projy = a.y + t * aby
+      const dx = pos.x - projx
+      const dy = pos.y - projy
+      const dist = Math.hypot(dx, dy)
+
+      if (dist >= 10) continue
+
+      const lastSide = this._cpLastSides.get(cp.id) ?? 0
+      const side = HELPERS.segmentSide(a.x, a.y, b.x, b.y, pos.x, pos.y)
+
+      if (lastSide !== 0 && side !== 0 && side !== lastSide) {
+        this.checkpointsVisited.add(cp.id)
       }
-    }
 
-    // Check if car is inside the polygonal start area
-    let insideStart = false;
+      this._cpLastSides.set(cp.id, side)
+    }
+    let insideStart = false
+    const mapDef = MAP_TYPES[currentMapKey]
     if (mapDef?.start?.vertices?.length) {
-      insideStart = pointInPolygon(
-        this.body.position.x,
-        this.body.position.y,
-        mapDef.start.vertices
-      );
+      insideStart = pointInPolygon(this.body.position.x, this.body.position.y, mapDef.start.vertices)
+    }
+    if (!insideStart) this.hasLeftStartSinceLap = true
+    if (
+      insideStart &&
+      this.hasLeftStartSinceLap &&
+      checkpoints.length > 0 &&
+      checkpoints.every(cp => this.checkpointsVisited.has(cp.id))
+    ) {
+      this.laps += 1
+      this.upgradePoints += 1
+      this.checkpointsVisited.clear()
+      this.hasLeftStartSinceLap = false
     }
 
-    // Lap complete if all checkpoints visited AND inside start polygon
-    if (insideStart && checkpoints.every(cp => this.checkpointsVisited.has(cp.id))) {
-      this.laps += 1;
-      this.upgradePoints += 1;
-      this.checkpointsVisited.clear();
-    }
     let outsideSolid = false;
     let insideHole = false;
     if (mapDef && Array.isArray(mapDef.shapes)) {
