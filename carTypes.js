@@ -1,6 +1,9 @@
 const CAR_TYPES = {
-  Speedster: {
-    displayName: 'Speedster',
+  Racer: {
+    displayName: 'Racer',
+    displaySpeed: 75,
+    displayHealth: 30,
+    displayHandling: 40,
     maxHealth: 10,
     acceleration: 0.015,
     regen: 0.5,
@@ -19,14 +22,17 @@ const CAR_TYPES = {
       density: 0.3
     }
   },
-  Heavy: {
-    displayName: 'Heavy',
+  Tank: {
+    displayName: 'Tank',
+    displaySpeed: 30,
+    displayHealth: 80,
+    displayHandling: 70,
     maxHealth: 20,
     acceleration: 0.12,
     regen: 0.25,
     color: { fill: [157, 230, 160], stroke: [99, 145, 101], strokeWidth: 4 },
     shape: {
-      vertices: circleToPolygon(10)
+      vertices: circleToPolygon(15, 16)
     },
     bodyOptions: {
       friction: 0.3,

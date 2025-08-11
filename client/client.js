@@ -5,6 +5,8 @@
   const menu = document.getElementById('menu');
   const joinButton = document.getElementById('joinButton');
   const nameInput = document.getElementById('nameInput');
+  const carCard = document.getElementById('carCard');
+  const switchButton = document.getElementById('switchButton');
   const gameCanvas = document.getElementById('gameCanvas');
   const hud = document.getElementById('hud');
   const lapsSpan = document.getElementById('laps');
@@ -17,6 +19,9 @@
   let mySocketId = null;
   let inputState = { cursor: { x: 0, y: 0 } };
   let sendInputInterval = null;
+  let currentCarIndex = 0;
+  let carTypes = [];
+  let CAR_TYPES = {};
 
   function resizeCanvas() {
     gameCanvas.width = window.innerWidth;
@@ -24,6 +29,73 @@
   }
   window.addEventListener('resize', resizeCanvas);
   resizeCanvas();
+
+  async function initCarSelection() {
+    try {
+      const response = await fetch('/api/carTypes');
+      CAR_TYPES = await response.json();
+      carTypes = Object.keys(CAR_TYPES);
+      currentCarIndex = 0;
+      updateCarCard();
+    } catch (error) {
+      console.error('Failed to load car types:', error);
+      carCard.innerHTML = '<p>Failed to load car types. Please refresh the page.</p>';
+    }
+  }
+
+  function updateCarCard() {
+    const carType = carTypes[currentCarIndex];
+    const car = CAR_TYPES[carType];
+    
+    carCard.innerHTML = `
+      <input type="radio" name="car" value="${carType}" checked style="display: none;" />
+      <div class="car-header">
+        <div class="car-name">${car.displayName || carType}</div>
+        <div class="car-visual">
+          <svg class="car-shape" width="60" height="60" viewBox="-30 -30 60 60">
+            <polygon 
+              points="${car.shape.vertices.map(v => `${v.x * 1.5},${-v.y * 1.5}`).join(' ')}"
+              fill="rgb(${car.color.fill.join(',')})"
+              stroke="rgb(${car.color.stroke.join(',')})"
+              stroke-width="${car.color.strokeWidth || 2}"
+            />
+          </svg>
+        </div>
+      </div>
+      <div class="car-stats">
+        <div class="stat-item">
+          <div class="stat-label">Speed</div>
+          <div class="stat-bar">
+            <div class="stat-fill speed" style="width: ${car.displaySpeed}%"></div>
+          </div>
+          <div class="stat-value">${car.displaySpeed}</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Durability</div>
+          <div class="stat-bar">
+            <div class="stat-fill health" style="width: ${car.displayHealth}%"></div>
+          </div>
+          <div class="stat-value">${car.displayHealth}</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Handling</div>
+          <div class="stat-bar">
+            <div class="stat-fill regen" style="width: ${car.displayHandling}%"></div>
+          </div>
+          <div class="stat-value">${car.displayHandling}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function switchCar() {
+    currentCarIndex = (currentCarIndex + 1) % carTypes.length;
+    updateCarCard();
+  }
+
+  switchButton.addEventListener('click', switchCar);
+  
+  initCarSelection();
 
   joinButton.addEventListener('click', () => {
     const selected = document.querySelector('input[name="car"]:checked');
@@ -177,7 +249,6 @@
                     ctx.lineTo(x0 - offsetX, y0 - offsetY)
                     ctx.closePath()
 
-                    // Use borderColors[s % N] but force last stripe to be baseColor
                     const isLastStripe = s === steps - 1
                     ctx.fillStyle = isLastStripe
                       ? baseColor
@@ -185,7 +256,6 @@
                     ctx.fill()
                   }
 
-                  // Draw rounded caps at edge endpoints
                   const radius = lineWidth / 2
                   ctx.beginPath()
                   ctx.arc(a.x, a.y, radius, 0, Math.PI * 2)
@@ -316,7 +386,6 @@
 
     for (let y = minY; y < maxY; y += cellSize) {
       for (let x = minX; x < maxX; x += cellSize) {
-        // Convert screen coords back to world coords to get stable checker alignment
         const worldX = (x - centerX) / scale + me.x
         const worldY = -(y - centerY) / scale + me.y
 

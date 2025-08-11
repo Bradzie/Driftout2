@@ -10,6 +10,11 @@ const io = new Server(server);
 
 app.use(express.static('client'));
 
+// send car types to client
+app.get('/api/carTypes', (req, res) => {
+  res.json(CAR_TYPES);
+});
+
 const PORT = process.env.PORT || 3000;
 
 const HELPERS = require('./helpers');
@@ -145,7 +150,7 @@ class Car {
       bodyOpts,
       true
     )
-    this.displaySize = 15 // optional, used for rendering health bars etc.
+    this.displaySize = 15 // used for rendering hud around car (health bars, etc.)
   }
     Matter.Body.setAngle(this.body, 0);
     Matter.World.add(world, this.body);
