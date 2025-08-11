@@ -1,10 +1,30 @@
-/*
- * Driftout2 styling
- *
- * This stylesheet takes inspiration from the vibrant gradients and clean UI
- * elements of the original DriftoutIO project. Feel free to iterate on the
- * colours and layout as you expand the game.
- */
+@font-face {
+  font-family: 'Quicksilver';
+  src: url('/fonts/Quicksilver.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Quicksilver Italic';
+  src: url('/fonts/Quicksilver Italic.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Kdam Thmor';
+  src: url('/fonts/KdamThmorPro.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Overpass';
+  src: url('/fonts/Overpass-VariableFont_wght.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
 
 html, body {
   margin: 0;
@@ -12,7 +32,7 @@ html, body {
   height: 100%;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   color: #ffffff;
-  background: linear-gradient(#84b5c4, #000000);
+  background: rgb(50, 50, 50);
   overflow: hidden;
 }
 
@@ -26,30 +46,154 @@ html, body {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  background-color: rgba(37, 150, 190, 0.9);
-  backdrop-filter: blur(4px);
+  background-color: #2596be;
   z-index: 10;
 }
 
 #menu .title {
-  font-size: 3rem;
+  font-family: 'Quicksilver Italic', serif;
+  font-size: 8rem;
   margin-bottom: 1rem;
-  text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000;
+  color: #b782f0;
+  letter-spacing: 2px;
 }
 
-#carSelection {
-  margin: 1rem 0;
+
+.car-selector {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2rem;
+  margin: 2rem 0;
+  width: 100%;
+}
+
+.single-car-card {
+  background: #ffffff;
+  border: 4px solid #b782f0;
+  border-radius: 15px;
+  padding: 2rem;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  min-width: 350px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.car-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.car-name {
+  font-size: 2rem;
+  font-weight: bold;
+  color: #333;
+  font-family: 'Overpass', serif;
+}
+
+.car-visual {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.car-shape {
+  transform-origin: center;
+  position: relative;
+  animation: rotate 8s linear infinite;
+}
+
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.car-visual svg {
+  shape-rendering: geometricPrecision;
+}
+
+.car-visual polygon {
+  shape-rendering: geometricPrecision;
+}
+
+.car-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.stat-label {
+  font-size: 0.8rem;
+  color: #666;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-bottom: 0.3rem;
+}
+
+.stat-bar {
+  width: 100%;
+  height: 8px;
+  background: rgba(0,0,0,0.1);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 0.3rem;
+}
+
+.stat-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.stat-fill.health { background: #ff4757; }
+.stat-fill.speed { background: #3742fa; }
+.stat-fill.regen { background: #2ed573; }
+
+.stat-value {
+  font-size: 0.9rem;
+  color: #333;
+  font-weight: 600;
 }
 
 /* Name input on the start screen */
 #nameInput {
-  padding: 0.5rem;
-  margin: 0.5rem 0;
-  border: none;
-  border-radius: 4px;
-  width: 15rem;
-  font-size: 1rem;
-  box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
+  padding: 0.8rem;
+  margin: 1.5rem 0;
+  border: 3px solid #b782f0;
+  border-radius: 8px;
+  width: 350px;
+  font-size: 1.1rem;
+  background: #ffffff;
+  color: #333;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+}
+
+#nameInput:focus {
+  outline: none;
+  border-color: #8a4fd3;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  transform: translateY(-2px);
 }
 
 #carSelection label {
@@ -63,19 +207,29 @@ html, body {
   margin-left: 0.5rem;
 }
 
-#joinButton {
-  padding: 0.5rem 1rem;
-  font-size: 1.2rem;
-  border: none;
-  background-color: #2596be;
-  color: #fff;
-  border-radius: 4px;
+.nav-button {
+  padding: 1rem 1.5rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+  border: 3px solid #b782f0;
+  background: #b782f0;
+  color: #ffffff;
+  border-radius: 10px;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  width: 80px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-#joinButton:hover {
-  background-color: #1a6c8c;
+.nav-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  background: #8a4fd3;
+  border-color: #8a4fd3;
 }
 
 #gameCanvas {
@@ -121,6 +275,58 @@ html, body {
 
 #upgrades button:hover {
   background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Ability HUD */
+.ability-hud {
+  margin-top: 1rem;
+}
+
+.ability-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: 2px solid #b782f0;
+  min-width: 140px;
+  transition: all 0.3s ease;
+}
+
+.ability-indicator.ready {
+  border-color: #2ed573;
+  background: rgba(46, 213, 115, 0.1);
+}
+
+.ability-indicator.cooldown {
+  border-color: #ff4757;
+  background: rgba(255, 71, 87, 0.1);
+}
+
+.ability-icon {
+  font-size: 1.2rem;
+  width: 24px;
+  text-align: center;
+}
+
+.ability-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #ffffff;
+  flex: 1;
+}
+
+.ability-cooldown {
+  font-size: 0.8rem;
+  color: #ff4757;
+  font-weight: 600;
+  min-width: 24px;
+  text-align: right;
+}
+
+.ability-indicator.ready .ability-cooldown {
+  color: #2ed573;
 }
 
 .hidden {
