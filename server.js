@@ -18,6 +18,7 @@ app.get('/api/carTypes', (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 const HELPERS = require('./helpers');
+const { abilityRegistry, SpikeTrapAbility } = require('./abilities');
 
 const MAP_TYPES = require('./mapTypes');
 const mapKeys = Object.keys(MAP_TYPES);
@@ -48,14 +49,37 @@ Matter.Events.on(engine, 'collisionStart', (event) => {
 
     const isCarA = bodyA.label?.startsWith?.('car-')
     const isCarB = bodyB.label?.startsWith?.('car-')
+    const isSpikeA = bodyA.label === 'spike-trap'
+    const isSpikeB = bodyB.label === 'spike-trap'
 
     const carA = isCarA ? [...rooms[0].players.values()].find(c => c.body === bodyA) : null
     const carB = isCarB ? [...rooms[0].players.values()].find(c => c.body === bodyB) : null
 
-    const impulse = pair.collision.depth * 100 // crude impulse estimation
+    // Handle spike trap collisions (ignore owner completely)
+    if (isSpikeA && carB) {
+      const trap = gameState.abilityObjects.find(obj => obj.body === bodyA)
+      if (trap) {
+        console.log(`Spike collision: trap owner=${trap.createdBy}, car=${carB.id}, same=${trap.createdBy === carB.id}`)
+        if (trap.createdBy !== carB.id) {
+          SpikeTrapAbility.handleCollision(trap, carB)
+        }
+      }
+    }
+    if (isSpikeB && carA) {
+      const trap = gameState.abilityObjects.find(obj => obj.body === bodyB)
+      if (trap) {
+        console.log(`Spike collision: trap owner=${trap.createdBy}, car=${carA.id}, same=${trap.createdBy === carA.id}`)
+        if (trap.createdBy !== carA.id) {
+          SpikeTrapAbility.handleCollision(trap, carA)
+        }
+      }
+    }
 
-    if (carA) carA.applyCollisionDamage(bodyB, impulse)
-    if (carB) carB.applyCollisionDamage(bodyA, impulse)
+    // Handle car-to-car collisions (only if not ghost)
+    const impulse = pair.collision.depth * 100 // crude impulse estimation
+    
+    if (carA && !carA.isGhost) carA.applyCollisionDamage(bodyB, impulse)
+    if (carB && !carB.isGhost) carB.applyCollisionDamage(bodyA, impulse)
   }
 })
 
@@ -121,6 +145,12 @@ class Car {
     this.prevFinishCheck = null; // used for lap crossing on square track
     this.cursor = { x: 0, y: 0 }; // direction and intensity from client
     this.justCrashed = false;
+    
+    // Ability system
+    const carDef = CAR_TYPES[type];
+    this.ability = carDef.ability ? abilityRegistry.create(carDef.ability) : null;
+    this.isGhost = false;
+    this.trapDamageHistory = new Map();
     const mapDef = MAP_TYPES[currentMapKey];
     let startPos = { x: 0, y: 0 };
     this.checkpointsVisited = new Set()
@@ -157,6 +187,11 @@ class Car {
     this.lastUpdate = Date.now();
   }
   update(dt) {
+    // Update ability effects first
+    if (this.ability) {
+      this.ability.update(this, world, gameState, dt);
+    }
+    
     const CURSOR_MAX = 100
     const MAX_ROT_SPEED = Math.PI * 8          // rad/s clamp
     const STEER_GAIN = 5.0     // turn aggressiveness (higher = snappier)
@@ -301,6 +336,14 @@ class Car {
       this.justCrashed = true
     }
   }
+  
+  useAbility(gameState) {
+    if (!this.ability) {
+      return { success: false, reason: 'no_ability' };
+    }
+    
+    return this.ability.activate(this, world, gameState);
+  }
 }
 
 class Room {
@@ -357,6 +400,12 @@ class Room {
 
 const rooms = [new Room(uuidv4())];
 
+// Global game state for ability system
+const gameState = {
+  abilityObjects: [], // Spike traps, etc.
+  activeEffects: []   // Ghost modes, shields, etc.
+};
+
 function assignRoom() {
   for (const room of rooms) {
     if (room.players.size < 8) return room;
@@ -401,6 +450,12 @@ io.on('connection', (socket) => {
       myCar.upgradePoints -= 1;
     }
   });
+  
+  socket.on('useAbility', () => {
+    if (!myCar) return;
+    const result = myCar.useAbility(gameState);
+    socket.emit('abilityResult', result);
+  });
   socket.on('disconnect', () => {
     if (currentRoom) currentRoom.removePlayer(socket);
   });
@@ -418,6 +473,15 @@ function gameLoop() {
   lastTime = now;
   physicsAccumulator += dt;
     while (physicsAccumulator >= timeStep) {
+    // Clean up expired ability objects
+    gameState.abilityObjects = gameState.abilityObjects.filter(obj => {
+      if (Date.now() > obj.expiresAt) {
+        Matter.World.remove(world, obj.body);
+        return false;
+      }
+      return true;
+    });
+
     for (const room of rooms) {
       let roundWinner = null;
       for (const [sid, car] of room.players.entries()) {

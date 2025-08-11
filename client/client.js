@@ -13,6 +13,10 @@
   const upgradeContainer = document.getElementById('upgrades');
   const upgradePointsSpan = document.getElementById('upgradePoints');
   const messageDiv = document.getElementById('message');
+  const abilityIndicator = document.getElementById('abilityIndicator');
+  const abilityIcon = document.getElementById('abilityIcon');
+  const abilityName = document.getElementById('abilityName');
+  const abilityCooldown = document.getElementById('abilityCooldown');
 
   const ctx = gameCanvas.getContext('2d');
   let players = [];
@@ -22,6 +26,8 @@
   let currentCarIndex = 0;
   let carTypes = [];
   let CAR_TYPES = {};
+  let myAbility = null;
+  let lastAbilityUse = 0;
 
   function resizeCanvas() {
     gameCanvas.width = window.innerWidth;
@@ -68,21 +74,18 @@
           <div class="stat-bar">
             <div class="stat-fill speed" style="width: ${car.displaySpeed}%"></div>
           </div>
-          <div class="stat-value">${car.displaySpeed}</div>
         </div>
         <div class="stat-item">
           <div class="stat-label">Durability</div>
           <div class="stat-bar">
             <div class="stat-fill health" style="width: ${car.displayHealth}%"></div>
           </div>
-          <div class="stat-value">${car.displayHealth}</div>
         </div>
         <div class="stat-item">
           <div class="stat-label">Handling</div>
           <div class="stat-bar">
             <div class="stat-fill regen" style="width: ${car.displayHandling}%"></div>
           </div>
-          <div class="stat-value">${car.displayHandling}</div>
         </div>
       </div>
     `;
@@ -108,6 +111,19 @@
     menu.style.display = 'none';
     gameCanvas.style.display = 'block';
     hud.style.display = 'flex';
+    
+    // Set up ability HUD based on selected car
+    const selectedCar = document.querySelector('input[name="car"]:checked');
+    if (selectedCar && CAR_TYPES[selectedCar.value]) {
+      const carType = CAR_TYPES[selectedCar.value];
+      myAbility = {
+        name: carType.abilityName || carType.ability,
+        cooldown: carType.abilityCooldown || 0,
+        icon: getAbilityIcon(carType.ability)
+      };
+      updateAbilityHUD();
+    }
+    
     sendInputInterval = setInterval(() => {
       socket.emit('input', inputState);
     }, 1000 / 60);
@@ -150,6 +166,64 @@
     inputState.cursor.x = e.clientX - cx;
     inputState.cursor.y = e.clientY - cy;
   });
+
+  // Ability input handling
+  document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && !e.repeat) {
+      e.preventDefault();
+      socket.emit('useAbility');
+    }
+  });
+
+  socket.on('abilityResult', (result) => {
+    // Handle ability activation feedback
+    if (result.success) {
+      console.log(`Ability ${result.type} activated successfully`);
+      lastAbilityUse = Date.now();
+      updateAbilityHUD();
+    } else {
+      console.log(`Ability failed: ${result.reason}`);
+    }
+  });
+
+  // Update ability HUD every frame
+  function updateAbilityHUD() {
+    if (!myAbility) return;
+
+    const now = Date.now();
+    const timeSinceUse = now - lastAbilityUse;
+    const remaining = Math.max(0, myAbility.cooldown - timeSinceUse);
+    const isReady = remaining === 0;
+
+    // Update ability info
+    abilityName.textContent = myAbility.name;
+    abilityIcon.textContent = myAbility.icon;
+
+    // Update visual state
+    abilityIndicator.className = 'ability-indicator ' + (isReady ? 'ready' : 'cooldown');
+
+    if (isReady) {
+      abilityCooldown.textContent = 'READY';
+      abilityCooldown.classList.remove('hidden');
+    } else {
+      const seconds = Math.ceil(remaining / 1000);
+      abilityCooldown.textContent = `${seconds}s`;
+      abilityCooldown.classList.remove('hidden');
+    }
+  }
+
+  // Get ability icon based on ability type
+  function getAbilityIcon(abilityType) {
+    switch (abilityType) {
+      case 'dash': return '⚡';
+      case 'spike_trap': return '⚠️';
+      case 'ghost_mode': return '👻';
+      default: return '⚡';
+    }
+  }
+
+  // Update ability HUD regularly
+  setInterval(updateAbilityHUD, 100);
 
   upgradeContainer.addEventListener('click', (e) => {
     if (e.target.tagName === 'BUTTON') {

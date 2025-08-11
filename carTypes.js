@@ -7,6 +7,9 @@ const CAR_TYPES = {
     maxHealth: 10,
     acceleration: 0.015,
     regen: 0.5,
+    ability: 'dash',
+    abilityName: 'Dash',
+    abilityCooldown: 3000,
     color: { fill: [47, 152, 206], stroke: [28, 89, 121], strokeWidth: 4 },
     shape: {
       vertices: [
@@ -30,6 +33,9 @@ const CAR_TYPES = {
     maxHealth: 20,
     acceleration: 0.12,
     regen: 0.25,
+    ability: 'spike_trap',
+    abilityName: 'Spike Trap',
+    abilityCooldown: 8000,
     color: { fill: [157, 230, 160], stroke: [99, 145, 101], strokeWidth: 4 },
     shape: {
       vertices: circleToPolygon(15, 16)
@@ -39,6 +45,33 @@ const CAR_TYPES = {
       restitution: 0.9,
       frictionAir: 0.05,
       density: 0.6
+    }
+  },
+  Balanced: {
+    displayName: 'Balanced',
+    displaySpeed: 55,
+    displayHealth: 55,
+    displayHandling: 60,
+    maxHealth: 15,
+    acceleration: 0.08,
+    regen: 0.35,
+    ability: 'ghost_mode',
+    abilityName: 'Ghost Mode',
+    abilityCooldown: 15000,
+    color: { fill: [255, 165, 0], stroke: [204, 132, 0], strokeWidth: 4 },
+    shape: {
+      vertices: [
+        { x: 12, y: 0 },
+        { x: -8, y: 8 },
+        { x: -5, y: 0 },
+        { x: -8, y: -8 }
+      ]
+    },
+    bodyOptions: {
+      friction: 0.45,
+      restitution: 0.6,
+      frictionAir: 0.025,
+      density: 0.45
     }
   }
 }
