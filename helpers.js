@@ -14,5 +14,14 @@ module.exports = {
 
     segmentSide: function(ax, ay, bx, by, px, py) {
       return Math.sign((bx - ax) * (py - ay) - (by - ay) * (px - ax))
+    },
+
+    getBodyOptionsFromShape: function(shape) {
+        return {
+            isStatic: shape.isStatic !== false,       // default: true
+            friction: shape.friction ?? 0.2,
+            restitution: shape.restitution ?? 0.5,
+            density: shape.density ?? 0.001
+        }
     }
 }

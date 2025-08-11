@@ -94,17 +94,11 @@
     const centerX = width / 2;
     const centerY = height / 2;
     let scale = 1;
+    // scale map
     if (currentMap && Array.isArray(currentMap.shapes)) {
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
       currentMap.shapes.forEach((shape) => {
-        if (shape.type === 'circle' && typeof shape.radius === 'number') {
-          const cx = (shape.center && typeof shape.center.x === 'number') ? shape.center.x : 0;
-          const cy = (shape.center && typeof shape.center.y === 'number') ? shape.center.y : 0;
-          minX = Math.min(minX, cx - shape.radius);
-          maxX = Math.max(maxX, cx + shape.radius);
-          minY = Math.min(minY, cy - shape.radius);
-          maxY = Math.max(maxY, cy + shape.radius);
-        } else if (Array.isArray(shape.vertices)) {
+        if (Array.isArray(shape.vertices)) {
           shape.vertices.forEach((v) => {
             minX = Math.min(minX, v.x);
             maxX = Math.max(maxX, v.x);
@@ -127,128 +121,88 @@
           ? `rgb(${shape.fillColor[0]}, ${shape.fillColor[1]}, ${shape.fillColor[2]})`
           : 'rgb(50, 50, 50)'
         ctx.fillStyle = color
+        // map
+        if (me && currentMap && Array.isArray(currentMap.shapes)) {
+          for (const shape of currentMap.shapes) {
+            ctx.beginPath()
 
-        if (shape.type === 'polygon' && Array.isArray(shape.vertices)) {
-          const verts = shape.vertices.map(v => ({
-            x: centerX + (v.x - me.x) * scale,
-            y: centerY - (v.y - me.y) * scale
-          }))
-          ctx.moveTo(verts[0].x, verts[0].y)
-          for (let i = 1; i < verts.length; i++) {
-            ctx.lineTo(verts[i].x, verts[i].y)
-          }
-          ctx.closePath()
-          ctx.fill()
+            const color = Array.isArray(shape.fillColor)
+              ? `rgb(${shape.fillColor[0]}, ${shape.fillColor[1]}, ${shape.fillColor[2]})`
+              : 'rgb(50, 50, 50)'
+            ctx.fillStyle = color
 
-          if (Array.isArray(shape.borderColors) && shape.borderColors.length > 0) {
-            const lineWidth = shape.borderWidth || 8
-            const verts = shape.vertices.map(v => ({
-              x: centerX + (v.x - me.x) * scale,
-              y: centerY - (v.y - me.y) * scale
-            }))
+            if (Array.isArray(shape.vertices)) {
+              const verts = shape.vertices.map(v => ({
+                x: centerX + (v.x - me.x) * scale,
+                y: centerY - (v.y - me.y) * scale
+              }))
+              ctx.moveTo(verts[0].x, verts[0].y)
+              for (let i = 1; i < verts.length; i++) {
+                ctx.lineTo(verts[i].x, verts[i].y)
+              }
+              ctx.closePath()
+              ctx.fill()
 
-            const stripeLength = shape.stripeLength || shape.borderWidth * 1.8 || 25
+              if (Array.isArray(shape.borderColors) && shape.borderColors.length > 0) {
+                const lineWidth = shape.borderWidth || 8
+                const stripeLength = shape.stripeLength || shape.borderWidth * 1.8 || 25
+                const baseColor = shape.borderColors[0] || '#ff0000'
 
-            for (let i = 0; i < verts.length; i++) {
-              const a = verts[i]
-              const b = verts[(i + 1) % verts.length]
+                for (let i = 0; i < verts.length; i++) {
+                  const a = verts[i]
+                  const b = verts[(i + 1) % verts.length]
 
-              const dx = b.x - a.x
-              const dy = b.y - a.y
-              const len = Math.hypot(dx, dy)
-              const steps = Math.max(1, Math.floor(len / stripeLength))
+                  const dx = b.x - a.x
+                  const dy = b.y - a.y
+                  const len = Math.hypot(dx, dy)
+                  const steps = Math.max(1, Math.floor(len / stripeLength))
 
-              for (let s = 0; s < steps; s++) {
-                const t0 = s / steps
-                const t1 = (s + 1) / steps
-                const x0 = a.x + dx * t0
-                const y0 = a.y + dy * t0
-                const x1 = a.x + dx * t1
-                const y1 = a.y + dy * t1
+                  const perpX = -dy / len
+                  const perpY = dx / len
+                  const offsetX = (perpX * lineWidth) / 2
+                  const offsetY = (perpY * lineWidth) / 2
 
-                const perpX = -dy / len
-                const perpY = dx / len
-                const offsetX = (perpX * lineWidth) / 2
-                const offsetY = (perpY * lineWidth) / 2
+                  for (let s = 0; s < steps; s++) {
+                    const t0 = s / steps
+                    const t1 = (s + 1) / steps
+                    const x0 = a.x + dx * t0
+                    const y0 = a.y + dy * t0
+                    const x1 = a.x + dx * t1
+                    const y1 = a.y + dy * t1
 
-                ctx.beginPath()
-                ctx.moveTo(x0 + offsetX, y0 + offsetY)
-                ctx.lineTo(x1 + offsetX, y1 + offsetY)
-                ctx.lineTo(x1 - offsetX, y1 - offsetY)
-                ctx.lineTo(x0 - offsetX, y0 - offsetY)
-                ctx.closePath()
-                ctx.fillStyle = shape.borderColors[s % shape.borderColors.length]
-                ctx.fill()
+                    ctx.beginPath()
+                    ctx.moveTo(x0 + offsetX, y0 + offsetY)
+                    ctx.lineTo(x1 + offsetX, y1 + offsetY)
+                    ctx.lineTo(x1 - offsetX, y1 - offsetY)
+                    ctx.lineTo(x0 - offsetX, y0 - offsetY)
+                    ctx.closePath()
+
+                    // Use borderColors[s % N] but force last stripe to be baseColor
+                    const isLastStripe = s === steps - 1
+                    ctx.fillStyle = isLastStripe
+                      ? baseColor
+                      : shape.borderColors[s % shape.borderColors.length]
+                    ctx.fill()
+                  }
+
+                  // Draw rounded caps at edge endpoints
+                  const radius = lineWidth / 2
+                  ctx.beginPath()
+                  ctx.arc(a.x, a.y, radius, 0, Math.PI * 2)
+                  ctx.fillStyle = baseColor
+                  ctx.fill()
+                }
               }
             }
-
-
           }
-        } else if (shape.type === 'circle' && typeof shape.radius === 'number') {
-          const cx = (shape.center?.x ?? 0) - me.x
-          const cy = (shape.center?.y ?? 0) - me.y
-          ctx.arc(centerX + cx * scale, centerY - cy * scale, shape.radius * scale, 0, 2 * Math.PI)
-          ctx.fill()
-
-          if (Array.isArray(shape.borderColors) && shape.borderColors.length > 0) {
-            const lineWidth = shape.borderWidth || 8
-            const numSegments = 64
-            const cx = centerX + ((shape.center?.x ?? 0) - me.x) * scale
-            const cy = centerY - ((shape.center?.y ?? 0) - me.y) * scale
-            const radius = shape.radius * scale
-
-            const stripeLength = shape.stripeLength || 25
-
-            for (let i = 0; i < verts.length; i++) {
-              const a = verts[i]
-              const b = verts[(i + 1) % verts.length]
-
-              const dx = b.x - a.x
-              const dy = b.y - a.y
-              const len = Math.hypot(dx, dy)
-              const steps = Math.max(1, Math.floor(len / stripeLength))
-
-              for (let s = 0; s < steps; s++) {
-                const t0 = Math.max(0, (s - 0.05) / steps)
-                const t1 = (s + 1.05) / steps
-                const x0 = a.x + dx * t0
-                const y0 = a.y + dy * t0
-                const x1 = a.x + dx * t1
-                const y1 = a.y + dy * t1
-
-                ctx.beginPath()
-                ctx.moveTo(x0, y0)
-                ctx.lineTo(x1, y1)
-                ctx.strokeStyle = shape.borderColors[s % shape.borderColors.length]
-                ctx.lineWidth = lineWidth
-                ctx.stroke()
-              }
-            }
-
-          }
-
         }
       }
       let maxX = -Infinity;
       currentMap.shapes.forEach((shape) => {
         if (shape.hollow) return;
-        if (shape.type === 'circle' && typeof shape.radius === 'number') {
-          const cx = (shape.center && typeof shape.center.x === 'number') ? shape.center.x : 0;
-          maxX = Math.max(maxX, cx + shape.radius);
-        } else if (Array.isArray(shape.vertices)) {
+        if (Array.isArray(shape.vertices))
           shape.vertices.forEach((v) => { if (v.x > maxX) maxX = v.x; });
-        }
       });
-      if (isFinite(maxX)) {
-        const sxWorld = maxX - me.x;
-        ctx.beginPath();
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2;
-        const syRange = 20;
-        ctx.moveTo(centerX + sxWorld * scale, centerY - (-syRange - me.y) * scale);
-        ctx.lineTo(centerX + sxWorld * scale, centerY - (syRange - me.y) * scale);
-        ctx.stroke();
-      }
     }
 
     // start/finish poly

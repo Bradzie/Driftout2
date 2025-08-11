@@ -1,3 +1,5 @@
+// TODO: Add isStatic:false compatability - dynamic map props will need to be added as part of the socket update loop, client currently receives only one set of shapes for map gen at the beginning of match
+
 module.exports = {
   square: {
     displayName: 'Square',
@@ -12,30 +14,31 @@ module.exports = {
     },
     shapes: [
       {
-        type: 'polygon',
         vertices: [
           { x: -600, y: -600 },
           { x:  600, y: -600 },
           { x:  600, y:  600 },
           { x: -600, y:  600 }
         ],
-        hollow: false,
         fillColor: [100, 100, 100],
         borderColors: ['#ff4d4d', '#ffffff'],
         borderWidth: 20
       },
       {
-        type: 'polygon',
         vertices: [
           { x: -400, y: -400 },
           { x:  400, y: -400 },
           { x:  400, y:  400 },
           { x: -400, y:  400 }
         ],
-        hollow: false,
         borderColors: ['#ff4d4d', '#ffffff'],
         borderWidth: 20
-      }
+      },
+      {
+        vertices: circleToPolygon(25, 10, { x: 500, y: 500 }),
+        borderColors: ['#ff4d4d', '#ffffff'],
+        borderWidth: 5
+      },
     ],
     checkpoints: [
       {
@@ -56,3 +59,15 @@ module.exports = {
     ]
   },
 };
+
+function circleToPolygon(radius, segments = 24, center = { x: 0, y: 0 }) {
+  const verts = []
+  for (let i = 0; i < segments; i++) {
+    const angle = (i / segments) * 2 * Math.PI
+    verts.push({
+      x: center.x + radius * Math.cos(angle),
+      y: center.y + radius * Math.sin(angle)
+    })
+  }
+  return verts
+}

@@ -58,75 +58,41 @@ Matter.Events.on(engine, 'collisionStart', (event) => {
 
 function setTrackBodies(mapKey) {
   for (const body of currentTrackBodies) {
-    Matter.World.remove(world, body);
+    Matter.World.remove(world, body)
   }
-  currentTrackBodies = [];
-  const map = MAP_TYPES[mapKey];
-  const thickness = 10;
-  if (!map || !map.shapes) return;
+  currentTrackBodies = []
+
+  const map = MAP_TYPES[mapKey]
+  const thickness = 10
+  if (!map || !map.shapes) return
+
   for (const shape of map.shapes) {
-    if (shape.hollow) continue;
-    if (shape.type === 'polygon' && Array.isArray(shape.vertices)) {
-      const verts = shape.vertices;
-      for (let i = 0; i < verts.length; i++) {
-        const a = verts[i];
-        const b = verts[(i + 1) % verts.length];
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const length = Math.sqrt(dx * dx + dy * dy);
-        const angle = Math.atan2(dy, dx);
-        const cx = (a.x + b.x) / 2;
-        const cy = (a.y + b.y) / 2;
-        const wall = Matter.Bodies.rectangle(
-          cx,
-          cy,
-          length + thickness,
-          thickness,
-          {
-            isStatic: true,
-            friction: 0.2,
-            restitution: 0.5,
-            angle: angle
-          }
-        );
-        currentTrackBodies.push(wall);
+    if (shape.hollow) continue
+    if (!Array.isArray(shape.vertices)) continue
+
+    const verts = shape.vertices
+    for (let i = 0; i < verts.length; i++) {
+      const a = verts[i]
+      const b = verts[(i + 1) % verts.length]
+      const dx = b.x - a.x
+      const dy = b.y - a.y
+      const length = Math.sqrt(dx * dx + dy * dy)
+      const angle = Math.atan2(dy, dx)
+      const cx = (a.x + b.x) / 2
+      const cy = (a.y + b.y) / 2
+
+      const bodyOptions = {
+        ...HELPERS.getBodyOptionsFromShape(shape),
+        angle
       }
-    } else if (shape.type === 'circle' && typeof shape.radius === 'number') {
-      const r = shape.radius + thickness / 2;
-      const c = shape.center || { x: 0, y: 0 };
-      const boundary = Matter.Bodies.circle(
-        c.x,
-        c.y,
-        r,
-        { isStatic: true, friction: 0.2, restitution: 0.5 }
-      );
-      currentTrackBodies.push(boundary);
-    } else if (shape.type === 'line' && Array.isArray(shape.vertices) && shape.vertices.length >= 2) {
-      const a = shape.vertices[0];
-      const b = shape.vertices[1];
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const length = Math.sqrt(dx * dx + dy * dy);
-      const angle = Math.atan2(dy, dx);
-      const cx = (a.x + b.x) / 2;
-      const cy = (a.y + b.y) / 2;
-      const wall = Matter.Bodies.rectangle(
-        cx,
-        cy,
-        length + thickness,
-        thickness,
-        {
-          isStatic: true,
-          friction: 0.2,
-          restitution: 0.5,
-          angle: angle
-        }
-      );
-      currentTrackBodies.push(wall);
+      const wall = Matter.Bodies.rectangle(cx, cy, length + thickness, thickness, bodyOptions)
+
+      currentTrackBodies.push(wall)
     }
   }
+
   if (currentTrackBodies.length > 0) {
-    Matter.World.add(world, currentTrackBodies);
+    Matter.World.add(world, currentTrackBodies)
   }
 }
 
@@ -286,29 +252,17 @@ class Car {
     let insideHole = false;
     if (mapDef && Array.isArray(mapDef.shapes)) {
       for (const shape of mapDef.shapes) {
-        const px = pos.x;
-        const py = pos.y;
-        if (shape.type === 'circle' && typeof shape.radius === 'number') {
-          const cx = (shape.center && typeof shape.center.x === 'number') ? shape.center.x : 0;
-          const cy = (shape.center && typeof shape.center.y === 'number') ? shape.center.y : 0;
-          const dx = px - cx;
-          const dy = py - cy;
-          const distSq = dx * dx + dy * dy;
-          const rSq = shape.radius * shape.radius;
-          if (shape.hollow) {
-            if (distSq < rSq) insideHole = true;
-          } else {
-            if (distSq > rSq) outsideSolid = true;
-          }
-        } else if (shape.type === 'polygon' && Array.isArray(shape.vertices)) {
-          const inside = pointInPolygon(px, py, shape.vertices);
-          if (shape.hollow) {
-            if (inside) insideHole = true;
-          } else {
-            if (!inside) outsideSolid = true;
-          }
+        const px = pos.x
+        const py = pos.y
+
+        if (!Array.isArray(shape.vertices)) continue
+
+        const inside = pointInPolygon(px, py, shape.vertices)
+
+        if (shape.hollow) {
+          if (inside) insideHole = true
         } else {
-          continue;
+          if (!inside) outsideSolid = true
         }
       }
     }

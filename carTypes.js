@@ -40,7 +40,7 @@ const CAR_TYPES = {
 if (typeof module !== 'undefined') module.exports = CAR_TYPES
 if (typeof window !== 'undefined') window.CAR_TYPES = CAR_TYPES
 
-function circleToPolygon(radius, segments = 20) {
+function circleToPolygon(radius, segments = 16) {
   const verts = []
   for (let i = 0; i < segments; i++) {
     const angle = (i / segments) * 2 * Math.PI
