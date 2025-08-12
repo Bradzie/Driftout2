@@ -7,9 +7,6 @@ const CAR_TYPES = {
     maxHealth: 10,
     acceleration: 0.015,
     regen: 0.1,
-    ability: 'dash',
-    abilityName: 'Dash',
-    abilityCooldown: 3000,
     color: { fill: [47, 152, 206], stroke: [28, 89, 121], strokeWidth: 4 },
     shape: {
       vertices: [

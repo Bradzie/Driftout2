@@ -26,10 +26,22 @@ module.exports = {
       },
       {
         vertices: [
-          { x: -400, y: -400 },
+          { x: -400, y: -100 },
+          { x: -100, y: -100 },
+          { x: -100, y: -400 },
           { x:  400, y: -400 },
           { x:  400, y:  400 },
           { x: -400, y:  400 }
+        ],
+        borderColors: ['#ff4d4d', '#ffffff'],
+        borderWidth: 20
+      },
+      {
+        vertices: [
+          { x: -400, y: -400 },
+          { x:  -200, y: -400 },
+          { x:  -200, y:  -200 },
+          { x: -400, y:  -200 }
         ],
         borderColors: ['#ff4d4d', '#ffffff'],
         borderWidth: 20

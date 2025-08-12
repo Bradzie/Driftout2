@@ -406,6 +406,70 @@ const gameState = {
   activeEffects: []   // Ghost modes, shields, etc.
 };
 
+// Delta compression - track last sent state per client
+const clientLastStates = new Map();
+
+function createDeltaState(socketId, currentState) {
+  const lastState = clientLastStates.get(socketId);
+  
+  if (!lastState) {
+    // First time - send full state
+    clientLastStates.set(socketId, JSON.parse(JSON.stringify(currentState)));
+    return currentState;
+  }
+
+  const delta = {
+    players: [],
+    fullUpdate: false
+  };
+
+  // Compare players and send only changes
+  currentState.players.forEach((currentPlayer, i) => {
+    const lastPlayer = lastState.players.find(p => p.id === currentPlayer.id);
+    
+    if (!lastPlayer) {
+      // New player - send full data
+      delta.players.push({ ...currentPlayer, isFullUpdate: true });
+      return;
+    }
+
+    // Check if position/angle changed significantly  
+    const posChanged = Math.abs(currentPlayer.x - lastPlayer.x) > 0.1 || 
+                      Math.abs(currentPlayer.y - lastPlayer.y) > 0.1 ||
+                      Math.abs(currentPlayer.angle - lastPlayer.angle) > 0.01;
+    
+    const healthChanged = currentPlayer.health !== lastPlayer.health;
+    const lapsChanged = currentPlayer.laps !== lastPlayer.laps;
+
+    if (posChanged || healthChanged || lapsChanged) {
+      const playerDelta = { id: currentPlayer.id };
+      
+      if (posChanged) {
+        playerDelta.x = currentPlayer.x;
+        playerDelta.y = currentPlayer.y;
+        playerDelta.angle = currentPlayer.angle;
+        playerDelta.vertices = currentPlayer.vertices;
+      }
+      
+      if (healthChanged) {
+        playerDelta.health = currentPlayer.health;
+      }
+      
+      if (lapsChanged) {
+        playerDelta.laps = currentPlayer.laps;
+        playerDelta.upgradePoints = currentPlayer.upgradePoints;
+      }
+
+      delta.players.push(playerDelta);
+    }
+  });
+
+  // Update stored state
+  clientLastStates.set(socketId, JSON.parse(JSON.stringify(currentState)));
+  
+  return delta.players.length > 0 ? delta : null;
+}
+
 function assignRoom() {
   for (const room of rooms) {
     if (room.players.size < 8) return room;
@@ -429,6 +493,9 @@ io.on('connection', (socket) => {
     if (data.cursor) {
       myCar.cursor.x = data.cursor.x;
       myCar.cursor.y = data.cursor.y;
+      // Store timestamp for potential lag compensation
+      myCar.lastInputTime = data.timestamp || Date.now();
+      myCar.inputSequence = data.sequence || 0;
     }
   });
   socket.on('upgrade', (data) => {
@@ -462,7 +529,7 @@ io.on('connection', (socket) => {
 });
 
 const PHYSICS_HZ = 60;
-const BROADCAST_HZ = 20;
+const BROADCAST_HZ = 30;
 const timeStep = 1 / PHYSICS_HZ;
 let physicsAccumulator = 0;
 let lastTime = Date.now();
@@ -543,12 +610,33 @@ setInterval(() => {
           render: obj.body.render
         }));
 
-        socket.emit('state', {
+        const fullState = {
           players: state,
           mySocketId: socketId,
           map: map,
-          abilityObjects: clientAbilityObjects
-        });
+          abilityObjects: clientAbilityObjects,
+          timestamp: Date.now()
+        };
+
+        const deltaState = createDeltaState(socketId, { players: state });
+        
+        if (deltaState) {
+          // Send delta update
+          socket.emit('delta', {
+            ...deltaState,
+            mySocketId: socketId,
+            abilityObjects: clientAbilityObjects,
+            timestamp: Date.now()
+          });
+        } else {
+          // No changes - send heartbeat
+          socket.emit('heartbeat', { timestamp: Date.now() });
+        }
+        
+        // Send full state occasionally to prevent drift
+        if (Math.random() < 0.1) { // 10% chance = roughly every second at 30Hz
+          socket.emit('state', fullState);
+        }
       }
     }
   }

@@ -98,9 +98,8 @@ html, body {
 
 .car-name {
   font-size: 2rem;
-  font-weight: bold;
   color: #333;
-  font-family: 'Overpass', serif;
+  font-family: 'Quicksilver', serif;
 }
 
 .car-visual {
@@ -300,7 +299,7 @@ html, body {
   border-radius: 8px;
   border: 2px solid #b782f0;
   min-width: 140px;
-  transition: all 0.3s ease;
+  transition: all 0.3s ease, transform 0.1s ease;
 }
 
 .ability-indicator.ready {

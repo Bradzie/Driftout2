@@ -22,6 +22,15 @@
   let players = [];
   let mySocketId = null;
   let abilityObjects = [];
+  
+  // Interpolation state
+  let gameStates = []; // Buffer of recent game states
+  let interpolationDelay = 120; // ms behind server for smoother interpolation
+  
+  // Enhanced prediction state
+  let myPredictedPosition = null;
+  let lastServerPosition = null;
+  let predictionError = { x: 0, y: 0, angle: 0 };
   let inputState = { cursor: { x: 0, y: 0 } };
   let sendInputInterval = null;
   let currentCarIndex = 0;
@@ -117,25 +126,98 @@
     const selectedCar = document.querySelector('input[name="car"]:checked');
     if (selectedCar && CAR_TYPES[selectedCar.value]) {
       const carType = CAR_TYPES[selectedCar.value];
-      myAbility = {
-        name: carType.abilityName || carType.ability,
-        cooldown: carType.abilityCooldown || 0,
-        icon: getAbilityIcon(carType.ability)
-      };
-      updateAbilityHUD();
+      if (carType.ability) {
+        myAbility = {
+          name: carType.abilityName || carType.ability,
+          cooldown: carType.abilityCooldown || 0,
+          icon: getAbilityIcon(carType.ability)
+        };
+        abilityIndicator.style.display = 'block';
+        updateAbilityHUD();
+      } else {
+        myAbility = null;
+        abilityIndicator.style.display = 'none';
+      }
     }
     
     sendInputInterval = setInterval(() => {
-      socket.emit('input', inputState);
+      const timestampedInput = {
+        ...inputState,
+        timestamp: Date.now(),
+        sequence: (sendInputInterval._sequence = (sendInputInterval._sequence || 0) + 1)
+      };
+      socket.emit('input', timestampedInput);
     }, 1000 / 60);
   });
 
   socket.on('state', (data) => {
-    players = data.players;
-    mySocketId = data.mySocketId;
+    // Buffer the state with timestamp for interpolation
+    gameStates.push({
+      players: data.players,
+      abilityObjects: data.abilityObjects || [],
+      timestamp: data.timestamp || Date.now(),
+      mySocketId: data.mySocketId,
+      map: data.map
+    });
+
+    // Keep only last 1 second of states
+    const now = Date.now();
+    gameStates = gameStates.filter(state => (now - state.timestamp) < 1000);
+
+    // Update current map immediately (doesn't need interpolation)
     currentMap = data.map || currentMap;
-    abilityObjects = data.abilityObjects || [];
-    drawGame();
+  });
+
+  // Handle delta updates for better performance
+  socket.on('delta', (data) => {
+    const lastState = gameStates[gameStates.length - 1];
+    if (!lastState) return;
+
+    // Apply delta to last known state
+    const newPlayers = [...lastState.players];
+    
+    data.players.forEach(deltaPlayer => {
+      const existingIndex = newPlayers.findIndex(p => p.id === deltaPlayer.id);
+      
+      if (deltaPlayer.isFullUpdate) {
+        // Full player data
+        if (existingIndex >= 0) {
+          newPlayers[existingIndex] = deltaPlayer;
+        } else {
+          newPlayers.push(deltaPlayer);
+        }
+      } else {
+        // Partial update
+        if (existingIndex >= 0) {
+          newPlayers[existingIndex] = { ...newPlayers[existingIndex], ...deltaPlayer };
+        }
+      }
+    });
+
+    // Add the delta state to buffer
+    gameStates.push({
+      players: newPlayers,
+      abilityObjects: data.abilityObjects || lastState.abilityObjects,
+      timestamp: data.timestamp || Date.now(),
+      mySocketId: data.mySocketId || lastState.mySocketId,
+      map: lastState.map
+    });
+
+    // Keep only last 1 second of states
+    const now = Date.now();
+    gameStates = gameStates.filter(state => (now - state.timestamp) < 1000);
+  });
+
+  // Handle heartbeat (no data changed)
+  socket.on('heartbeat', (data) => {
+    // Just update timestamp for interpolation timing
+    const lastState = gameStates[gameStates.length - 1];
+    if (lastState) {
+      gameStates.push({
+        ...lastState,
+        timestamp: data.timestamp || Date.now()
+      });
+    }
   });
 
   socket.on('returnToMenu', ({ winner, crashed }) => {
@@ -173,6 +255,25 @@
   document.addEventListener('keydown', (e) => {
     if (e.code === 'Space' && !e.repeat) {
       e.preventDefault();
+      
+      // Immediate visual feedback for ability button press
+      if (myAbility) {
+        const now = Date.now();
+        const remaining = Math.max(0, myAbility.cooldown - (now - lastAbilityUse));
+        
+        if (remaining === 0) {
+          // Ability ready - immediate feedback
+          lastAbilityUse = now;
+          updateAbilityHUD();
+          
+          // Visual button press feedback
+          abilityIndicator.style.transform = 'scale(0.95)';
+          setTimeout(() => {
+            abilityIndicator.style.transform = 'scale(1)';
+          }, 100);
+        }
+      }
+      
       socket.emit('useAbility');
     }
   });
@@ -227,6 +328,15 @@
   // Update ability HUD regularly
   setInterval(updateAbilityHUD, 100);
 
+  // Continuous rendering for smooth interpolation
+  function renderLoop() {
+    if (sendInputInterval) { // Only render when in game
+      drawGame();
+    }
+    requestAnimationFrame(renderLoop);
+  }
+  renderLoop();
+
   upgradeContainer.addEventListener('click', (e) => {
     if (e.target.tagName === 'BUTTON') {
       const stat = e.target.dataset.stat;
@@ -234,7 +344,182 @@
     }
   });
 
+  // Interpolate between two game states
+  function interpolateStates(state1, state2, t) {
+    if (!state1 || !state2 || t <= 0) return state1;
+    if (t >= 1) return state2;
+
+    const interpolatedPlayers = state2.players.map((p2, i) => {
+      const p1 = state1.players.find(p => p.id === p2.id);
+      if (!p1) return p2;
+
+      return {
+        ...p2,
+        x: p1.x + (p2.x - p1.x) * t,
+        y: p1.y + (p2.y - p1.y) * t,
+        angle: p1.angle + (p2.angle - p1.angle) * t
+      };
+    });
+
+    return {
+      ...state2,
+      players: interpolatedPlayers
+    };
+  }
+
+  // Physics-aware prediction with error correction
+  function predictMyPosition(latestState, renderTime) {
+    if (!latestState || !mySocketId) return null;
+    
+    const me = latestState.players.find(p => p.socketId === mySocketId);
+    if (!me) return null;
+
+    const now = renderTime || Date.now();
+    const timeSinceUpdate = Math.max(0, now - latestState.timestamp);
+    
+    // Only predict if we have current input and reasonable time delta
+    const inputMag = Math.hypot(inputState.cursor.x, inputState.cursor.y);
+    if (inputMag < 10 || timeSinceUpdate > 100) return null; // Even tighter constraints
+
+    // Track prediction error for correction
+    if (lastServerPosition) {
+      const errorX = me.x - lastServerPosition.x;
+      const errorY = me.y - lastServerPosition.y;
+      const errorAngle = me.angle - lastServerPosition.angle;
+      
+      // Apply error correction more smoothly
+      predictionError.x = predictionError.x * 0.9 + errorX * 0.1;
+      predictionError.y = predictionError.y * 0.9 + errorY * 0.1;
+      predictionError.angle = predictionError.angle * 0.9 + errorAngle * 0.1;
+    }
+    lastServerPosition = { x: me.x, y: me.y, angle: me.angle };
+
+    const dt = Math.min(timeSinceUpdate / 1000, 0.1);
+    
+    // Physics-based prediction mimicking server behavior
+    const inputAngle = Math.atan2(-inputState.cursor.y, inputState.cursor.x);
+    const throttle = Math.min(inputMag / 100, 1);
+    
+    // Simulate angular velocity and damping (matching server physics)
+    let currentAngVel = me.angularVelocity || 0;
+    const desiredAngle = inputAngle;
+    const angleDiff = ((desiredAngle - me.angle + Math.PI * 3) % (Math.PI * 2)) - Math.PI; // Shortest angle
+    const STEER_GAIN = 5.0;
+    const ANGULAR_DAMP = 8.0;
+    const MAX_ROT_SPEED = 3.0;
+    
+    const targetAngVel = angleDiff * STEER_GAIN;
+    currentAngVel = currentAngVel * Math.max(0, 1 - ANGULAR_DAMP * dt);
+    currentAngVel = Math.max(-MAX_ROT_SPEED, Math.min(MAX_ROT_SPEED, currentAngVel + targetAngVel * dt));
+    
+    const newAngle = me.angle + currentAngVel * dt;
+    
+    // Predict movement with physics
+    const acceleration = throttle * 2000; // Approximate server acceleration
+    const forceX = Math.cos(newAngle) * acceleration;
+    const forceY = Math.sin(newAngle) * acceleration;
+    
+    // Simulate velocity with drag
+    const DRAG = 0.95;
+    let vx = (me.velocityX || 0) * Math.pow(DRAG, dt * 60) + forceX * dt;
+    let vy = (me.velocityY || 0) * Math.pow(DRAG, dt * 60) + forceY * dt;
+    
+    // Clamp velocity
+    const maxSpeed = 400;
+    const speed = Math.hypot(vx, vy);
+    if (speed > maxSpeed) {
+      vx = (vx / speed) * maxSpeed;
+      vy = (vy / speed) * maxSpeed;
+    }
+    
+    // Apply error correction to smooth out differences  
+    const correctionStrength = 0.5;
+    
+    return {
+      ...me,
+      x: me.x + vx * dt - predictionError.x * correctionStrength,
+      y: me.y + vy * dt - predictionError.y * correctionStrength,
+      angle: newAngle - predictionError.angle * correctionStrength,
+      velocityX: vx,
+      velocityY: vy,
+      angularVelocity: currentAngVel
+    };
+  }
+
+  // Get interpolated game state for current time
+  function getInterpolatedState() {
+    if (gameStates.length === 0) return null;
+    
+    const now = Date.now();
+    const renderTime = now - interpolationDelay;
+
+    // For single state, use it directly with prediction
+    if (gameStates.length < 2) {
+      const latestState = gameStates[gameStates.length - 1];
+      const predicted = predictMyPosition(latestState, now);
+      if (predicted) {
+        const predictedPlayers = latestState.players.map(p => 
+          p.socketId === mySocketId ? predicted : p
+        );
+        return { ...latestState, players: predictedPlayers };
+      }
+      return latestState;
+    }
+
+    // Find the two states to interpolate between
+    let state1 = null, state2 = null;
+    for (let i = 0; i < gameStates.length - 1; i++) {
+      if (gameStates[i].timestamp <= renderTime && gameStates[i + 1].timestamp > renderTime) {
+        state1 = gameStates[i];
+        state2 = gameStates[i + 1];
+        break;
+      }
+    }
+
+    if (!state1 || !state2) {
+      // Use latest state if we can't find interpolation bounds
+      const latestState = gameStates[gameStates.length - 1];
+      
+      // Only predict if we're ahead of the latest state
+      if (now > latestState.timestamp) {
+        const predicted = predictMyPosition(latestState, now);
+        if (predicted) {
+          const predictedPlayers = latestState.players.map(p => 
+            p.socketId === mySocketId ? predicted : p
+          );
+          return { ...latestState, players: predictedPlayers };
+        }
+      }
+      return latestState;
+    }
+
+    // Calculate interpolation factor
+    const t = Math.max(0, Math.min(1, (renderTime - state1.timestamp) / (state2.timestamp - state1.timestamp)));
+    const interpolatedState = interpolateStates(state1, state2, t);
+    
+    // Only add prediction if we're extrapolating beyond the latest server data
+    const latestState = gameStates[gameStates.length - 1];
+    if (now > latestState.timestamp) {
+      const predicted = predictMyPosition(latestState, now);
+      if (predicted) {
+        const predictedPlayers = interpolatedState.players.map(p => 
+          p.socketId === mySocketId ? predicted : p
+        );
+        return { ...interpolatedState, players: predictedPlayers };
+      }
+    }
+    
+    return interpolatedState;
+  }
+
   function drawGame() {
+    const currentState = getInterpolatedState();
+    if (!currentState) return;
+
+    // Update global state for rendering
+    players = currentState.players || [];
+    abilityObjects = currentState.abilityObjects || [];
+    mySocketId = currentState.mySocketId || mySocketId;
     const width = gameCanvas.width;
     const height = gameCanvas.height;
     ctx.clearRect(0, 0, width, height);
