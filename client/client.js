@@ -25,12 +25,8 @@
   
   // Interpolation state
   let gameStates = []; // Buffer of recent game states
-  let interpolationDelay = 120; // ms behind server for smoother interpolation
+  let interpolationDelay = 50; // ms behind server for smoother interpolation
   
-  // Enhanced prediction state
-  let myPredictedPosition = null;
-  let lastServerPosition = null;
-  let predictionError = { x: 0, y: 0, angle: 0 };
   let inputState = { cursor: { x: 0, y: 0 } };
   let sendInputInterval = null;
   let currentCarIndex = 0;
@@ -367,84 +363,6 @@
     };
   }
 
-  // Physics-aware prediction with error correction
-  function predictMyPosition(latestState, renderTime) {
-    if (!latestState || !mySocketId) return null;
-    
-    const me = latestState.players.find(p => p.socketId === mySocketId);
-    if (!me) return null;
-
-    const now = renderTime || Date.now();
-    const timeSinceUpdate = Math.max(0, now - latestState.timestamp);
-    
-    // Only predict if we have current input and reasonable time delta
-    const inputMag = Math.hypot(inputState.cursor.x, inputState.cursor.y);
-    if (inputMag < 10 || timeSinceUpdate > 100) return null; // Even tighter constraints
-
-    // Track prediction error for correction
-    if (lastServerPosition) {
-      const errorX = me.x - lastServerPosition.x;
-      const errorY = me.y - lastServerPosition.y;
-      const errorAngle = me.angle - lastServerPosition.angle;
-      
-      // Apply error correction more smoothly
-      predictionError.x = predictionError.x * 0.9 + errorX * 0.1;
-      predictionError.y = predictionError.y * 0.9 + errorY * 0.1;
-      predictionError.angle = predictionError.angle * 0.9 + errorAngle * 0.1;
-    }
-    lastServerPosition = { x: me.x, y: me.y, angle: me.angle };
-
-    const dt = Math.min(timeSinceUpdate / 1000, 0.1);
-    
-    // Physics-based prediction mimicking server behavior
-    const inputAngle = Math.atan2(-inputState.cursor.y, inputState.cursor.x);
-    const throttle = Math.min(inputMag / 100, 1);
-    
-    // Simulate angular velocity and damping (matching server physics)
-    let currentAngVel = me.angularVelocity || 0;
-    const desiredAngle = inputAngle;
-    const angleDiff = ((desiredAngle - me.angle + Math.PI * 3) % (Math.PI * 2)) - Math.PI; // Shortest angle
-    const STEER_GAIN = 5.0;
-    const ANGULAR_DAMP = 8.0;
-    const MAX_ROT_SPEED = 3.0;
-    
-    const targetAngVel = angleDiff * STEER_GAIN;
-    currentAngVel = currentAngVel * Math.max(0, 1 - ANGULAR_DAMP * dt);
-    currentAngVel = Math.max(-MAX_ROT_SPEED, Math.min(MAX_ROT_SPEED, currentAngVel + targetAngVel * dt));
-    
-    const newAngle = me.angle + currentAngVel * dt;
-    
-    // Predict movement with physics
-    const acceleration = throttle * 2000; // Approximate server acceleration
-    const forceX = Math.cos(newAngle) * acceleration;
-    const forceY = Math.sin(newAngle) * acceleration;
-    
-    // Simulate velocity with drag
-    const DRAG = 0.95;
-    let vx = (me.velocityX || 0) * Math.pow(DRAG, dt * 60) + forceX * dt;
-    let vy = (me.velocityY || 0) * Math.pow(DRAG, dt * 60) + forceY * dt;
-    
-    // Clamp velocity
-    const maxSpeed = 400;
-    const speed = Math.hypot(vx, vy);
-    if (speed > maxSpeed) {
-      vx = (vx / speed) * maxSpeed;
-      vy = (vy / speed) * maxSpeed;
-    }
-    
-    // Apply error correction to smooth out differences  
-    const correctionStrength = 0.5;
-    
-    return {
-      ...me,
-      x: me.x + vx * dt - predictionError.x * correctionStrength,
-      y: me.y + vy * dt - predictionError.y * correctionStrength,
-      angle: newAngle - predictionError.angle * correctionStrength,
-      velocityX: vx,
-      velocityY: vy,
-      angularVelocity: currentAngVel
-    };
-  }
 
   // Get interpolated game state for current time
   function getInterpolatedState() {
@@ -453,17 +371,9 @@
     const now = Date.now();
     const renderTime = now - interpolationDelay;
 
-    // For single state, use it directly with prediction
+    // For single state, use it directly
     if (gameStates.length < 2) {
-      const latestState = gameStates[gameStates.length - 1];
-      const predicted = predictMyPosition(latestState, now);
-      if (predicted) {
-        const predictedPlayers = latestState.players.map(p => 
-          p.socketId === mySocketId ? predicted : p
-        );
-        return { ...latestState, players: predictedPlayers };
-      }
-      return latestState;
+      return gameStates[gameStates.length - 1];
     }
 
     // Find the two states to interpolate between
@@ -478,38 +388,12 @@
 
     if (!state1 || !state2) {
       // Use latest state if we can't find interpolation bounds
-      const latestState = gameStates[gameStates.length - 1];
-      
-      // Only predict if we're ahead of the latest state
-      if (now > latestState.timestamp) {
-        const predicted = predictMyPosition(latestState, now);
-        if (predicted) {
-          const predictedPlayers = latestState.players.map(p => 
-            p.socketId === mySocketId ? predicted : p
-          );
-          return { ...latestState, players: predictedPlayers };
-        }
-      }
-      return latestState;
+      return gameStates[gameStates.length - 1];
     }
 
     // Calculate interpolation factor
     const t = Math.max(0, Math.min(1, (renderTime - state1.timestamp) / (state2.timestamp - state1.timestamp)));
-    const interpolatedState = interpolateStates(state1, state2, t);
-    
-    // Only add prediction if we're extrapolating beyond the latest server data
-    const latestState = gameStates[gameStates.length - 1];
-    if (now > latestState.timestamp) {
-      const predicted = predictMyPosition(latestState, now);
-      if (predicted) {
-        const predictedPlayers = interpolatedState.players.map(p => 
-          p.socketId === mySocketId ? predicted : p
-        );
-        return { ...interpolatedState, players: predictedPlayers };
-      }
-    }
-    
-    return interpolatedState;
+    return interpolateStates(state1, state2, t);
   }
 
   function drawGame() {
