@@ -12,100 +12,29 @@
   const lapsSpan = document.getElementById('laps');
   const upgradeContainer = document.getElementById('upgrades');
   const upgradePointsSpan = document.getElementById('upgradePoints');
+  const upgradeCardsContainer = document.getElementById('upgradeCards');
   const messageDiv = document.getElementById('message');
   const abilityIndicator = document.getElementById('abilityIndicator');
   const abilityIcon = document.getElementById('abilityIcon');
   const abilityName = document.getElementById('abilityName');
   const abilityCooldown = document.getElementById('abilityCooldown');
 
-  // Create loading screen element
-  const loadingScreen = document.createElement('div');
-  loadingScreen.id = 'loadingScreen';
-  loadingScreen.style.cssText = `
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
-    display: none;
-    justify-content: center;
-    align-items: center;
-    flex-direction: column;
-    z-index: 1000;
-    font-family: Arial, sans-serif;
-    color: white;
-  `;
-  loadingScreen.innerHTML = `
-    <div style="text-align: center;">
-      <div style="font-size: 2em; margin-bottom: 20px; font-weight: bold; font-family: 'Quicksilver', serif;">DRIFTOUT2</div>
-      <div id="loadingSpinner" style="
-        width: 50px;
-        height: 50px;
-        border: 4px solid #333;
-        border-top: 4px solid #00ff00;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-        margin: 0 auto 20px;
-      "></div>
-      <div style="font-size: 1.2em; margin-bottom: 10px;">Connecting to server...</div>
-      <div id="loadingSubtext" style="font-size: 0.9em; color: #aaa;">Waiting for game data</div>
-    </div>
-    <style>
-      @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-      }
-    </style>
-  `;
-  document.body.appendChild(loadingScreen);
-
-  // Create disconnection overlay
-  const disconnectionOverlay = document.createElement('div');
-  disconnectionOverlay.id = 'disconnectionOverlay';
-  disconnectionOverlay.style.cssText = `
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: rgba(0, 0, 0, 0.9);
-    display: none;
-    justify-content: center;
-    align-items: center;
-    flex-direction: column;
-    z-index: 2000;
-    font-family: Arial, sans-serif;
-    color: white;
-    backdrop-filter: blur(5px);
-  `;
-  disconnectionOverlay.innerHTML = `
-    <div style="text-align: center; background: rgba(40, 40, 40, 0.95); padding: 40px; border-radius: 10px; border: 2px solid #ff4444;">
-      <div style="font-size: 1.8em; margin-bottom: 20px; color: #ff4444; font-weight: bold;">⚠️ CONNECTION LOST</div>
-      <div style="font-size: 1.2em; margin-bottom: 15px;">Disconnected from server</div>
-      <div style="font-size: 0.9em; color: #ccc; margin-bottom: 25px;">
-        The connection to the game server has been lost.<br>
-        This can happen due to network issues or server maintenance.
-      </div>
-      <button onclick="location.reload()" style="
-        background: #ff4444;
-        color: white;
-        border: none;
-        padding: 12px 24px;
-        font-size: 1em;
-        border-radius: 5px;
-        cursor: pointer;
-        font-weight: bold;
-        transition: background-color 0.2s;
-      " onmouseover="this.style.backgroundColor='#cc3333'" onmouseout="this.style.backgroundColor='#ff4444'">
-        🔄 REFRESH PAGE
-      </button>
-      <div style="font-size: 0.8em; color: #888; margin-top: 15px;">
-        Click refresh or press F5 to reconnect
-      </div>
-    </div>
-  `;
-  document.body.appendChild(disconnectionOverlay);
+  // Get references to template elements
+  const loadingScreen = document.getElementById('loadingScreen');
+  const disconnectionOverlay = document.getElementById('disconnectionOverlay');
+  const menuDisconnectionWarning = document.getElementById('menuDisconnectionWarning');
+  
+  // Get references to car card template elements
+  const carRadioInput = document.querySelector('input[name="car"]');
+  const carName = document.getElementById('carName');
+  const carPolygon = document.getElementById('carPolygon');
+  const speedFill = document.getElementById('speedFill');
+  const healthFill = document.getElementById('healthFill');
+  const handlingFill = document.getElementById('handlingFill');
+  
+  // Add click handlers to refresh buttons
+  document.getElementById('disconnectRefreshBtn').addEventListener('click', () => location.reload());
+  document.getElementById('menuRefreshBtn').addEventListener('click', () => location.reload());
 
   const ctx = gameCanvas.getContext('2d');
   let players = [];
@@ -153,42 +82,21 @@
     const carType = carTypes[currentCarIndex];
     const car = CAR_TYPES[carType];
     
-    carCard.innerHTML = `
-      <input type="radio" name="car" value="${carType}" checked style="display: none;" />
-      <div class="car-header">
-        <div class="car-name">${car.displayName || carType}</div>
-        <div class="car-visual">
-          <svg class="car-shape" width="60" height="60" viewBox="-30 -30 60 60">
-            <polygon 
-              points="${car.shape.vertices.map(v => `${v.x * 1.5},${-v.y * 1.5}`).join(' ')}"
-              fill="rgb(${car.color.fill.join(',')})"
-              stroke="rgb(${car.color.stroke.join(',')})"
-              stroke-width="${car.color.strokeWidth || 2}"
-            />
-          </svg>
-        </div>
-      </div>
-      <div class="car-stats">
-        <div class="stat-item">
-          <div class="stat-label">Speed</div>
-          <div class="stat-bar">
-            <div class="stat-fill speed" style="width: ${car.displaySpeed}%"></div>
-          </div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-label">Durability</div>
-          <div class="stat-bar">
-            <div class="stat-fill health" style="width: ${car.displayHealth}%"></div>
-          </div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-label">Handling</div>
-          <div class="stat-bar">
-            <div class="stat-fill regen" style="width: ${car.displayHandling}%"></div>
-          </div>
-        </div>
-      </div>
-    `;
+    // Update template elements with car data
+    carRadioInput.value = carType;
+    carName.textContent = car.displayName || carType;
+    
+    // Update car visual
+    const points = car.shape.vertices.map(v => `${v.x * 1.5},${-v.y * 1.5}`).join(' ');
+    carPolygon.setAttribute('points', points);
+    carPolygon.setAttribute('fill', `rgb(${car.color.fill.join(',')})`);
+    carPolygon.setAttribute('stroke', `rgb(${car.color.stroke.join(',')})`);
+    carPolygon.setAttribute('stroke-width', car.color.strokeWidth || 2);
+    
+    // Update stat bars
+    speedFill.style.width = `${car.displaySpeed}%`;
+    healthFill.style.width = `${car.displayHealth}%`;
+    handlingFill.style.width = `${car.displayHandling}%`;
   }
 
   function switchCar() {
@@ -209,7 +117,7 @@
 
   socket.on('joined', (data) => {
     menu.style.display = 'none';
-    loadingScreen.style.display = 'flex'; // Show loading screen
+    loadingScreen.classList.remove('hidden'); // Show loading screen
     gameCanvas.style.display = 'block';
     hud.style.display = 'flex';
     
@@ -259,7 +167,7 @@
     hasReceivedFirstState = true;
     
     // Hide loading screen now that we have game data
-    loadingScreen.style.display = 'none';
+    loadingScreen.classList.add('hidden');
 
     // Keep only last 1 second of states
     const now = Date.now();
@@ -312,7 +220,7 @@
     hasReceivedFirstState = true;
     
     // Hide loading screen now that we have game data
-    loadingScreen.style.display = 'none';
+    loadingScreen.classList.add('hidden');
 
     // Keep only last 1 second of states
     const now = Date.now();
@@ -350,7 +258,7 @@
     gameStates = []; // Clear game state buffer
     
     // Hide loading screen when returning to menu
-    loadingScreen.style.display = 'none';
+    loadingScreen.classList.add('hidden');
     
     if (winner) {
       messageDiv.textContent = `${winner} completed 10 laps!`;
@@ -373,7 +281,7 @@
     inputState.cursor.y = e.clientY - cy;
   });
 
-  // Ability input handling
+  // Ability and upgrade input handling
   document.addEventListener('keydown', (e) => {
     if (e.code === 'Space' && !e.repeat) {
       e.preventDefault();
@@ -397,6 +305,33 @@
       }
       
       socket.emit('useAbility');
+    }
+    
+    // Handle upgrade number keys (1-6)
+    if (e.key >= '1' && e.key <= '6' && !e.repeat) {
+      e.preventDefault();
+      
+      // Only allow upgrades if cards are visible and we're in game
+      if (!upgradeCardsContainer.classList.contains('hidden') && sendInputInterval) {
+        const upgradeKey = parseInt(e.key);
+        const upgradeCard = document.querySelector(`[data-key="${upgradeKey}"]`);
+        
+        if (upgradeCard) {
+          const stat = upgradeCard.getAttribute('data-stat');
+          
+          // Visual feedback
+          upgradeCard.style.transform = 'translateY(-3px) scale(1.1)';
+          upgradeCard.style.borderColor = '#ffffff';
+          
+          setTimeout(() => {
+            upgradeCard.style.transform = '';
+            upgradeCard.style.borderColor = '';
+          }, 200);
+          
+          // Send upgrade request
+          socket.emit('upgrade', { stat });
+        }
+      }
     }
   });
 
@@ -469,8 +404,8 @@
   function showDisconnectionOverlay() {
     if (menu.style.display === 'none') {
       // User was in-game - show full overlay
-      disconnectionOverlay.style.display = 'flex';
-      loadingScreen.style.display = 'none'; // Hide loading screen if it was showing
+      disconnectionOverlay.classList.remove('hidden');
+      loadingScreen.classList.add('hidden'); // Hide loading screen if it was showing
     } else {
       // User is on menu - show inline disconnection message
       showMenuDisconnectionWarning();
@@ -484,50 +419,8 @@
     switchButton.style.display = 'none';
     joinButton.style.display = 'none';
     
-    // Create or show disconnection warning in menu
-    let menuWarning = document.getElementById('menuDisconnectionWarning');
-    if (!menuWarning) {
-      menuWarning = document.createElement('div');
-      menuWarning.id = 'menuDisconnectionWarning';
-      menuWarning.style.cssText = `
-        background: #ffffff;
-        border: 2px solid #b782f0;
-        border-radius: 10px;
-        padding: 30px;
-        text-align: center;
-        color: white;
-        font-family: Arial, sans-serif;
-        margin: 20px 0;
-      `;
-      menuWarning.innerHTML = `
-        <div style="font-size: 1.5em; margin-bottom: 15px; color: #b782f0; font-family: 'Quicksilver', serif;">DISCONNECTED</div>
-        <div style="font-size: 1em; margin-bottom: 15px; color: #000000ff;">Unable to connect to game server</div>
-        <div style="font-size: 0.9em; color: #000000ff; margin-bottom: 20px; line-height: 1.4;">
-          The connection has been lost. This can happen due to:<br>
-          • Network connectivity issues<br>
-          • Server maintenance or restart<br>
-          • Browser sleeping inactive tabs
-        </div>
-        <button onclick="location.reload()" style="
-          background: #b782f0;
-          color: white;
-          border: none;
-          padding: 12px 24px;
-          font-size: 1em;
-          border-radius: 5px;
-          cursor: pointer;
-          transition: background-color 0.2s;
-          font-family: 'Quicksilver', serif;
-        " onmouseover="this.style.backgroundColor='#000000ff'" onmouseout="this.style.backgroundColor='#b782f0'">
-          CLICK TO REFRESH
-        </button>
-      `;
-      
-      // Insert after the name input but before where the car card was
-      nameInput.parentNode.insertBefore(menuWarning, nameInput.nextSibling);
-    } else {
-      menuWarning.style.display = 'block';
-    }
+    // Show the menu disconnection warning template
+    menuDisconnectionWarning.classList.remove('hidden');
   }
 
   function hideMenuDisconnectionWarning() {
@@ -537,17 +430,14 @@
     switchButton.style.display = 'block';
     joinButton.style.display = 'block';
     
-    // Hide the warning
-    const menuWarning = document.getElementById('menuDisconnectionWarning');
-    if (menuWarning) {
-      menuWarning.style.display = 'none';
-    }
+    // Hide the warning template
+    menuDisconnectionWarning.classList.add('hidden');
   }
 
   // Monitor server messages to detect "silent" disconnections
   function monitorConnection() {
     const now = Date.now();
-    if (now - lastServerMessage > 10000) { // 10 seconds without any server message
+    if (now - lastServerMessage > 600000) { // 10 minutes without any server message
       console.log('Connection appears to be lost - no server messages received');
       showDisconnectionOverlay();
     }
@@ -562,7 +452,7 @@
     lastServerMessage = Date.now(); // Reset the timer
     
     // Hide disconnection warnings if they were showing
-    disconnectionOverlay.style.display = 'none';
+    disconnectionOverlay.classList.add('hidden');
     if (menu.style.display !== 'none') {
       hideMenuDisconnectionWarning();
     }
@@ -577,9 +467,22 @@
   }
   renderLoop();
 
-  upgradeContainer.addEventListener('click', (e) => {
-    if (e.target.tagName === 'BUTTON') {
-      const stat = e.target.dataset.stat;
+  // Handle upgrade card clicks
+  upgradeCardsContainer.addEventListener('click', (e) => {
+    const upgradeCard = e.target.closest('.upgrade-card');
+    if (upgradeCard && !upgradeCardsContainer.classList.contains('hidden')) {
+      const stat = upgradeCard.getAttribute('data-stat');
+      
+      // Visual feedback
+      upgradeCard.style.transform = 'translateY(-3px) scale(1.1)';
+      upgradeCard.style.borderColor = '#ffffff';
+      
+      setTimeout(() => {
+        upgradeCard.style.transform = '';
+        upgradeCard.style.borderColor = '';
+      }, 200);
+      
+      // Send upgrade request
       socket.emit('upgrade', { stat });
     }
   });
@@ -828,11 +731,20 @@
 
       ctx.restore()
 
-      ctx.fillStyle = '#ffffff';
-      ctx.font = `${Math.max(12, 14 * scale)}px Arial`;
+      // Player name with black outline and smooth font
+      const fontSize = Math.max(6, 10 * scale);
+      ctx.font = `bold ${fontSize}px 'Tahoma', 'Arial', sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      ctx.fillText(p.name || '', screenX, screenY + 15 * scale);
+      
+      // Black outline for better readability
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = '#000000';
+      ctx.strokeText(p.name || '', screenX, screenY + 20 * scale);
+      
+      // White fill text
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(p.name || '', screenX, screenY + 20 * scale);
 
       if (p.health < p.maxHealth) {
         const barWidth = 20 * scale;
@@ -960,8 +872,10 @@
       upgradePointsSpan.textContent = me.upgradePoints;
       if (me.upgradePoints > 0) {
         upgradeContainer.classList.remove('hidden');
+        upgradeCardsContainer.classList.remove('hidden');
       } else {
         upgradeContainer.classList.add('hidden');
+        upgradeCardsContainer.classList.add('hidden');
       }
     }
   }

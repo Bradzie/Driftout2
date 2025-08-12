@@ -3,18 +3,48 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Driftout2</title>
+  <title>Driftz IO</title>
   <link rel="stylesheet" href="style.css" />
   <!-- Socket.io client -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 </head>
 <body>
   <div id="menu" class="overlay">
-    <h1 class="title">DRIFTOUT</h1>
+    <h1 class="title">DRIFTZ.IO</h1>
     <input type="text" id="nameInput" placeholder="Name" maxlength="20" />
     <div id="carSelector" class="car-selector">
       <button id="switchButton" class="nav-button prev-button">🗘</button>
-      <div id="carCard" class="single-car-card"></div>
+      <div id="carCard" class="single-car-card">
+        <input type="radio" name="car" value="" checked style="display: none;" />
+        <div class="car-header">
+          <div id="carName" class="car-name"></div>
+          <div class="car-visual">
+            <svg id="carShape" class="car-shape" width="60" height="60" viewBox="-30 -30 60 60">
+              <polygon id="carPolygon" points="" fill="" stroke="" stroke-width="2" />
+            </svg>
+          </div>
+        </div>
+        <div class="car-stats">
+          <div class="stat-item">
+            <div class="stat-label">Speed</div>
+            <div class="stat-bar">
+              <div id="speedFill" class="stat-fill speed" style="width: 0%"></div>
+            </div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Durability</div>
+            <div class="stat-bar">
+              <div id="healthFill" class="stat-fill health" style="width: 0%"></div>
+            </div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Handling</div>
+            <div class="stat-bar">
+              <div id="handlingFill" class="stat-fill regen" style="width: 0%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
       <button id="joinButton" class="nav-button play-button">➤</button>
     </div>
   </div>
@@ -35,13 +65,69 @@
     </div>
     <div id="upgrades" class="hidden">
       <span>Upgrade points: <span id="upgradePoints">0</span></span>
-      <button data-stat="maxHealth">+ Health</button>
-      <button data-stat="acceleration">+ Accel</button>
-      <button data-stat="regen">+ Regen</button>
     </div>
   </div>
 
   <div id="message" class="hidden"></div>
+
+  <!-- Upgrade Cards Container -->
+  <div id="upgradeCards" class="upgrade-cards-container hidden">
+    <div class="upgrade-card" data-stat="maxHealth" data-key="1">
+      <div class="upgrade-key-indicator">1</div>
+      <div class="upgrade-icon">❤️</div>
+      <div class="upgrade-name">Health</div>
+      <div class="upgrade-effect">+2 HP</div>
+    </div>
+    <div class="upgrade-card" data-stat="acceleration" data-key="2">
+      <div class="upgrade-key-indicator">2</div>
+      <div class="upgrade-icon">⚡</div>
+      <div class="upgrade-name">Speed</div>
+      <div class="upgrade-effect">+Accel</div>
+    </div>
+    <div class="upgrade-card" data-stat="regen" data-key="3">
+      <div class="upgrade-key-indicator">3</div>
+      <div class="upgrade-icon">🔄</div>
+      <div class="upgrade-name">Regen</div>
+      <div class="upgrade-effect">+0.1/s</div>
+    </div>
+  </div>
+
+  <!-- Loading Screen Template -->
+  <div id="loadingScreen" class="overlay loading-overlay hidden">
+    <div class="loading-content">
+      <div class="game-title">DRIFTOUT2</div>
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Connecting to server...</div>
+      <div class="loading-subtext">Waiting for game data</div>
+    </div>
+  </div>
+
+  <!-- Disconnection Overlay Template -->
+  <div id="disconnectionOverlay" class="overlay disconnect-overlay hidden">
+    <div class="disconnect-content">
+      <div class="disconnect-title">⚠️ CONNECTION LOST</div>
+      <div class="disconnect-message">Disconnected from server</div>
+      <div class="disconnect-details">
+        The connection to the game server has been lost.<br>
+        This can happen due to network issues or server maintenance.
+      </div>
+      <button id="disconnectRefreshBtn" class="disconnect-refresh-btn">🔄 REFRESH PAGE</button>
+      <div class="disconnect-hint">Click refresh or press F5 to reconnect</div>
+    </div>
+  </div>
+
+  <!-- Menu Disconnection Warning Template -->
+  <div id="menuDisconnectionWarning" class="menu-warning hidden">
+    <div class="warning-title">DISCONNECTED</div>
+    <div class="warning-message">Unable to connect to game server</div>
+    <div class="warning-details">
+      The connection has been lost. This can happen due to:<br>
+      • Network connectivity issues<br>
+      • Server maintenance or restart<br>
+      • Browser sleeping inactive tabs
+    </div>
+    <button id="menuRefreshBtn" class="menu-refresh-btn">CLICK TO REFRESH</button>
+  </div>
 
   <script src="client.js"></script>
 </body>

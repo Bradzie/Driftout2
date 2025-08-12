@@ -30,9 +30,6 @@ const CAR_TYPES = {
     maxHealth: 20,
     acceleration: 0.12,
     regen: 0.1,
-    ability: 'spike_trap',
-    abilityName: 'Spike Trap',
-    abilityCooldown: 8000,
     color: { fill: [157, 230, 160], stroke: [99, 145, 101], strokeWidth: 4 },
     shape: {
       vertices: circleToPolygon(15, 16)
@@ -44,7 +41,7 @@ const CAR_TYPES = {
       density: 0.6
     }
   },
-  Balanced: {
+  Bullet: {
     displayName: 'Bullet',
     displaySpeed: 85,
     displayHealth: 50,
@@ -71,6 +68,37 @@ const CAR_TYPES = {
       restitution: 1,
       frictionAir: 0.005,
       density: 0.5
+    }
+  },
+  Prankster: {
+    displayName: 'Prankster',
+    displaySpeed: 45,
+    displayHealth: 35,
+    displayHandling: 60,
+    maxHealth: 12,
+    acceleration: 0.04,
+    regen: 0.1,
+    ability: 'spike_trap',
+    abilityName: 'Trap',
+    abilityCooldown: 8000,
+    color: { fill: [183, 100, 255], stroke: [138, 2, 255], strokeWidth: 2 },
+    shape: {
+      vertices: [
+        { x: 10, y: 10 },
+        { x: -10, y: 10 },
+        { x: -10, y: -10 },
+        { x: -6, y: -10 },
+        { x: -10, y: -16 },
+        { x: 10, y: -16 },
+        { x: 6, y: -10 },
+        { x: 10, y: -10 }
+      ]
+    },
+    bodyOptions: {
+      friction: 0.8,
+      restitution: 0.3,
+      frictionAir: 0.02,
+      density: 0.3
     }
   }
 }
