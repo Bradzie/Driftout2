@@ -52,6 +52,22 @@ module.exports = {
         borderWidth: 5
       },
     ],
+    dynamicObjects: [
+      {
+        id: 'brownBox1',
+        position: { x: 0, y: 500 },
+        size: { width: 60, height: 60 },
+        shape: 'rectangle',
+        isStatic: false,
+        density: 0.01, // Low density so it moves easily
+        friction: 0.3,
+        restitution: 0.4,
+        //maxHealth: 100, // Health points before destruction
+        fillColor: [139, 69, 19], // Brown color
+        strokeColor: [101, 67, 33], // Darker brown
+        strokeWidth: 2
+      }
+    ],
     checkpoints: [
       {
         type: 'line',

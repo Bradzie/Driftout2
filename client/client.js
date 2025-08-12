@@ -18,6 +18,95 @@
   const abilityName = document.getElementById('abilityName');
   const abilityCooldown = document.getElementById('abilityCooldown');
 
+  // Create loading screen element
+  const loadingScreen = document.createElement('div');
+  loadingScreen.id = 'loadingScreen';
+  loadingScreen.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    z-index: 1000;
+    font-family: Arial, sans-serif;
+    color: white;
+  `;
+  loadingScreen.innerHTML = `
+    <div style="text-align: center;">
+      <div style="font-size: 2em; margin-bottom: 20px; font-weight: bold; font-family: 'Quicksilver', serif;">DRIFTOUT2</div>
+      <div id="loadingSpinner" style="
+        width: 50px;
+        height: 50px;
+        border: 4px solid #333;
+        border-top: 4px solid #00ff00;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 20px;
+      "></div>
+      <div style="font-size: 1.2em; margin-bottom: 10px;">Connecting to server...</div>
+      <div id="loadingSubtext" style="font-size: 0.9em; color: #aaa;">Waiting for game data</div>
+    </div>
+    <style>
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    </style>
+  `;
+  document.body.appendChild(loadingScreen);
+
+  // Create disconnection overlay
+  const disconnectionOverlay = document.createElement('div');
+  disconnectionOverlay.id = 'disconnectionOverlay';
+  disconnectionOverlay.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.9);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    z-index: 2000;
+    font-family: Arial, sans-serif;
+    color: white;
+    backdrop-filter: blur(5px);
+  `;
+  disconnectionOverlay.innerHTML = `
+    <div style="text-align: center; background: rgba(40, 40, 40, 0.95); padding: 40px; border-radius: 10px; border: 2px solid #ff4444;">
+      <div style="font-size: 1.8em; margin-bottom: 20px; color: #ff4444; font-weight: bold;">⚠️ CONNECTION LOST</div>
+      <div style="font-size: 1.2em; margin-bottom: 15px;">Disconnected from server</div>
+      <div style="font-size: 0.9em; color: #ccc; margin-bottom: 25px;">
+        The connection to the game server has been lost.<br>
+        This can happen due to network issues or server maintenance.
+      </div>
+      <button onclick="location.reload()" style="
+        background: #ff4444;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        font-size: 1em;
+        border-radius: 5px;
+        cursor: pointer;
+        font-weight: bold;
+        transition: background-color 0.2s;
+      " onmouseover="this.style.backgroundColor='#cc3333'" onmouseout="this.style.backgroundColor='#ff4444'">
+        🔄 REFRESH PAGE
+      </button>
+      <div style="font-size: 0.8em; color: #888; margin-top: 15px;">
+        Click refresh or press F5 to reconnect
+      </div>
+    </div>
+  `;
+  document.body.appendChild(disconnectionOverlay);
+
   const ctx = gameCanvas.getContext('2d');
   let players = [];
   let mySocketId = null;
@@ -29,6 +118,11 @@
   
   let inputState = { cursor: { x: 0, y: 0 } };
   let sendInputInterval = null;
+  let hasReceivedFirstState = false; // Flag to prevent rendering before first server data
+  
+  // Connection monitoring
+  let connectionLostTimeout = null;
+  let lastServerMessage = Date.now();
   let currentCarIndex = 0;
   let carTypes = [];
   let CAR_TYPES = {};
@@ -115,6 +209,7 @@
 
   socket.on('joined', (data) => {
     menu.style.display = 'none';
+    loadingScreen.style.display = 'flex'; // Show loading screen
     gameCanvas.style.display = 'block';
     hud.style.display = 'flex';
     
@@ -147,14 +242,24 @@
   });
 
   socket.on('state', (data) => {
+    // Update last message timestamp for connection monitoring
+    lastServerMessage = Date.now();
+    
     // Buffer the state with timestamp for interpolation
     gameStates.push({
       players: data.players,
       abilityObjects: data.abilityObjects || [],
+      dynamicObjects: data.dynamicObjects || [],
       timestamp: data.timestamp || Date.now(),
       mySocketId: data.mySocketId,
       map: data.map
     });
+
+    // Mark that we've received our first state - safe to start rendering
+    hasReceivedFirstState = true;
+    
+    // Hide loading screen now that we have game data
+    loadingScreen.style.display = 'none';
 
     // Keep only last 1 second of states
     const now = Date.now();
@@ -166,6 +271,9 @@
 
   // Handle delta updates for better performance
   socket.on('delta', (data) => {
+    // Update last message timestamp for connection monitoring
+    lastServerMessage = Date.now();
+    
     const lastState = gameStates[gameStates.length - 1];
     if (!lastState) return;
 
@@ -194,10 +302,17 @@
     gameStates.push({
       players: newPlayers,
       abilityObjects: data.abilityObjects || lastState.abilityObjects,
+      dynamicObjects: data.dynamicObjects || lastState.dynamicObjects || [],
       timestamp: data.timestamp || Date.now(),
       mySocketId: data.mySocketId || lastState.mySocketId,
       map: lastState.map
     });
+
+    // Mark that we've received our first data - safe to start rendering
+    hasReceivedFirstState = true;
+    
+    // Hide loading screen now that we have game data
+    loadingScreen.style.display = 'none';
 
     // Keep only last 1 second of states
     const now = Date.now();
@@ -206,6 +321,9 @@
 
   // Handle heartbeat (no data changed)
   socket.on('heartbeat', (data) => {
+    // Update last message timestamp for connection monitoring
+    lastServerMessage = Date.now();
+    
     // Just update timestamp for interpolation timing
     const lastState = gameStates[gameStates.length - 1];
     if (lastState) {
@@ -226,6 +344,14 @@
     inputState.cursor.x = 0;
     inputState.cursor.y = 0;
     upgradeContainer.classList.add('hidden');
+    
+    // Reset the first state flag so next game waits for server data
+    hasReceivedFirstState = false;
+    gameStates = []; // Clear game state buffer
+    
+    // Hide loading screen when returning to menu
+    loadingScreen.style.display = 'none';
+    
     if (winner) {
       messageDiv.textContent = `${winner} completed 10 laps!`;
     } else if (crashed) {
@@ -324,6 +450,124 @@
   // Update ability HUD regularly
   setInterval(updateAbilityHUD, 100);
 
+  // Socket disconnection handlers
+  socket.on('disconnect', () => {
+    console.log('Socket disconnected');
+    showDisconnectionOverlay();
+  });
+
+  socket.on('connect_error', (error) => {
+    console.log('Connection error:', error);
+    showDisconnectionOverlay();
+  });
+
+  socket.on('reconnect_failed', () => {
+    console.log('Reconnection failed');
+    showDisconnectionOverlay();
+  });
+
+  function showDisconnectionOverlay() {
+    if (menu.style.display === 'none') {
+      // User was in-game - show full overlay
+      disconnectionOverlay.style.display = 'flex';
+      loadingScreen.style.display = 'none'; // Hide loading screen if it was showing
+    } else {
+      // User is on menu - show inline disconnection message
+      showMenuDisconnectionWarning();
+    }
+  }
+
+  function showMenuDisconnectionWarning() {
+    // Hide the interactive menu elements
+    nameInput.style.display = 'none';
+    carCard.style.display = 'none';
+    switchButton.style.display = 'none';
+    joinButton.style.display = 'none';
+    
+    // Create or show disconnection warning in menu
+    let menuWarning = document.getElementById('menuDisconnectionWarning');
+    if (!menuWarning) {
+      menuWarning = document.createElement('div');
+      menuWarning.id = 'menuDisconnectionWarning';
+      menuWarning.style.cssText = `
+        background: #ffffff;
+        border: 2px solid #b782f0;
+        border-radius: 10px;
+        padding: 30px;
+        text-align: center;
+        color: white;
+        font-family: Arial, sans-serif;
+        margin: 20px 0;
+      `;
+      menuWarning.innerHTML = `
+        <div style="font-size: 1.5em; margin-bottom: 15px; color: #b782f0; font-family: 'Quicksilver', serif;">DISCONNECTED</div>
+        <div style="font-size: 1em; margin-bottom: 15px; color: #000000ff;">Unable to connect to game server</div>
+        <div style="font-size: 0.9em; color: #000000ff; margin-bottom: 20px; line-height: 1.4;">
+          The connection has been lost. This can happen due to:<br>
+          • Network connectivity issues<br>
+          • Server maintenance or restart<br>
+          • Browser sleeping inactive tabs
+        </div>
+        <button onclick="location.reload()" style="
+          background: #b782f0;
+          color: white;
+          border: none;
+          padding: 12px 24px;
+          font-size: 1em;
+          border-radius: 5px;
+          cursor: pointer;
+          transition: background-color 0.2s;
+          font-family: 'Quicksilver', serif;
+        " onmouseover="this.style.backgroundColor='#000000ff'" onmouseout="this.style.backgroundColor='#b782f0'">
+          CLICK TO REFRESH
+        </button>
+      `;
+      
+      // Insert after the name input but before where the car card was
+      nameInput.parentNode.insertBefore(menuWarning, nameInput.nextSibling);
+    } else {
+      menuWarning.style.display = 'block';
+    }
+  }
+
+  function hideMenuDisconnectionWarning() {
+    // Show the interactive menu elements
+    nameInput.style.display = 'block';
+    carCard.style.display = 'block';
+    switchButton.style.display = 'block';
+    joinButton.style.display = 'block';
+    
+    // Hide the warning
+    const menuWarning = document.getElementById('menuDisconnectionWarning');
+    if (menuWarning) {
+      menuWarning.style.display = 'none';
+    }
+  }
+
+  // Monitor server messages to detect "silent" disconnections
+  function monitorConnection() {
+    const now = Date.now();
+    if (now - lastServerMessage > 10000) { // 10 seconds without any server message
+      console.log('Connection appears to be lost - no server messages received');
+      showDisconnectionOverlay();
+    }
+  }
+
+  // Check connection every 5 seconds
+  setInterval(monitorConnection, 5000);
+
+  // Handle successful reconnection
+  socket.on('connect', () => {
+    console.log('Socket connected/reconnected');
+    lastServerMessage = Date.now(); // Reset the timer
+    
+    // Hide disconnection warnings if they were showing
+    disconnectionOverlay.style.display = 'none';
+    if (menu.style.display !== 'none') {
+      hideMenuDisconnectionWarning();
+    }
+  });
+
   // Continuous rendering for smooth interpolation
   function renderLoop() {
     if (sendInputInterval) { // Only render when in game
@@ -397,12 +641,18 @@
   }
 
   function drawGame() {
+    // Don't render until we've received our first state from server
+    if (!hasReceivedFirstState) {
+      return;
+    }
+    
     const currentState = getInterpolatedState();
     if (!currentState) return;
 
     // Update global state for rendering
     players = currentState.players || [];
     abilityObjects = currentState.abilityObjects || [];
+    const dynamicObjects = currentState.dynamicObjects || [];
     mySocketId = currentState.mySocketId || mySocketId;
     const width = gameCanvas.width;
     const height = gameCanvas.height;
@@ -600,6 +850,83 @@
         ctx.strokeStyle = '#000';
         ctx.lineWidth = 1;
         ctx.strokeRect(barX, barY, barWidth, barHeight);
+      }
+    });
+
+    // dynamic objects
+    dynamicObjects.forEach((obj) => {
+      if (obj.vertices && obj.vertices.length && me) {
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        
+        ctx.beginPath();
+        obj.vertices.forEach((v, i) => {
+          const x = (obj.position.x + v.x - me.x) * scale;
+          const y = (obj.position.y + v.y - me.y) * scale;
+          if (i === 0) ctx.moveTo(x, -y);
+          else ctx.lineTo(x, -y);
+        });
+        ctx.closePath();
+        
+        // Adjust colors based on damage
+        let fillColor = obj.fillColor || [139, 69, 19];
+        let strokeColor = obj.strokeColor || [101, 67, 33];
+        
+        // Visual damage feedback
+        if (obj.health !== undefined && obj.maxHealth !== undefined) {
+          const healthRatio = obj.health / obj.maxHealth;
+          if (healthRatio <= 0) {
+            // Destroyed - make it darker and more transparent
+            fillColor = [69, 34, 9]; // Much darker brown
+            strokeColor = [50, 33, 16];
+            ctx.globalAlpha = 0.5; // Semi-transparent
+          } else if (healthRatio < 0.5) {
+            // Damaged - darken the colors
+            fillColor = fillColor.map(c => Math.floor(c * (0.5 + healthRatio * 0.5)));
+            strokeColor = strokeColor.map(c => Math.floor(c * (0.5 + healthRatio * 0.5)));
+          }
+        }
+        
+        // fill color
+        if (fillColor && Array.isArray(fillColor)) {
+          ctx.fillStyle = `rgb(${fillColor[0]}, ${fillColor[1]}, ${fillColor[2]})`;
+          ctx.fill();
+        }
+        
+        // stroke color
+        if (strokeColor && Array.isArray(strokeColor)) {
+          ctx.strokeStyle = `rgb(${strokeColor[0]}, ${strokeColor[1]}, ${strokeColor[2]})`;
+          ctx.lineWidth = (obj.strokeWidth || 2) * scale;
+          ctx.stroke();
+        }
+        
+        ctx.restore();
+        
+        // Draw health bar for dynamic objects
+        if (obj.health !== undefined && obj.maxHealth !== undefined && obj.health < obj.maxHealth) {
+          const objScreenX = centerX + (obj.position.x - me.x) * scale;
+          const objScreenY = centerY - (obj.position.y - me.y) * scale;
+          
+          const barWidth = 30 * scale;
+          const barHeight = 4 * scale;
+          const barX = objScreenX - barWidth / 2;
+          const barY = objScreenY - 40 * scale;
+          
+          const healthRatio = Math.max(0, obj.health / obj.maxHealth);
+          
+          // Background
+          ctx.fillStyle = '#333';
+          ctx.fillRect(barX, barY, barWidth, barHeight);
+          
+          // Health bar
+          ctx.fillStyle = healthRatio > 0.5 ? '#0a0' : healthRatio > 0.25 ? '#aa0' : '#a00';
+          ctx.fillRect(barX, barY, barWidth * healthRatio, barHeight);
+          
+          // Border
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(barX, barY, barWidth, barHeight);
+        }
       }
     });
 

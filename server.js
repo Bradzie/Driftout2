@@ -25,6 +25,7 @@ const mapKeys = Object.keys(MAP_TYPES);
 let currentMapIndex = 0;
 let currentMapKey = mapKeys[currentMapIndex];
 let currentTrackBodies = [];
+let currentDynamicBodies = []; // Track dynamic map objects
 
 function pointInPolygon(x, y, vertices) {
   let inside = false;
@@ -73,55 +74,151 @@ Matter.Events.on(engine, 'collisionStart', (event) => {
       }
     }
 
-    // Handle car-to-car collisions (only if not ghost and not spike traps)
+    // Handle collisions (only if not ghost and not spike traps)
     if (!isSpikeA && !isSpikeB) {
       const impulse = pair.collision.depth * 100 // crude impulse estimation
       
-      if (carA && !carA.isGhost) carA.applyCollisionDamage(bodyB, impulse)
-      if (carB && !carB.isGhost) carB.applyCollisionDamage(bodyA, impulse)
+      // Calculate relative velocity for more accurate damage
+      const relativeVelocityX = bodyA.velocity.x - bodyB.velocity.x
+      const relativeVelocityY = bodyA.velocity.y - bodyB.velocity.y
+      const relativeSpeed = Math.sqrt(relativeVelocityX * relativeVelocityX + relativeVelocityY * relativeVelocityY)
+      
+      // Apply damage to cars
+      if (carA && !carA.isGhost) carA.applyCollisionDamage(bodyB, impulse, relativeSpeed)
+      if (carB && !carB.isGhost) carB.applyCollisionDamage(bodyA, impulse, relativeSpeed)
+      
+      // Handle dynamic object damage (can be damaged by cars)
+      const isDynamicA = bodyA.label && bodyA.label.startsWith('dynamic-')
+      const isDynamicB = bodyB.label && bodyB.label.startsWith('dynamic-')
+      
+      if (isDynamicA && carB) {
+        applyDynamicObjectDamage(bodyA, bodyB, impulse, relativeSpeed)
+      }
+      if (isDynamicB && carA) {
+        applyDynamicObjectDamage(bodyB, bodyA, impulse, relativeSpeed)
+      }
     }
   }
 })
 
-
+// Handle damage to dynamic objects (like brown box)
+function applyDynamicObjectDamage(dynamicBody, otherBody, impulse, relativeSpeed) {
+  if (!dynamicBody.dynamicObject) return
+  
+  // Only apply damage if the object has maxHealth defined
+  if (typeof dynamicBody.dynamicObject.maxHealth === 'undefined') {
+    // No health system for this object - it's indestructible
+    return
+  }
+  
+  // Initialize health if not set
+  if (typeof dynamicBody.health === 'undefined') {
+    dynamicBody.health = dynamicBody.dynamicObject.maxHealth
+  }
+  
+  // Calculate damage using density ratios (similar to cars)
+  const otherDensity = otherBody.density || 0.3
+  const thisDensity = dynamicBody.density || 0.01
+  const densityRatio = otherDensity / thisDensity
+  const velocityFactor = Math.sqrt(Math.abs(relativeSpeed)) / 10 || 1
+  
+  // Dynamic objects are more fragile than cars
+  const DYNAMIC_DAMAGE_SCALE = 0.1
+  const damageMultiplier = Math.min(20.0, densityRatio * velocityFactor) // Higher cap for fragile objects
+  const damage = impulse * damageMultiplier * DYNAMIC_DAMAGE_SCALE
+  
+  dynamicBody.health -= damage
+  
+  // Visual feedback for damage (could reduce opacity, change color, etc.)
+  if (dynamicBody.health <= 0) {
+    // Mark as destroyed (could remove from world or change appearance)
+    dynamicBody.isDestroyed = true
+    // For now, just make it very light so it's easily pushed around
+    Matter.Body.setDensity(dynamicBody, 0.001)
+  }
+}
 
 function setTrackBodies(mapKey) {
+  // Remove old static bodies
   for (const body of currentTrackBodies) {
     Matter.World.remove(world, body)
   }
   currentTrackBodies = []
 
+  // Remove old dynamic bodies  
+  for (const body of currentDynamicBodies) {
+    Matter.World.remove(world, body)
+  }
+  currentDynamicBodies = []
+
   const map = MAP_TYPES[mapKey]
   const thickness = 10
-  if (!map || !map.shapes) return
+  if (!map) return
 
-  for (const shape of map.shapes) {
-    if (shape.hollow) continue
-    if (!Array.isArray(shape.vertices)) continue
+  // Create static track walls from shapes
+  if (map.shapes) {
+    for (const shape of map.shapes) {
+      if (shape.hollow) continue
+      if (!Array.isArray(shape.vertices)) continue
 
-    const verts = shape.vertices
-    for (let i = 0; i < verts.length; i++) {
-      const a = verts[i]
-      const b = verts[(i + 1) % verts.length]
-      const dx = b.x - a.x
-      const dy = b.y - a.y
-      const length = Math.sqrt(dx * dx + dy * dy)
-      const angle = Math.atan2(dy, dx)
-      const cx = (a.x + b.x) / 2
-      const cy = (a.y + b.y) / 2
+      const verts = shape.vertices
+      for (let i = 0; i < verts.length; i++) {
+        const a = verts[i]
+        const b = verts[(i + 1) % verts.length]
+        const dx = b.x - a.x
+        const dy = b.y - a.y
+        const length = Math.sqrt(dx * dx + dy * dy)
+        const angle = Math.atan2(dy, dx)
+        const cx = (a.x + b.x) / 2
+        const cy = (a.y + b.y) / 2
 
-      const bodyOptions = {
-        ...HELPERS.getBodyOptionsFromShape(shape),
-        angle
+        const bodyOptions = {
+          ...HELPERS.getBodyOptionsFromShape(shape),
+          angle
+        }
+        const wall = Matter.Bodies.rectangle(cx, cy, length + thickness, thickness, bodyOptions)
+
+        currentTrackBodies.push(wall)
       }
-      const wall = Matter.Bodies.rectangle(cx, cy, length + thickness, thickness, bodyOptions)
-
-      currentTrackBodies.push(wall)
     }
   }
 
+  // Create dynamic objects
+  if (map.dynamicObjects) {
+    for (const dynObj of map.dynamicObjects) {
+      if (!dynObj.position || !dynObj.size) continue
+      
+      const bodyOptions = {
+        ...HELPERS.getBodyOptionsFromShape(dynObj),
+        label: `dynamic-${dynObj.id || 'object'}`
+      }
+      
+      let body
+      if (dynObj.shape === 'circle') {
+        body = Matter.Bodies.circle(dynObj.position.x, dynObj.position.y, dynObj.size.radius, bodyOptions)
+      } else {
+        // Default to rectangle
+        body = Matter.Bodies.rectangle(
+          dynObj.position.x, 
+          dynObj.position.y, 
+          dynObj.size.width, 
+          dynObj.size.height, 
+          bodyOptions
+        )
+      }
+      
+      // Store additional properties for rendering
+      body.dynamicObject = dynObj
+      currentDynamicBodies.push(body)
+    }
+  }
+
+  // Add all bodies to the world
   if (currentTrackBodies.length > 0) {
     Matter.World.add(world, currentTrackBodies)
+  }
+  if (currentDynamicBodies.length > 0) {
+    Matter.World.add(world, currentDynamicBodies)
   }
 }
 
@@ -327,10 +424,34 @@ class Car {
     Matter.Body.setAngularVelocity(this.body, 0);
     Matter.Body.setAngle(this.body, 0);
   }
-  applyCollisionDamage(otherBody, impulse) {
-    const DAMAGE_SCALE = 0.05 // adjust to tune how much damage per impulse
-    const damage = impulse * DAMAGE_SCALE
-    this.currentHealth -= damage
+  applyCollisionDamage(otherBody, impulse, relativeVelocity = 0) {
+    // Don't take damage if other body is static (walls, barriers)
+    if (otherBody.isStatic) {
+      const WALL_DAMAGE_SCALE = 0.02
+      const damage = impulse * WALL_DAMAGE_SCALE
+      this.currentHealth -= damage
+    } else {
+      // Physics-based damage calculation using density ratios
+      const otherDensity = otherBody.density || 0.001
+      const thisDensity = this.body.density || 0.3
+      
+      // Calculate density ratio (heavier objects deal more damage to lighter ones)
+      const densityRatio = otherDensity / thisDensity
+      
+      // Add velocity factor for more realistic collision damage
+      const velocityFactor = Math.sqrt(Math.abs(relativeVelocity)) / 10 || 1
+      
+      // Cap the damage multiplier to prevent one-hit kills
+      const MAX_DAMAGE_MULTIPLIER = 10.0
+      const MIN_DAMAGE_MULTIPLIER = 0.1
+      const damageMultiplier = Math.max(MIN_DAMAGE_MULTIPLIER, 
+                                       Math.min(MAX_DAMAGE_MULTIPLIER, densityRatio * velocityFactor))
+      
+      const BASE_DAMAGE_SCALE = 0.03 // Reduced base since we now have multipliers
+      const damage = impulse * damageMultiplier * BASE_DAMAGE_SCALE
+      
+      this.currentHealth -= damage
+    }
 
     if (this.currentHealth <= 0) {
       this.justCrashed = true
@@ -610,12 +731,34 @@ setInterval(() => {
           expiresAt: obj.expiresAt,
           render: obj.body.render
         }));
+        
+        const clientDynamicObjects = currentDynamicBodies.map(body => {
+          const objData = {
+            id: body.dynamicObject?.id || body.id,
+            position: body.position,
+            angle: body.angle,
+            vertices: body.vertices.map(v => ({ x: v.x - body.position.x, y: v.y - body.position.y })),
+            fillColor: body.dynamicObject?.fillColor || [139, 69, 19], // Default brown
+            strokeColor: body.dynamicObject?.strokeColor || [101, 67, 33],
+            strokeWidth: body.dynamicObject?.strokeWidth || 2
+          }
+          
+          // Only include health data if the object has maxHealth defined
+          if (typeof body.dynamicObject?.maxHealth !== 'undefined') {
+            objData.health = body.health || body.dynamicObject.maxHealth
+            objData.maxHealth = body.dynamicObject.maxHealth
+            objData.isDestroyed = body.isDestroyed || false
+          }
+          
+          return objData
+        });
 
         const fullState = {
           players: state,
           mySocketId: socketId,
           map: map,
           abilityObjects: clientAbilityObjects,
+          dynamicObjects: clientDynamicObjects,
           timestamp: Date.now()
         };
 
@@ -627,6 +770,7 @@ setInterval(() => {
             ...deltaState,
             mySocketId: socketId,
             abilityObjects: clientAbilityObjects,
+            dynamicObjects: clientDynamicObjects,
             timestamp: Date.now()
           });
         } else {
