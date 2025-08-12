@@ -21,6 +21,7 @@
   const ctx = gameCanvas.getContext('2d');
   let players = [];
   let mySocketId = null;
+  let abilityObjects = [];
   let inputState = { cursor: { x: 0, y: 0 } };
   let sendInputInterval = null;
   let currentCarIndex = 0;
@@ -133,6 +134,7 @@
     players = data.players;
     mySocketId = data.mySocketId;
     currentMap = data.map || currentMap;
+    abilityObjects = data.abilityObjects || [];
     drawGame();
   });
 
@@ -428,6 +430,32 @@
         ctx.strokeRect(barX, barY, barWidth, barHeight);
       }
     });
+
+    // spike traps
+    abilityObjects.forEach((obj) => {
+      if (obj.type === 'spike_trap' && obj.vertices && obj.vertices.length) {
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        
+        ctx.beginPath();
+        obj.vertices.forEach((v, i) => {
+          const x = (obj.position.x + v.x - (me ? me.x : 0)) * scale;
+          const y = (obj.position.y + v.y - (me ? me.y : 0)) * scale;
+          if (i === 0) ctx.moveTo(x, -y);
+          else ctx.lineTo(x, -y);
+        });
+        ctx.closePath();
+        
+        ctx.fillStyle = obj.render?.fillStyle || '#888888';
+        ctx.fill();
+        ctx.strokeStyle = obj.render?.strokeStyle || '#444444';
+        ctx.lineWidth = (obj.render?.lineWidth || 2) * scale;
+        ctx.stroke();
+        
+        ctx.restore();
+      }
+    });
+
     if (me) {
       lapsSpan.textContent = `Laps: ${me.laps}`;
       upgradePointsSpan.textContent = me.upgradePoints;

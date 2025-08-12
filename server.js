@@ -59,7 +59,6 @@ Matter.Events.on(engine, 'collisionStart', (event) => {
     if (isSpikeA && carB) {
       const trap = gameState.abilityObjects.find(obj => obj.body === bodyA)
       if (trap) {
-        console.log(`Spike collision: trap owner=${trap.createdBy}, car=${carB.id}, same=${trap.createdBy === carB.id}`)
         if (trap.createdBy !== carB.id) {
           SpikeTrapAbility.handleCollision(trap, carB)
         }
@@ -68,7 +67,6 @@ Matter.Events.on(engine, 'collisionStart', (event) => {
     if (isSpikeB && carA) {
       const trap = gameState.abilityObjects.find(obj => obj.body === bodyB)
       if (trap) {
-        console.log(`Spike collision: trap owner=${trap.createdBy}, car=${carA.id}, same=${trap.createdBy === carA.id}`)
         if (trap.createdBy !== carA.id) {
           SpikeTrapAbility.handleCollision(trap, carA)
         }
@@ -535,10 +533,21 @@ setInterval(() => {
       const socket = io.sockets.sockets.get(socketId);
       if (socket) {
         const map = MAP_TYPES[currentMapKey];
+        const clientAbilityObjects = gameState.abilityObjects.map(obj => ({
+          id: obj.id,
+          type: obj.type,
+          position: obj.body.position,
+          vertices: obj.body.vertices.map(v => ({ x: v.x - obj.body.position.x, y: v.y - obj.body.position.y })),
+          createdBy: obj.createdBy,
+          expiresAt: obj.expiresAt,
+          render: obj.body.render
+        }));
+
         socket.emit('state', {
           players: state,
           mySocketId: socketId,
-          map: map
+          map: map,
+          abilityObjects: clientAbilityObjects
         });
       }
     }

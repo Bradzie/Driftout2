@@ -39,8 +39,19 @@ class SpikeTrapAbility extends Ability {
       }
     }
 
-    const position = { x: car.body.position.x, y: car.body.position.y };
+    const backwardOffset = 20;
+    const position = {
+      x: car.body.position.x - Math.cos(car.body.angle) * backwardOffset,
+      y: car.body.position.y - Math.sin(car.body.angle) * backwardOffset
+    };
     const spikeBody = this.createSpikeTrap(position, world, car.id);
+    
+    const throwForce = 0.002;
+    const backwardForce = {
+      x: -Math.cos(car.body.angle) * throwForce,
+      y: -Math.sin(car.body.angle) * throwForce
+    };
+    Matter.Body.applyForce(spikeBody, spikeBody.position, backwardForce);
     
     const trapObject = {
       id: uuidv4(),
@@ -69,21 +80,46 @@ class SpikeTrapAbility extends Ability {
   }
 
   createSpikeTrap(position, world, ownerId) {
-    const spikeBody = Matter.Bodies.circle(
+    // Create 3-pronged star vertices
+    const radius = this.trapRadius;
+    const innerRadius = radius * 0.4;
+    const vertices = [];
+    
+    for (let i = 0; i < 3; i++) {
+      const angle = (i * Math.PI * 2) / 3;
+      // Outer point (spike tip)
+      vertices.push({
+        x: Math.cos(angle) * radius,
+        y: Math.sin(angle) * radius
+      });
+      // Inner point (between spikes)
+      const innerAngle = angle + Math.PI / 3;
+      vertices.push({
+        x: Math.cos(innerAngle) * innerRadius,
+        y: Math.sin(innerAngle) * innerRadius
+      });
+    }
+
+    const spikeBody = Matter.Bodies.fromVertices(
       position.x, 
       position.y, 
-      this.trapRadius, 
+      [vertices],
       {
-        isSensor: true,
-        isStatic: true,
+        isSensor: false,
+        isStatic: false,
         label: 'spike-trap',
         ownerId: ownerId,
         render: {
-          fillStyle: '#ff4757',
-          strokeStyle: '#2f3542',
+          fillStyle: '#888888',
+          strokeStyle: '#fa6e6eff',
           lineWidth: 2
-        }
-      }
+        },
+        friction: 0,
+        frictionAir: 0.01,
+        restitution: 0.9,
+        density: 0.005,
+      },
+      true
     );
     
     Matter.World.add(world, spikeBody);
@@ -92,7 +128,6 @@ class SpikeTrapAbility extends Ability {
 
   static handleCollision(trap, car) {
     if (trap.createdBy === car.id) {
-      console.log(`Blocked damage to trap owner: ${car.id}`);
       return false;
     }
 
@@ -107,8 +142,6 @@ class SpikeTrapAbility extends Ability {
     if (lastDamage && (now - lastDamage) < damageCooldown) {
       return false;
     }
-    
-    console.log(`Applying spike damage to car ${car.id} from trap ${trap.id} (owner: ${trap.createdBy})`);
 
     car.currentHealth -= trap.damage;
     car.trapDamageHistory.set(trap.id, now);
