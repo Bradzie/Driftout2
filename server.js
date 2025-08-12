@@ -75,11 +75,13 @@ Matter.Events.on(engine, 'collisionStart', (event) => {
       }
     }
 
-    // Handle car-to-car collisions (only if not ghost)
-    const impulse = pair.collision.depth * 100 // crude impulse estimation
-    
-    if (carA && !carA.isGhost) carA.applyCollisionDamage(bodyB, impulse)
-    if (carB && !carB.isGhost) carB.applyCollisionDamage(bodyA, impulse)
+    // Handle car-to-car collisions (only if not ghost and not spike traps)
+    if (!isSpikeA && !isSpikeB) {
+      const impulse = pair.collision.depth * 100 // crude impulse estimation
+      
+      if (carA && !carA.isGhost) carA.applyCollisionDamage(bodyB, impulse)
+      if (carB && !carB.isGhost) carB.applyCollisionDamage(bodyA, impulse)
+    }
   }
 })
 

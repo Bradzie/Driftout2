@@ -8,10 +8,10 @@ class SpikeTrapAbility extends Ability {
       id: 'spike_trap',
       name: 'Spike Trap',
       cooldown: 8000, // 8 seconds
-      duration: 15000 // 15 seconds trap lifetime
+      duration: 30000 // 30 seconds trap lifetime
     });
     
-    this.damage = 15;
+    this.damage = 5;
     this.trapRadius = 12;
     this.maxTrapsPerPlayer = 3;
   }
@@ -113,98 +113,11 @@ class SpikeTrapAbility extends Ability {
     car.currentHealth -= trap.damage;
     car.trapDamageHistory.set(trap.id, now);
     
-    car.spikeHitEffect = {
-      active: true,
-      startTime: now,
-      duration: 200,
-      trapId: trap.id
-    };
     
     return true;
   }
 
-  update(car, world, gameState, dt) {
-    if (car.spikeHitEffect && car.spikeHitEffect.active) {
-      const elapsed = Date.now() - car.spikeHitEffect.startTime;
-      if (elapsed > car.spikeHitEffect.duration) {
-        car.spikeHitEffect.active = false;
-      }
-    }
-  }
 
-  render(ctx, abilityObject, scale, centerX, centerY, me) {
-    if (!abilityObject || abilityObject.type !== 'spike_trap') return;
-
-    const dx = abilityObject.position.x - (me ? me.x : 0);
-    const dy = abilityObject.position.y - (me ? me.y : 0);
-    const screenX = centerX + dx * scale;
-    const screenY = centerY - dy * scale;
-    const radius = abilityObject.radius * scale;
-
-    const now = Date.now();
-    const age = now - abilityObject.createdAt;
-    const lifetime = abilityObject.expiresAt - abilityObject.createdAt;
-    const ageProgress = age / lifetime;
-
-    const pulseScale = 1 + Math.sin(now * 0.01) * 0.1;
-    const alpha = Math.max(0.3, 1 - ageProgress * 0.5);
-
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    
-    ctx.beginPath();
-    ctx.arc(screenX, screenY, radius * pulseScale, 0, Math.PI * 2);
-    ctx.fillStyle = '#ff4757';
-    ctx.fill();
-    ctx.strokeStyle = '#2f3542';
-    ctx.lineWidth = 2 * scale;
-    ctx.stroke();
-    
-    const spikes = 8;
-    for (let i = 0; i < spikes; i++) {
-      const angle = (i / spikes) * Math.PI * 2;
-      const innerRadius = radius * 0.3;
-      const outerRadius = radius * 0.8 * pulseScale;
-      
-      const innerX = screenX + Math.cos(angle) * innerRadius;
-      const innerY = screenY + Math.sin(angle) * innerRadius;
-      const outerX = screenX + Math.cos(angle) * outerRadius;
-      const outerY = screenY + Math.sin(angle) * outerRadius;
-      
-      ctx.beginPath();
-      ctx.moveTo(innerX, innerY);
-      ctx.lineTo(outerX, outerY);
-      ctx.strokeStyle = '#2f3542';
-      ctx.lineWidth = 3 * scale;
-      ctx.stroke();
-    }
-    
-    ctx.restore();
-  }
-
-  static renderHitEffect(ctx, car, scale, centerX, centerY, me) {
-    if (!car.spikeHitEffect || !car.spikeHitEffect.active) return;
-
-    const dx = car.x - (me ? me.x : 0);
-    const dy = car.y - (me ? me.y : 0);
-    const screenX = centerX + dx * scale;
-    const screenY = centerY - dy * scale;
-
-    const elapsed = Date.now() - car.spikeHitEffect.startTime;
-    const progress = elapsed / car.spikeHitEffect.duration;
-    const alpha = 1 - progress;
-
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    
-    ctx.beginPath();
-    ctx.arc(screenX, screenY, 25 * scale * (1 + progress), 0, Math.PI * 2);
-    ctx.strokeStyle = '#ff4757';
-    ctx.lineWidth = 4 * scale;
-    ctx.stroke();
-    
-    ctx.restore();
-  }
 }
 
 module.exports = SpikeTrapAbility;

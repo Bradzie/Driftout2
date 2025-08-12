@@ -54,8 +54,17 @@ html, body {
   font-family: 'Quicksilver Italic', serif;
   font-size: 8rem;
   margin-bottom: 1rem;
-  color: #b782f0;
+  color: #ffffff;
   letter-spacing: 2px;
+  text-shadow:
+                -2px -2px 0 #b782f0,
+                2px -2px 0 #b782f0,
+                -2px 2px 0 #b782f0,
+                2px 2px 0 #b782f0,
+                -3px 0px 0 #b782f0,
+                3px 0px 0 #b782f0,
+                0px -3px 0 #b782f0,
+                0px 3px 0 #b782f0;
 }
 
 
@@ -212,8 +221,8 @@ html, body {
   font-size: 1.5rem;
   font-weight: 600;
   border: 3px solid #b782f0;
-  background: #b782f0;
-  color: #ffffff;
+  background: #ffffff;
+  color: #b782f0;
   border-radius: 10px;
   cursor: pointer;
   transition: all 0.3s ease;

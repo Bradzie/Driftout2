@@ -3,10 +3,10 @@ const CAR_TYPES = {
     displayName: 'Racer',
     displaySpeed: 75,
     displayHealth: 30,
-    displayHandling: 40,
+    displayHandling: 50,
     maxHealth: 10,
     acceleration: 0.015,
-    regen: 0.5,
+    regen: 0.1,
     ability: 'dash',
     abilityName: 'Dash',
     abilityCooldown: 3000,
@@ -19,7 +19,7 @@ const CAR_TYPES = {
       ],
     },
     bodyOptions: {
-      friction: 0.6,
+      friction: 0.3,
       restitution: 0.3,
       frictionAir: 0.005,
       density: 0.3
@@ -32,7 +32,7 @@ const CAR_TYPES = {
     displayHandling: 70,
     maxHealth: 20,
     acceleration: 0.12,
-    regen: 0.25,
+    regen: 0.1,
     ability: 'spike_trap',
     abilityName: 'Spike Trap',
     abilityCooldown: 8000,
@@ -41,37 +41,39 @@ const CAR_TYPES = {
       vertices: circleToPolygon(15, 16)
     },
     bodyOptions: {
-      friction: 0.3,
+      friction: 0.6,
       restitution: 0.9,
-      frictionAir: 0.05,
+      frictionAir: 0.025,
       density: 0.6
     }
   },
   Balanced: {
-    displayName: 'Balanced',
-    displaySpeed: 55,
-    displayHealth: 55,
-    displayHandling: 60,
-    maxHealth: 15,
-    acceleration: 0.08,
-    regen: 0.35,
-    ability: 'ghost_mode',
-    abilityName: 'Ghost Mode',
-    abilityCooldown: 15000,
+    displayName: 'Bullet',
+    displaySpeed: 85,
+    displayHealth: 50,
+    displayHandling: 20,
+    maxHealth: 16,
+    acceleration: 0.01,
+    regen: 0.1,
+    ability: 'dash',
+    abilityName: 'Dash',
+    abilityCooldown: 3000,
     color: { fill: [255, 165, 0], stroke: [204, 132, 0], strokeWidth: 4 },
     shape: {
       vertices: [
-        { x: 12, y: 0 },
-        { x: -8, y: 8 },
-        { x: -5, y: 0 },
-        { x: -8, y: -8 }
+        { x: 12, y: 3 },
+        { x: 12, y: -3 },
+        { x: 8, y: -6 },
+        { x: -12, y: -6 },
+        { x: -12, y: 6 },
+        { x: 8, y: 6 }
       ]
     },
     bodyOptions: {
-      friction: 0.45,
-      restitution: 0.6,
-      frictionAir: 0.025,
-      density: 0.45
+      friction: 0.6,
+      restitution: 1,
+      frictionAir: 0.005,
+      density: 0.5
     }
   }
 }
