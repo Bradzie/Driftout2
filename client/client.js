@@ -538,7 +538,10 @@
           ctx.beginPath();
           ctx.moveTo(centerX + (a.x - me.x) * scale, centerY - (a.y - me.y) * scale);
           ctx.lineTo(centerX + (b.x - me.x) * scale, centerY - (b.y - me.y) * scale);
-          ctx.strokeStyle = '#ffff00';
+          
+          // Color checkpoints based on visit status
+          const isVisited = me && me.checkpointsVisited && me.checkpointsVisited.includes(cp.id);
+          ctx.strokeStyle = isVisited ? '#00ff00' : '#ffff00'; // Green if visited, yellow if not
           ctx.lineWidth = 2;
           ctx.stroke();
         }

@@ -382,6 +382,7 @@ class Room {
         color: CAR_TYPES[car.type].color,
         shape: CAR_TYPES[car.type].shape,
         name: car.name,
+        checkpointsVisited: Array.from(car.checkpointsVisited),
         vertices: car.body.vertices.map(v => ({
           x: v.x - pos.x,
           y: v.y - pos.y
