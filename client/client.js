@@ -747,21 +747,49 @@
       ctx.fillText(p.name || '', screenX, screenY + 20 * scale);
 
       if (p.health < p.maxHealth) {
-        const barWidth = 20 * scale;
-        const barHeight = 3 * scale;
+        // Scale bar width based on max health (base 20px for 10 health, scales up)
+        const baseWidth = 20;
+        const healthMultiplier = p.maxHealth / 10; // Normalize to base health of 10
+        const barWidth = (baseWidth + (healthMultiplier - 1) * 8) * scale; // +8px per 10 extra health
+        const barHeight = 4 * scale;
         const barX = screenX - barWidth / 2;
-        const barY = screenY + 30 * scale;
+        const barY = screenY + 32 * scale;
+        const cornerRadius = barHeight / 2;
 
         const healthRatio = p.health / p.maxHealth;
-        ctx.fillStyle = '#333';
-        ctx.fillRect(barX, barY, barWidth, barHeight);
+        
+        // Smooth color transition based on health
+        let healthColor;
+        if (healthRatio > 0.7) {
+          healthColor = '#4CAF50'; // Green
+        } else if (healthRatio > 0.4) {
+          healthColor = '#FF9800'; // Orange
+        } else if (healthRatio > 0.2) {
+          healthColor = '#FF5722'; // Red-orange
+        } else {
+          healthColor = '#F44336'; // Red
+        }
 
-        ctx.fillStyle = healthRatio > 0.5 ? '#0f0' : '#f00';
-        ctx.fillRect(barX, barY, barWidth * healthRatio, barHeight);
+        // Background (rounded rectangle)
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+        ctx.beginPath();
+        ctx.roundRect(barX, barY, barWidth, barHeight, cornerRadius);
+        ctx.fill();
 
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(barX, barY, barWidth, barHeight);
+        // Health fill (rounded rectangle)
+        if (healthRatio > 0) {
+          ctx.fillStyle = healthColor;
+          ctx.beginPath();
+          ctx.roundRect(barX, barY, barWidth * healthRatio, barHeight, cornerRadius);
+          ctx.fill();
+        }
+
+        // Subtle border
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.roundRect(barX, barY, barWidth, barHeight, cornerRadius);
+        ctx.stroke();
       }
     });
 
