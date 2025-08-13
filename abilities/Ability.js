@@ -14,23 +14,34 @@ class Ability {
    * Check if the ability can be used based on cooldown
    */
   canUse(car, currentTime) {
-    return (currentTime - this.lastUsed) >= this.cooldown;
+    const effectiveCooldown = this.getEffectiveCooldown(car);
+    return (currentTime - this.lastUsed) >= effectiveCooldown;
+  }
+
+  /**
+   * Get effective cooldown after reductions
+   */
+  getEffectiveCooldown(car) {
+    const reduction = car.abilityCooldownReduction || 0;
+    return Math.max(500, this.cooldown - reduction); // Minimum 500ms cooldown
   }
 
   /**
    * Get remaining cooldown time in milliseconds
    */
-  getRemainingCooldown(currentTime) {
+  getRemainingCooldown(car, currentTime) {
     const elapsed = currentTime - this.lastUsed;
-    return Math.max(0, this.cooldown - elapsed);
+    const effectiveCooldown = this.getEffectiveCooldown(car);
+    return Math.max(0, effectiveCooldown - elapsed);
   }
 
   /**
    * Get cooldown progress as percentage (0-100)
    */
-  getCooldownProgress(currentTime) {
-    const remaining = this.getRemainingCooldown(currentTime);
-    return ((this.cooldown - remaining) / this.cooldown) * 100;
+  getCooldownProgress(car, currentTime) {
+    const remaining = this.getRemainingCooldown(car, currentTime);
+    const effectiveCooldown = this.getEffectiveCooldown(car);
+    return ((effectiveCooldown - remaining) / effectiveCooldown) * 100;
   }
 
   // Template methods - subclasses must/can override these

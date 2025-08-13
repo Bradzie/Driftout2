@@ -1,5 +1,6 @@
 const express = require('express');
 const http = require('http');
+const path = require('path');
 const { Server } = require('socket.io');
 const Matter = require('matter-js');
 const { v4: uuidv4 } = require('uuid');
@@ -15,7 +16,15 @@ app.get('/api/carTypes', (req, res) => {
   res.json(CAR_TYPES);
 });
 
+// send debug mode status to client
+app.get('/api/debug', (req, res) => {
+  res.json({ debugMode: DEBUG_MODE });
+});
+
 const PORT = process.env.PORT || 3000;
+
+// Debug mode - toggle this to enable/disable admin panel
+const DEBUG_MODE = true;
 
 const HELPERS = require('./helpers');
 const { abilityRegistry, SpikeTrapAbility } = require('./abilities');
@@ -239,6 +248,7 @@ class Car {
     this.currentHealth = this.stats.maxHealth;
     this.laps = 0;
     this.upgradePoints = 0;
+    this.upgradeUsage = {}; // Track how many times each upgrade has been used
     this.prevFinishCheck = null; // used for lap crossing on square track
     this.cursor = { x: 0, y: 0 }; // direction and intensity from client
     this.justCrashed = false;
@@ -419,12 +429,16 @@ class Car {
     this.laps = 0;
     this.currentHealth = this.stats.maxHealth;
     this.prevFinishCheck = null;
+    this.upgradeUsage = {};
     Matter.Body.setPosition(this.body, { x: startPos.x, y: startPos.y });
     Matter.Body.setVelocity(this.body, { x: 0, y: 0 });
     Matter.Body.setAngularVelocity(this.body, 0);
     Matter.Body.setAngle(this.body, 0);
   }
   applyCollisionDamage(otherBody, impulse, relativeVelocity = 0) {
+    // Don't take damage if god mode is enabled
+    if (this.godMode) return;
+    
     // Don't take damage if other body is static (walls, barriers)
     if (otherBody.isStatic) {
       const WALL_DAMAGE_SCALE = 0.02
@@ -442,10 +456,9 @@ class Car {
       const velocityFactor = Math.sqrt(Math.abs(relativeVelocity)) / 10 || 1
       
       // Cap the damage multiplier to prevent one-hit kills
-      const MAX_DAMAGE_MULTIPLIER = 10.0
-      const MIN_DAMAGE_MULTIPLIER = 0.1
-      const damageMultiplier = Math.max(MIN_DAMAGE_MULTIPLIER, 
-                                       Math.min(MAX_DAMAGE_MULTIPLIER, densityRatio * velocityFactor))
+      const MAX_DAMAGE_MULTIPLIER = 3.0
+      const MIN_DAMAGE_MULTIPLIER = 0.5
+      const damageMultiplier = Math.max(MIN_DAMAGE_MULTIPLIER, Math.min(MAX_DAMAGE_MULTIPLIER, densityRatio * velocityFactor))
       
       const BASE_DAMAGE_SCALE = 0.03 // Reduced base since we now have multipliers
       const damage = impulse * damageMultiplier * BASE_DAMAGE_SCALE
@@ -500,6 +513,7 @@ class Room {
         maxHealth: car.stats.maxHealth,
         laps: car.laps,
         upgradePoints: car.upgradePoints,
+        upgradeUsage: car.upgradeUsage,
         color: CAR_TYPES[car.type].color,
         shape: CAR_TYPES[car.type].shape,
         name: car.name,
@@ -624,19 +638,43 @@ io.on('connection', (socket) => {
     if (!myCar) return;
     const stat = data.stat;
     if (myCar.upgradePoints > 0) {
-      switch (stat) {
-        case 'maxHealth':
-          myCar.stats.maxHealth += 2;
-          myCar.currentHealth += 2;
-          break;
-        case 'acceleration':
-          myCar.stats.acceleration += 5;
-          break;
-        case 'regen':
-          myCar.stats.regen += 0.1;
-          break;
+      const carType = CAR_TYPES[myCar.type];
+      const upgradeConfig = carType.upgrades[stat];
+      
+      if (upgradeConfig) {
+        // Check if upgrade limit has been reached
+        const currentUsage = myCar.upgradeUsage[stat] || 0;
+        if (currentUsage >= upgradeConfig.maxUpgrades) {
+          return; // Cannot upgrade further
+        }
+        
+        const amount = upgradeConfig.amount;
+        
+        switch (stat) {
+          case 'maxHealth':
+            myCar.stats.maxHealth += amount;
+            myCar.currentHealth += amount;
+            break;
+          case 'acceleration':
+            myCar.stats.acceleration += amount;
+            break;
+          case 'regen':
+            myCar.stats.regen += amount;
+            break;
+          case 'density':
+            Matter.Body.setDensity(myCar.body, myCar.body.density + amount);
+            break;
+          case 'abilityCooldown':
+            // Store cooldown reduction on the car
+            if (!myCar.abilityCooldownReduction) myCar.abilityCooldownReduction = 0;
+            myCar.abilityCooldownReduction += Math.abs(amount);
+            break;
+        }
+        
+        // Track usage and spend upgrade point
+        myCar.upgradeUsage[stat] = currentUsage + 1;
+        myCar.upgradePoints -= 1;
       }
-      myCar.upgradePoints -= 1;
     }
   });
   
@@ -645,6 +683,104 @@ io.on('connection', (socket) => {
     const result = myCar.useAbility(gameState);
     socket.emit('abilityResult', result);
   });
+
+  // Debug event handlers (only available when DEBUG_MODE is true)
+  if (DEBUG_MODE) {
+    socket.on('debug:giveUpgradePoints', (data) => {
+      if (!myCar) return;
+      const points = Math.max(0, Math.min(50, data.points || 1)); // Clamp between 0-50
+      myCar.upgradePoints += points;
+    });
+
+    socket.on('debug:setLaps', (data) => {
+      if (!myCar) return;
+      const laps = Math.max(0, Math.min(100, data.laps || 0)); // Clamp between 0-100
+      myCar.laps = laps;
+    });
+
+    socket.on('debug:setHealth', (data) => {
+      if (!myCar) return;
+      const health = Math.max(0, Math.min(myCar.stats.maxHealth, data.health || myCar.stats.maxHealth));
+      myCar.currentHealth = health;
+    });
+
+    socket.on('debug:resetPosition', () => {
+      if (!myCar) return;
+      myCar.resetCar();
+    });
+
+    socket.on('debug:toggleGodMode', () => {
+      if (!myCar) return;
+      myCar.godMode = !myCar.godMode;
+      socket.emit('debug:godModeStatus', { godMode: myCar.godMode });
+    });
+
+    socket.on('debug:resetAbilityCooldown', () => {
+      if (!myCar || !myCar.ability) return;
+      myCar.ability.lastUsed = 0;
+    });
+
+    socket.on('debug:setStats', (data) => {
+      if (!myCar) return;
+      if (typeof data.maxHealth === 'number') {
+        myCar.stats.maxHealth = Math.max(1, Math.min(200, data.maxHealth));
+      }
+      if (typeof data.acceleration === 'number') {
+        myCar.stats.acceleration = Math.max(0.001, Math.min(1, data.acceleration));
+      }
+      if (typeof data.regen === 'number') {
+        myCar.stats.regen = Math.max(0, Math.min(5, data.regen));
+      }
+    });
+
+    socket.on('debug:getPlayerData', () => {
+      if (!currentRoom) return;
+      const playersData = [];
+      for (const [socketId, car] of currentRoom.players.entries()) {
+        playersData.push({
+          socketId,
+          id: car.id,
+          name: car.name,
+          type: car.type,
+          laps: car.laps,
+          health: car.currentHealth,
+          maxHealth: car.stats.maxHealth,
+          upgradePoints: car.upgradePoints,
+          upgradeUsage: car.upgradeUsage,
+          godMode: car.godMode || false
+        });
+      }
+      socket.emit('debug:playerData', { players: playersData });
+    });
+
+    socket.on('debug:resetUpgrades', () => {
+      if (!myCar) return;
+      myCar.upgradeUsage = {};
+      // Reset stats to base values
+      const baseCar = CAR_TYPES[myCar.type];
+      myCar.stats = {
+        maxHealth: baseCar.maxHealth,
+        acceleration: baseCar.acceleration,
+        regen: baseCar.regen
+      };
+      myCar.currentHealth = myCar.stats.maxHealth;
+      myCar.abilityCooldownReduction = 0;
+      // Reset body density if it was modified
+      Matter.Body.setDensity(myCar.body, baseCar.bodyOptions.density || 0.3);
+    });
+
+    socket.on('debug:forceAbility', () => {
+      if (!myCar || !myCar.ability) return;
+      const originalLastUsed = myCar.ability.lastUsed;
+      myCar.ability.lastUsed = 0; // Reset cooldown temporarily
+      const result = myCar.useAbility(gameState);
+      if (!result.success) {
+        myCar.ability.lastUsed = originalLastUsed; // Restore if failed
+      }
+      socket.emit('abilityResult', result);
+    });
+  }
+
   socket.on('disconnect', () => {
     if (currentRoom) currentRoom.removePlayer(socket);
   });

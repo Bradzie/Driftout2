@@ -20,6 +20,26 @@ const CAR_TYPES = {
       restitution: 0.3,
       frictionAir: 0.005,
       density: 0.3
+    },
+    upgrades: {
+      maxHealth: {
+        name: 'Health',
+        amount: 1,
+        maxUpgrades: 5,
+        color: '#ef4444' // red
+      },
+      acceleration: {
+        name: 'Speed',
+        amount: 8,
+        maxUpgrades: 3,
+        color: '#3b82f6' // blue
+      },
+      regen: {
+        name: 'Regen',
+        amount: 0.15,
+        maxUpgrades: 4,
+        color: '#10b981' // green
+      }
     }
   },
   Tank: {
@@ -39,6 +59,26 @@ const CAR_TYPES = {
       restitution: 0.9,
       frictionAir: 0.025,
       density: 0.6
+    },
+    upgrades: {
+      maxHealth: {
+        name: 'Health',
+        amount: 4,
+        maxUpgrades: 6,
+        color: '#ef4444' // red
+      },
+      density: {
+        name: 'Mass',
+        amount: 0.1,
+        maxUpgrades: 3,
+        color: '#8b5cf6' // purple
+      },
+      regen: {
+        name: 'Regen',
+        amount: 0.05,
+        maxUpgrades: 2,
+        color: '#10b981' // green
+      }
     }
   },
   Bullet: {
@@ -68,6 +108,26 @@ const CAR_TYPES = {
       restitution: 1,
       frictionAir: 0.005,
       density: 0.5
+    },
+    upgrades: {
+      acceleration: {
+        name: 'Speed',
+        amount: 10,
+        maxUpgrades: 4,
+        color: '#3b82f6' // blue
+      },
+      regen: {
+        name: 'Regen',
+        amount: 0.1,
+        maxUpgrades: 2,
+        color: '#10b981' // green
+      },
+      abilityCooldown: {
+        name: 'Dash',
+        amount: -500,
+        maxUpgrades: 3,
+        color: '#f59e0b' // orange
+      }
     }
   },
   Prankster: {
@@ -99,6 +159,26 @@ const CAR_TYPES = {
       restitution: 0.3,
       frictionAir: 0.02,
       density: 0.3
+    },
+    upgrades: {
+      maxHealth: {
+        name: 'Health',
+        amount: 2,
+        maxUpgrades: 4,
+        color: '#ef4444' // red
+      },
+      acceleration: {
+        name: 'Speed',
+        amount: 6,
+        maxUpgrades: 3,
+        color: '#3b82f6' // blue
+      },
+      abilityCooldown: {
+        name: 'Trap',
+        amount: -1000,
+        maxUpgrades: 2,
+        color: '#ec4899' // pink
+      }
     }
   }
 }

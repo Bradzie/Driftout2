@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Driftz IO</title>
+  <link rel="icon" type="image/png" href="favicon.png" />
   <link rel="stylesheet" href="style.css" />
   <!-- Socket.io client -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
@@ -72,24 +73,7 @@
 
   <!-- Upgrade Cards Container -->
   <div id="upgradeCards" class="upgrade-cards-container hidden">
-    <div class="upgrade-card" data-stat="maxHealth" data-key="1">
-      <div class="upgrade-key-indicator">1</div>
-      <div class="upgrade-icon">❤️</div>
-      <div class="upgrade-name">Health</div>
-      <div class="upgrade-effect">+2 HP</div>
-    </div>
-    <div class="upgrade-card" data-stat="acceleration" data-key="2">
-      <div class="upgrade-key-indicator">2</div>
-      <div class="upgrade-icon">⚡</div>
-      <div class="upgrade-name">Speed</div>
-      <div class="upgrade-effect">+Accel</div>
-    </div>
-    <div class="upgrade-card" data-stat="regen" data-key="3">
-      <div class="upgrade-key-indicator">3</div>
-      <div class="upgrade-icon">🔄</div>
-      <div class="upgrade-name">Regen</div>
-      <div class="upgrade-effect">+0.1/s</div>
-    </div>
+    <!-- Dynamic upgrade cards will be generated here -->
   </div>
 
   <!-- Loading Screen Template -->
@@ -105,14 +89,15 @@
   <!-- Disconnection Overlay Template -->
   <div id="disconnectionOverlay" class="overlay disconnect-overlay hidden">
     <div class="disconnect-content">
-      <div class="disconnect-title">⚠️ CONNECTION LOST</div>
-      <div class="disconnect-message">Disconnected from server</div>
+      <div class="disconnect-title">DISCONNECTED</div>
+      <div class="disconnect-message">Unable to connect to game server</div>
       <div class="disconnect-details">
-        The connection to the game server has been lost.<br>
-        This can happen due to network issues or server maintenance.
+        The connection has been lost. This can happen due to:<br>
+        • Network connectivity issues<br>
+        • Server maintenance or restart<br>
+        • Browser sleeping inactive tabs
       </div>
-      <button id="disconnectRefreshBtn" class="disconnect-refresh-btn">🔄 REFRESH PAGE</button>
-      <div class="disconnect-hint">Click refresh or press F5 to reconnect</div>
+      <button id="disconnectRefreshBtn" class="disconnect-refresh-btn">CLICK TO REFRESH</button>
     </div>
   </div>
 
@@ -127,6 +112,94 @@
       • Browser sleeping inactive tabs
     </div>
     <button id="menuRefreshBtn" class="menu-refresh-btn">CLICK TO REFRESH</button>
+  </div>
+
+  <!-- Debug Admin Panel -->
+  <div id="debugPanel" class="debug-panel hidden">
+    <div class="debug-header">
+      <span class="debug-title">🛠️ Admin Debug Panel</span>
+      <button id="debugToggle" class="debug-toggle">−</button>
+    </div>
+    <div id="debugContent" class="debug-content">
+      
+      <!-- Player Controls -->
+      <div class="debug-section">
+        <h4>Player Controls</h4>
+        <div class="debug-row">
+          <label>Upgrade Points:</label>
+          <input type="number" id="debugUpgradePoints" min="0" max="50" value="1">
+          <button id="debugGivePoints" class="debug-btn">Give</button>
+        </div>
+        <div class="debug-row">
+          <label>Laps:</label>
+          <input type="number" id="debugLaps" min="0" max="100" value="0">
+          <button id="debugSetLaps" class="debug-btn">Set</button>
+        </div>
+        <div class="debug-row">
+          <label>Health:</label>
+          <input type="range" id="debugHealth" min="0" max="100" value="100" class="debug-slider">
+          <span id="debugHealthValue">100</span>
+          <button id="debugSetHealth" class="debug-btn">Set</button>
+        </div>
+      </div>
+
+      <!-- Position Controls -->
+      <div class="debug-section">
+        <h4>Position & State</h4>
+        <div class="debug-row">
+          <button id="debugResetPosition" class="debug-btn">Reset to Start</button>
+          <button id="debugToggleGodMode" class="debug-btn" data-active="false">God Mode: OFF</button>
+        </div>
+      </div>
+
+      <!-- Ability Controls -->
+      <div class="debug-section">
+        <h4>Abilities</h4>
+        <div class="debug-row">
+          <button id="debugResetAbility" class="debug-btn">Reset Cooldown</button>
+          <button id="debugForceAbility" class="debug-btn">Force Activate</button>
+        </div>
+      </div>
+
+      <!-- Stats Controls -->
+      <div class="debug-section">
+        <h4>Car Stats</h4>
+        <div class="debug-row">
+          <label>Max Health:</label>
+          <input type="range" id="debugMaxHealth" min="1" max="200" value="20" class="debug-slider">
+          <span id="debugMaxHealthValue">20</span>
+        </div>
+        <div class="debug-row">
+          <label>Speed:</label>
+          <input type="range" id="debugSpeed" min="0.001" max="1" step="0.001" value="0.1" class="debug-slider">
+          <span id="debugSpeedValue">0.1</span>
+        </div>
+        <div class="debug-row">
+          <label>Regen:</label>
+          <input type="range" id="debugRegen" min="0" max="5" step="0.01" value="0.1" class="debug-slider">
+          <span id="debugRegenValue">0.1</span>
+        </div>
+        <button id="debugSetStats" class="debug-btn full-width">Apply Stats</button>
+      </div>
+
+      <!-- Quick Actions -->
+      <div class="debug-section">
+        <h4>Quick Actions</h4>
+        <div class="debug-row">
+          <button id="debugResetUpgrades" class="debug-btn danger" onclick="return confirm('Reset all upgrades?')">Reset Upgrades</button>
+          <button id="debugGetPlayerData" class="debug-btn">Refresh Data</button>
+        </div>
+      </div>
+
+      <!-- Player Data Display -->
+      <div class="debug-section">
+        <h4>Player Data</h4>
+        <div id="debugPlayerData" class="debug-data">
+          Click "Refresh Data" to load player information
+        </div>
+      </div>
+
+    </div>
   </div>
 
   <script src="client.js"></script>

@@ -121,10 +121,15 @@
     gameCanvas.style.display = 'block';
     hud.style.display = 'flex';
     
-    // Set up ability HUD based on selected car
+    // Set up ability HUD and upgrade cards based on selected car
     const selectedCar = document.querySelector('input[name="car"]:checked');
     if (selectedCar && CAR_TYPES[selectedCar.value]) {
       const carType = CAR_TYPES[selectedCar.value];
+      const carTypeName = selectedCar.value;
+      
+      // Generate upgrade cards for this car type
+      generateUpgradeCards(carTypeName);
+      
       if (carType.ability) {
         myAbility = {
           name: carType.abilityName || carType.ability,
@@ -382,8 +387,244 @@
     }
   }
 
+  // Generate upgrade cards based on car type
+  function generateUpgradeCards(carType) {
+    upgradeCardsContainer.innerHTML = ''; // Clear existing cards
+    
+    const car = CAR_TYPES[carType];
+    if (!car || !car.upgrades) return;
+    
+    const upgrades = car.upgrades;
+    let keyIndex = 1;
+    
+    for (const [statName, upgrade] of Object.entries(upgrades)) {
+      const upgradeCardContainer = document.createElement('div');
+      upgradeCardContainer.className = 'upgrade-card-container';
+      upgradeCardContainer.setAttribute('data-stat', statName);
+      
+      // Create progress blocks
+      const progressBlocks = document.createElement('div');
+      progressBlocks.className = 'upgrade-progress-blocks';
+      
+      for (let i = 0; i < upgrade.maxUpgrades; i++) {
+        const block = document.createElement('div');
+        block.className = 'upgrade-progress-block';
+        block.style.backgroundColor = upgrade.color;
+        progressBlocks.appendChild(block);
+      }
+      
+      // Create upgrade card
+      const upgradeCard = document.createElement('div');
+      upgradeCard.className = 'upgrade-card';
+      upgradeCard.setAttribute('data-stat', statName);
+      upgradeCard.setAttribute('data-key', keyIndex.toString());
+      
+      upgradeCard.innerHTML = `
+        <div class="upgrade-key-indicator">${keyIndex}</div>
+        <div class="upgrade-name">${upgrade.name}</div>
+      `;
+      
+      upgradeCardContainer.appendChild(progressBlocks);
+      upgradeCardContainer.appendChild(upgradeCard);
+      upgradeCardsContainer.appendChild(upgradeCardContainer);
+      keyIndex++;
+    }
+  }
+
+  // Update upgrade cards and progress blocks based on current state
+  function updateUpgradeDisplay(me, carType) {
+    if (!me || !carType) return;
+    
+    const car = CAR_TYPES[carType];
+    if (!car || !car.upgrades) return;
+    
+    const upgradeUsage = me.upgradeUsage || {};
+    
+    // Update card availability and progress blocks
+    for (const [statName, upgrade] of Object.entries(car.upgrades)) {
+      const currentUsage = upgradeUsage[statName] || 0;
+      const maxUpgrades = upgrade.maxUpgrades;
+      const isMaxed = currentUsage >= maxUpgrades;
+      
+      // Update upgrade card
+      const upgradeCard = document.querySelector(`.upgrade-card[data-stat="${statName}"]`);
+      if (upgradeCard) {
+        upgradeCard.classList.toggle('maxed', isMaxed);
+      }
+      
+      // Update progress blocks
+      const container = document.querySelector(`.upgrade-card-container[data-stat="${statName}"]`);
+      if (container) {
+        const blocks = container.querySelectorAll('.upgrade-progress-block');
+        blocks.forEach((block, index) => {
+          if (index < currentUsage) {
+            block.classList.add('filled');
+          } else {
+            block.classList.remove('filled');
+          }
+        });
+      }
+    }
+  }
+
   // Update ability HUD regularly
   setInterval(updateAbilityHUD, 100);
+
+  // DEBUG PANEL FUNCTIONALITY
+  let debugMode = false;
+  let debugPanel = null;
+
+  // Check if debug mode is enabled on server
+  async function initDebugPanel() {
+    try {
+      const response = await fetch('/api/debug');
+      const data = await response.json();
+      debugMode = data.debugMode;
+      
+      if (debugMode) {
+        debugPanel = document.getElementById('debugPanel');
+        if (debugPanel) {
+          setupDebugPanel();
+          debugPanel.classList.remove('hidden');
+        }
+      }
+    } catch (error) {
+      console.log('Debug mode not available');
+    }
+  }
+
+  // Set up debug panel event listeners and functionality
+  function setupDebugPanel() {
+    // Get debug panel elements
+    const debugToggle = document.getElementById('debugToggle');
+    const debugContent = document.getElementById('debugContent');
+    
+    // Sliders that need real-time value updates
+    const healthSlider = document.getElementById('debugHealth');
+    const healthValue = document.getElementById('debugHealthValue');
+    const maxHealthSlider = document.getElementById('debugMaxHealth');
+    const maxHealthValue = document.getElementById('debugMaxHealthValue');
+    const speedSlider = document.getElementById('debugSpeed');
+    const speedValue = document.getElementById('debugSpeedValue');
+    const regenSlider = document.getElementById('debugRegen');
+    const regenValue = document.getElementById('debugRegenValue');
+    
+    // Buttons
+    const givePointsBtn = document.getElementById('debugGivePoints');
+    const setLapsBtn = document.getElementById('debugSetLaps');
+    const setHealthBtn = document.getElementById('debugSetHealth');
+    const resetPositionBtn = document.getElementById('debugResetPosition');
+    const toggleGodModeBtn = document.getElementById('debugToggleGodMode');
+    const resetAbilityBtn = document.getElementById('debugResetAbility');
+    const forceAbilityBtn = document.getElementById('debugForceAbility');
+    const setStatsBtn = document.getElementById('debugSetStats');
+    const resetUpgradesBtn = document.getElementById('debugResetUpgrades');
+    const getPlayerDataBtn = document.getElementById('debugGetPlayerData');
+    
+    // Collapse/expand functionality
+    debugToggle.addEventListener('click', () => {
+      const isCollapsed = debugContent.classList.toggle('collapsed');
+      debugToggle.textContent = isCollapsed ? '+' : '−';
+    });
+
+    // Slider value updates
+    healthSlider.addEventListener('input', () => {
+      healthValue.textContent = healthSlider.value;
+    });
+    maxHealthSlider.addEventListener('input', () => {
+      maxHealthValue.textContent = maxHealthSlider.value;
+    });
+    speedSlider.addEventListener('input', () => {
+      speedValue.textContent = parseFloat(speedSlider.value).toFixed(3);
+    });
+    regenSlider.addEventListener('input', () => {
+      regenValue.textContent = parseFloat(regenSlider.value).toFixed(2);
+    });
+
+    // Button event listeners
+    givePointsBtn.addEventListener('click', () => {
+      const points = parseInt(document.getElementById('debugUpgradePoints').value);
+      socket.emit('debug:giveUpgradePoints', { points });
+    });
+
+    setLapsBtn.addEventListener('click', () => {
+      const laps = parseInt(document.getElementById('debugLaps').value);
+      socket.emit('debug:setLaps', { laps });
+    });
+
+    setHealthBtn.addEventListener('click', () => {
+      const health = parseInt(healthSlider.value);
+      socket.emit('debug:setHealth', { health });
+    });
+
+    resetPositionBtn.addEventListener('click', () => {
+      socket.emit('debug:resetPosition');
+    });
+
+    toggleGodModeBtn.addEventListener('click', () => {
+      socket.emit('debug:toggleGodMode');
+    });
+
+    resetAbilityBtn.addEventListener('click', () => {
+      socket.emit('debug:resetAbilityCooldown');
+    });
+
+    forceAbilityBtn.addEventListener('click', () => {
+      socket.emit('debug:forceAbility');
+    });
+
+    setStatsBtn.addEventListener('click', () => {
+      const maxHealth = parseInt(maxHealthSlider.value);
+      const acceleration = parseFloat(speedSlider.value);
+      const regen = parseFloat(regenSlider.value);
+      socket.emit('debug:setStats', { maxHealth, acceleration, regen });
+    });
+
+    resetUpgradesBtn.addEventListener('click', () => {
+      socket.emit('debug:resetUpgrades');
+    });
+
+    getPlayerDataBtn.addEventListener('click', () => {
+      socket.emit('debug:getPlayerData');
+    });
+
+    // F12 toggle shortcut
+    document.addEventListener('keydown', (e) => {
+      if (e.key === '#' && debugMode) {
+        e.preventDefault();
+        debugPanel.classList.toggle('hidden');
+      }
+    });
+  }
+
+  // Handle debug socket events
+  socket.on('debug:godModeStatus', (data) => {
+    const godModeBtn = document.getElementById('debugToggleGodMode');
+    if (godModeBtn) {
+      godModeBtn.textContent = data.godMode ? 'God Mode: ON' : 'God Mode: OFF';
+      godModeBtn.setAttribute('data-active', data.godMode.toString());
+    }
+  });
+
+  socket.on('debug:playerData', (data) => {
+    const playerDataDiv = document.getElementById('debugPlayerData');
+    if (playerDataDiv && data.players) {
+      let html = '';
+      data.players.forEach(player => {
+        html += `
+          <div class="debug-player">
+            <strong>${player.name}</strong> (${player.type})
+            <br>Laps: ${player.laps} | Health: ${Math.round(player.health)}/${player.maxHealth}
+            <br>Upgrade Points: ${player.upgradePoints} | God Mode: ${player.godMode ? 'ON' : 'OFF'}
+          </div>
+        `;
+      });
+      playerDataDiv.innerHTML = html || 'No players found';
+    }
+  });
+
+  // Initialize debug panel when page loads
+  initDebugPanel();
 
   // Socket disconnection handlers
   socket.on('disconnect', () => {
@@ -898,12 +1139,31 @@
     if (me) {
       lapsSpan.textContent = `Laps: ${me.laps}`;
       upgradePointsSpan.textContent = me.upgradePoints;
-      if (me.upgradePoints > 0) {
-        upgradeContainer.classList.remove('hidden');
+      
+      // Show upgrades if player has points OR has completed at least 1 lap
+      const shouldShowUpgrades = me.upgradePoints > 0 || me.laps >= 1;
+      const isCompactMode = me.laps >= 1 && me.upgradePoints === 0;
+      
+      if (shouldShowUpgrades) {
+        // Show upgrade points container only if player has points to spend
+        if (me.upgradePoints > 0) {
+          upgradeContainer.classList.remove('hidden');
+        } else {
+          upgradeContainer.classList.add('hidden');
+        }
+        
         upgradeCardsContainer.classList.remove('hidden');
+        upgradeCardsContainer.classList.toggle('compact', isCompactMode);
       } else {
         upgradeContainer.classList.add('hidden');
         upgradeCardsContainer.classList.add('hidden');
+        upgradeCardsContainer.classList.remove('compact');
+      }
+      
+      // Update upgrade display if we have car type info
+      const selectedCar = document.querySelector('input[name="car"]:checked');
+      if (selectedCar) {
+        updateUpgradeDisplay(me, selectedCar.value);
       }
     }
   }
