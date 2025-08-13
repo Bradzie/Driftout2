@@ -29,44 +29,47 @@
           <div class="stat-item">
             <div class="stat-label">Speed</div>
             <div class="stat-bar">
-              <div id="speedFill" class="stat-fill speed" style="width: 0%"></div>
+              <div id="speedFill" class="stat-fill health" style="width: 0%"></div>
             </div>
           </div>
           <div class="stat-item">
             <div class="stat-label">Durability</div>
             <div class="stat-bar">
-              <div id="healthFill" class="stat-fill health" style="width: 0%"></div>
+              <div id="healthFill" class="stat-fill regen" style="width: 0%"></div>
             </div>
           </div>
           <div class="stat-item">
             <div class="stat-label">Handling</div>
             <div class="stat-bar">
-              <div id="handlingFill" class="stat-fill regen" style="width: 0%"></div>
+              <div id="handlingFill" class="stat-fill speed" style="width: 0%"></div>
             </div>
           </div>
         </div>
       </div>
       <button id="joinButton" class="nav-button play-button">➤</button>
     </div>
+    
+    <!-- Settings Button -->
+    <button id="settingsButton" class="settings-button">⚙️</button>
   </div>
 
+  <canvas id="spectatorCanvas" class="spectator-canvas"></canvas>
   <canvas id="gameCanvas"></canvas>
+
+  <!-- Kill Feed -->
+  <div id="killFeed" class="kill-feed hidden">
+    <!-- Dynamic kill feed messages will appear here -->
+  </div>
+
+  <!-- Performance Overlays -->
+  <div id="performanceOverlay" class="performance-overlay hidden">
+    <div id="fpsDisplay" class="fps-display hidden">FPS: --</div>
+    <div id="pingDisplay" class="ping-display hidden">Ping: --ms</div>
+  </div>
 
   <!-- HUD -->
   <div id="hud">
-    <div id="stats">
-      <span id="laps">Laps: 0</span>
-    </div>
-    <div id="abilityHud" class="ability-hud">
-      <div id="abilityIndicator" class="ability-indicator">
-        <div id="abilityIcon" class="ability-icon">⚡</div>
-        <div id="abilityName" class="ability-name">Ability</div>
-        <div id="abilityCooldown" class="ability-cooldown hidden">0s</div>
-      </div>
-    </div>
-    <div id="upgrades" class="hidden">
-      <span>Upgrade points: <span id="upgradePoints">0</span></span>
-    </div>
+    <!-- Upgrade points HUD removed - now displayed beside upgrade cards -->
   </div>
 
   <div id="message" class="hidden"></div>
@@ -74,6 +77,30 @@
   <!-- Upgrade Cards Container -->
   <div id="upgradeCards" class="upgrade-cards-container hidden">
     <!-- Dynamic upgrade cards will be generated here -->
+  </div>
+
+  <!-- Ability HUD -->
+  <div id="abilityHud" class="ability-hud hidden">
+    <div class="ability-progress-bg"></div>
+    <span id="abilityName" class="ability-name">Dash</span>
+    <span class="ability-hint">(Space)</span>
+  </div>
+
+  <!-- Lap Counter -->
+  <div id="lapCounter" class="lap-counter hidden">
+    <span id="laps">Laps: 0</span>
+  </div>
+
+  <!-- Lap Timer -->
+  <div id="lapTimer" class="lap-timer hidden">
+    <div class="lap-timer-current">
+      <span class="lap-timer-label">Current</span>
+      <span id="currentLapTime" class="lap-timer-time">0:00.000</span>
+    </div>
+    <div class="lap-timer-best">
+      <span class="lap-timer-label">Best</span>
+      <span id="bestLapTime" class="lap-timer-time"></span>
+    </div>
   </div>
 
   <!-- Loading Screen Template -->
@@ -114,10 +141,65 @@
     <button id="menuRefreshBtn" class="menu-refresh-btn">CLICK TO REFRESH</button>
   </div>
 
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="settings-modal hidden">
+    <div class="settings-content">
+      <div class="settings-header">
+        <h2 class="settings-title">Settings</h2>
+        <button id="settingsCloseBtn" class="settings-close-btn">×</button>
+      </div>
+      
+      <div class="settings-body">
+        <!-- Graphics Section -->
+        <div class="settings-section">
+          <h3 class="settings-section-title">Graphics</h3>
+          <div class="settings-row">
+            <label class="settings-label">FPS Counter</label>
+            <div class="toggle-switch">
+              <input type="checkbox" id="fpsToggle" class="toggle-input">
+              <span class="toggle-slider"></span>
+            </div>
+          </div>
+          <div class="settings-row">
+            <label class="settings-label">Ping Display</label>
+            <div class="toggle-switch">
+              <input type="checkbox" id="pingToggle" class="toggle-input">
+              <span class="toggle-slider"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Performance Section (placeholder) -->
+        <div class="settings-section">
+          <h3 class="settings-section-title">Performance</h3>
+          <div class="settings-placeholder">
+            Additional performance settings will be added here
+          </div>
+        </div>
+
+        <!-- Audio Section (placeholder) -->
+        <div class="settings-section">
+          <h3 class="settings-section-title">Audio</h3>
+          <div class="settings-placeholder">
+            Audio settings will be added here
+          </div>
+        </div>
+
+        <!-- Controls Section (placeholder) -->
+        <div class="settings-section">
+          <h3 class="settings-section-title">Controls</h3>
+          <div class="settings-placeholder">
+            Control customization will be added here
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Debug Admin Panel -->
   <div id="debugPanel" class="debug-panel hidden">
     <div class="debug-header">
-      <span class="debug-title">🛠️ Admin Debug Panel</span>
+      <span class="debug-title">Debug</span>
       <button id="debugToggle" class="debug-toggle">−</button>
     </div>
     <div id="debugContent" class="debug-content">

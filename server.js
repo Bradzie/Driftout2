@@ -3,6 +3,8 @@ const http = require('http');
 const path = require('path');
 const { Server } = require('socket.io');
 const Matter = require('matter-js');
+const decomp = require('poly-decomp');
+Matter.Common.setDecomp(decomp);
 const { v4: uuidv4 } = require('uuid');
 
 const app = express();
@@ -41,7 +43,15 @@ function pointInPolygon(x, y, vertices) {
   for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
     const xi = vertices[i].x, yi = vertices[i].y;
     const xj = vertices[j].x, yj = vertices[j].y;
-    const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / ((yj - yi) || 1e-9) + xi);
+
+    // Handle horizontal edges properly
+    if (yi === yj && yi === y) {
+      if (x >= Math.min(xi, xj) && x <= Math.max(xi, xj)) {
+        return true; // On a horizontal edge
+      }
+    }
+
+    const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
     if (intersect) inside = !inside;
   }
   return inside;
@@ -92,9 +102,14 @@ Matter.Events.on(engine, 'collisionStart', (event) => {
       const relativeVelocityY = bodyA.velocity.y - bodyB.velocity.y
       const relativeSpeed = Math.sqrt(relativeVelocityX * relativeVelocityX + relativeVelocityY * relativeVelocityY)
       
-      // Apply damage to cars
-      if (carA && !carA.isGhost) carA.applyCollisionDamage(bodyB, impulse, relativeSpeed)
-      if (carB && !carB.isGhost) carB.applyCollisionDamage(bodyA, impulse, relativeSpeed)
+      // Apply mutual collision damage with overflow mechanics
+      if (carA && carB && !carA.isGhost && !carB.isGhost) {
+        applyMutualCollisionDamage(carA, carB, impulse, relativeSpeed)
+      } else {
+        // Handle single car collisions (with walls, etc.) using original system
+        if (carA && !carA.isGhost) carA.applyCollisionDamage(bodyB, impulse, relativeSpeed)
+        if (carB && !carB.isGhost) carB.applyCollisionDamage(bodyA, impulse, relativeSpeed)
+      }
       
       // Handle dynamic object damage (can be damaged by cars)
       const isDynamicA = bodyA.label && bodyA.label.startsWith('dynamic-')
@@ -109,6 +124,129 @@ Matter.Events.on(engine, 'collisionStart', (event) => {
     }
   }
 })
+
+// Smart collision damage system with overflow mechanics and collision kill rewards
+function applyMutualCollisionDamage(carA, carB, impulse, relativeSpeed) {
+  if (!carA || !carB || carA.godMode || carB.godMode || carA.isGhost || carB.isGhost) return;
+  
+  // Store initial health states
+  const carAInitialHealth = carA.currentHealth;
+  const carBInitialHealth = carB.currentHealth;
+  
+  // Calculate potential damage for both cars using existing physics formulas
+  const damageA = calculateCollisionDamage(carA, carB.body, impulse, relativeSpeed);
+  const damageB = calculateCollisionDamage(carB, carA.body, impulse, relativeSpeed);
+  
+  // Determine which car has less remaining health
+  const carAHealthRemaining = carA.currentHealth;
+  const carBHealthRemaining = carB.currentHealth;
+  
+  // Apply overflow damage logic
+  let finalDamageA = damageA;
+  let finalDamageB = damageB;
+  
+  // If damageB would exceed carB's remaining health, cap damageA to overflow amount
+  if (damageB > carBHealthRemaining) {
+    const overflow = damageB - carBHealthRemaining;
+    finalDamageA = Math.min(finalDamageA, overflow);
+  }
+  
+  // If damageA would exceed carA's remaining health, cap damageB to overflow amount
+  if (damageA > carAHealthRemaining) {
+    const overflow = damageA - carAHealthRemaining;
+    finalDamageB = Math.min(finalDamageB, overflow);
+  }
+  
+  // Apply the calculated damage
+  carA.currentHealth -= finalDamageA;
+  carB.currentHealth -= finalDamageB;
+  
+  // Check for crashes and award upgrade points for collision kills
+  const carACrashed = carA.currentHealth <= 0;
+  const carBCrashed = carB.currentHealth <= 0;
+  
+  if (carACrashed) {
+    carA.justCrashed = true;
+  }
+  if (carBCrashed) {
+    carB.justCrashed = true;
+  }
+  
+  // Award upgrade points for successful collision kills and broadcast crash events
+  if (carACrashed && !carBCrashed) {
+    // carB killed carA - reward carB
+    carB.upgradePoints += 1;
+    
+    // Broadcast kill feed message
+    const room = rooms[0]; // Assuming single room for now
+    if (room) {
+      for (const [socketId, car] of room.players.entries()) {
+        const socket = io.sockets.sockets.get(socketId);
+        if (socket) {
+          socket.emit('killFeedMessage', {
+            text: `💥 ${carB.name} crashed ${carA.name}!`,
+            type: 'crash'
+          });
+        }
+      }
+    }
+  } else if (carBCrashed && !carACrashed) {
+    // carA killed carB - reward carA  
+    carA.upgradePoints += 1;
+    
+    // Broadcast kill feed message
+    const room = rooms[0]; // Assuming single room for now
+    if (room) {
+      for (const [socketId, car] of room.players.entries()) {
+        const socket = io.sockets.sockets.get(socketId);
+        if (socket) {
+          socket.emit('killFeedMessage', {
+            text: `💥 ${carA.name} crashed ${carB.name}!`,
+            type: 'crash'
+          });
+        }
+      }
+    }
+  } else if (carACrashed && carBCrashed) {
+    // Both crashed - mutual destruction
+    const room = rooms[0]; // Assuming single room for now
+    if (room) {
+      for (const [socketId, car] of room.players.entries()) {
+        const socket = io.sockets.sockets.get(socketId);
+        if (socket) {
+          socket.emit('killFeedMessage', {
+            text: `💥 ${carA.name} and ${carB.name} crashed!`,
+            type: 'crash'
+          });
+        }
+      }
+    }
+  }
+  // If both crash (mutual destruction), no points awarded
+}
+
+// Calculate collision damage for a single car (extracted from applyCollisionDamage)
+function calculateCollisionDamage(car, otherBody, impulse, relativeSpeed) {
+  // Physics-based damage calculation using density ratios
+  const otherDensity = otherBody.density || 0.001;
+  const thisDensity = car.body.density || 0.3;
+  
+  // Calculate density ratio (heavier objects deal more damage to lighter ones)
+  const densityRatio = otherDensity / thisDensity;
+  
+  // Add velocity factor for more realistic collision damage
+  const velocityFactor = Math.sqrt(Math.abs(relativeSpeed)) / 10 || 1;
+  
+  // Cap the damage multiplier to prevent one-hit kills
+  const MAX_DAMAGE_MULTIPLIER = 3.0;
+  const MIN_DAMAGE_MULTIPLIER = 0.5;
+  const damageMultiplier = Math.max(MIN_DAMAGE_MULTIPLIER, Math.min(MAX_DAMAGE_MULTIPLIER, densityRatio * velocityFactor));
+  
+  const BASE_DAMAGE_SCALE = 0.05; // Increased from 0.03 for more intense collisions
+  const damage = impulse * damageMultiplier * BASE_DAMAGE_SCALE;
+  
+  return damage;
+}
 
 // Handle damage to dynamic objects (like brown box)
 function applyDynamicObjectDamage(dynamicBody, otherBody, impulse, relativeSpeed) {
@@ -247,6 +385,7 @@ class Car {
     };
     this.currentHealth = this.stats.maxHealth;
     this.laps = 0;
+    this.maxLaps = 3; // Default number of laps to complete
     this.upgradePoints = 0;
     this.upgradeUsage = {}; // Track how many times each upgrade has been used
     this.prevFinishCheck = null; // used for lap crossing on square track
@@ -285,7 +424,7 @@ class Car {
       startPos.y,
       [def.shape.vertices],
       bodyOpts,
-      true
+      false
     )
     this.displaySize = 15 // used for rendering hud around car (health bars, etc.)
   }
@@ -460,7 +599,7 @@ class Car {
       const MIN_DAMAGE_MULTIPLIER = 0.5
       const damageMultiplier = Math.max(MIN_DAMAGE_MULTIPLIER, Math.min(MAX_DAMAGE_MULTIPLIER, densityRatio * velocityFactor))
       
-      const BASE_DAMAGE_SCALE = 0.03 // Reduced base since we now have multipliers
+      const BASE_DAMAGE_SCALE = 0.05 // Increased for more intense collisions
       const damage = impulse * damageMultiplier * BASE_DAMAGE_SCALE
       
       this.currentHealth -= damage
@@ -512,6 +651,7 @@ class Room {
         health: car.currentHealth,
         maxHealth: car.stats.maxHealth,
         laps: car.laps,
+        maxLaps: car.maxLaps,
         upgradePoints: car.upgradePoints,
         upgradeUsage: car.upgradeUsage,
         color: CAR_TYPES[car.type].color,
@@ -521,7 +661,8 @@ class Room {
         vertices: car.body.vertices.map(v => ({
           x: v.x - pos.x,
           y: v.y - pos.y
-        }))
+        })),
+        abilityCooldownReduction: car.abilityCooldownReduction || 0
       });
     }
     return cars;
@@ -535,6 +676,9 @@ class Room {
 }
 
 const rooms = [new Room(uuidv4())];
+
+// Spectator management
+const spectators = new Map(); // socket.id -> socket
 
 // Global game state for ability system
 const gameState = {
@@ -618,6 +762,12 @@ function assignRoom() {
 io.on('connection', (socket) => {
   let currentRoom = null;
   let myCar = null;
+  
+  // Handle spectator requests
+  socket.on('requestSpectator', () => {
+    spectators.set(socket.id, socket);
+  });
+  
   socket.on('joinGame', ({ carType, name }) => {
     if (!CAR_TYPES[carType]) return;
     currentRoom = assignRoom();
@@ -683,6 +833,11 @@ io.on('connection', (socket) => {
     const result = myCar.useAbility(gameState);
     socket.emit('abilityResult', result);
   });
+  
+  // Ping handler for latency measurement
+  socket.on('ping', (timestamp, callback) => {
+    if (callback) callback(Date.now());
+  });
 
   // Debug event handlers (only available when DEBUG_MODE is true)
   if (DEBUG_MODE) {
@@ -743,6 +898,7 @@ io.on('connection', (socket) => {
           name: car.name,
           type: car.type,
           laps: car.laps,
+          maxLaps: car.maxLaps,
           health: car.currentHealth,
           maxHealth: car.stats.maxHealth,
           upgradePoints: car.upgradePoints,
@@ -783,6 +939,7 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     if (currentRoom) currentRoom.removePlayer(socket);
+    spectators.delete(socket.id); // Remove from spectators
   });
 });
 
@@ -811,26 +968,41 @@ function gameLoop() {
       let roundWinner = null;
       for (const [sid, car] of room.players.entries()) {
         car.update(timeStep);
-        if (!roundWinner && car.laps >= 10) {
+        if (!roundWinner && car.laps >= car.maxLaps) {
           roundWinner = car;
         }
       }
         if (roundWinner) {
           const winnerName = roundWinner.name;
-          currentMapIndex = (currentMapIndex + 1) % mapKeys.length;
-          currentMapKey = mapKeys[currentMapIndex];
-          setTrackBodies(currentMapKey);
-          room.resetRound();
+          
+          // Broadcast win message to kill feed
           for (const [sid, car] of room.players.entries()) {
             const sock = io.sockets.sockets.get(sid);
             if (sock) {
-              sock.emit('returnToMenu', { winner: winnerName });
+              sock.emit('killFeedMessage', {
+                text: `🏆 ${winnerName} has won!`,
+                type: 'win'
+              });
             }
           }
-          for (const [sid, car] of room.players.entries()) {
-            Matter.World.remove(world, car.body);
-          }
-          room.players.clear();
+          
+          // Short delay to let the kill feed message display before returning to menu
+          setTimeout(() => {
+            currentMapIndex = (currentMapIndex + 1) % mapKeys.length;
+            currentMapKey = mapKeys[currentMapIndex];
+            setTrackBodies(currentMapKey);
+            room.resetRound();
+            for (const [sid, car] of room.players.entries()) {
+              const sock = io.sockets.sockets.get(sid);
+              if (sock) {
+                sock.emit('returnToMenu', { winner: winnerName });
+              }
+            }
+            for (const [sid, car] of room.players.entries()) {
+              Matter.World.remove(world, car.body);
+            }
+            room.players.clear();
+          }, 1500); // 1.5 second delay to show win message
           continue;
         }
       for (const [sid, car] of [...room.players.entries()]) {
@@ -921,7 +1093,55 @@ setInterval(() => {
       }
     }
   }
+  
+  // Broadcast to spectators (reduced frequency)
+  if (broadcastTick % 2 === 0) { // 15Hz for spectators
+    broadcastToSpectators();
+  }
+  broadcastTick++;
 }, 1000 / BROADCAST_HZ);
+
+// Spectator broadcasting function
+function broadcastToSpectators() {
+  if (spectators.size === 0) return;
+  
+  const room = rooms[0]; // Using first room for simplicity
+  
+  // Create spectator-optimized state (always include map, even with no players)
+  const spectatorState = {
+    players: room && room.players.size > 0 ? Array.from(room.players.values()).map(car => ({
+      id: car.id,
+      name: car.name,
+      type: car.type,
+      x: car.body.position.x,
+      y: car.body.position.y,
+      angle: car.body.angle,
+      health: car.currentHealth,
+      maxHealth: car.stats.maxHealth,
+      laps: car.laps,
+      maxLaps: car.maxLaps,
+      color: CAR_TYPES[car.type].color
+    })) : [],
+    abilityObjects: gameState.abilityObjects.map(obj => ({
+      x: obj.body.position.x,
+      y: obj.body.position.y,
+      type: obj.type
+    })),
+    map: MAP_TYPES[currentMapKey], // Always send current map
+    timestamp: Date.now()
+  };
+  
+  // Send to all spectators
+  for (const [socketId, socket] of spectators) {
+    if (socket.connected) {
+      socket.emit('spectatorState', spectatorState);
+    } else {
+      spectators.delete(socketId); // Clean up disconnected spectators
+    }
+  }
+}
+
+let broadcastTick = 0;
 
 server.listen(PORT, () => {
   console.log(`Driftout2 server listening on port ${PORT}`);

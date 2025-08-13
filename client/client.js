@@ -10,19 +10,38 @@
   const gameCanvas = document.getElementById('gameCanvas');
   const hud = document.getElementById('hud');
   const lapsSpan = document.getElementById('laps');
-  const upgradeContainer = document.getElementById('upgrades');
-  const upgradePointsSpan = document.getElementById('upgradePoints');
   const upgradeCardsContainer = document.getElementById('upgradeCards');
   const messageDiv = document.getElementById('message');
-  const abilityIndicator = document.getElementById('abilityIndicator');
-  const abilityIcon = document.getElementById('abilityIcon');
+  const abilityHud = document.getElementById('abilityHud');
   const abilityName = document.getElementById('abilityName');
-  const abilityCooldown = document.getElementById('abilityCooldown');
+  
+  // Get references to lap counter and timer elements
+  const lapCounter = document.getElementById('lapCounter');
+  const lapTimer = document.getElementById('lapTimer');
+  const currentLapTimeSpan = document.getElementById('currentLapTime');
+  const bestLapTimeSpan = document.getElementById('bestLapTime');
+  
+  // Get kill feed element
+  const killFeed = document.getElementById('killFeed');
+  
+  // Get spectator canvas
+  const spectatorCanvas = document.getElementById('spectatorCanvas');
+  const spectatorCtx = spectatorCanvas.getContext('2d');
 
   // Get references to template elements
   const loadingScreen = document.getElementById('loadingScreen');
   const disconnectionOverlay = document.getElementById('disconnectionOverlay');
   const menuDisconnectionWarning = document.getElementById('menuDisconnectionWarning');
+  
+  // Get settings elements
+  const settingsButton = document.getElementById('settingsButton');
+  const settingsModal = document.getElementById('settingsModal');
+  const settingsCloseBtn = document.getElementById('settingsCloseBtn');
+  const fpsToggle = document.getElementById('fpsToggle');
+  const pingToggle = document.getElementById('pingToggle');
+  const performanceOverlay = document.getElementById('performanceOverlay');
+  const fpsDisplay = document.getElementById('fpsDisplay');
+  const pingDisplay = document.getElementById('pingDisplay');
   
   // Get references to car card template elements
   const carRadioInput = document.querySelector('input[name="car"]');
@@ -35,6 +54,30 @@
   // Add click handlers to refresh buttons
   document.getElementById('disconnectRefreshBtn').addEventListener('click', () => location.reload());
   document.getElementById('menuRefreshBtn').addEventListener('click', () => location.reload());
+
+  // Settings event listeners
+  settingsButton.addEventListener('click', openSettings);
+  settingsCloseBtn.addEventListener('click', closeSettings);
+  
+  // Close settings when clicking outside modal
+  settingsModal.addEventListener('click', (e) => {
+    if (e.target === settingsModal) {
+      closeSettings();
+    }
+  });
+  
+  // Settings toggle handlers
+  fpsToggle.addEventListener('change', (e) => {
+    settings.showFPS = e.target.checked;
+    saveSettings();
+    updatePerformanceOverlay();
+  });
+  
+  pingToggle.addEventListener('change', (e) => {
+    settings.showPing = e.target.checked;
+    saveSettings();
+    updatePerformanceOverlay();
+  });
 
   const ctx = gameCanvas.getContext('2d');
   let players = [];
@@ -57,13 +100,220 @@
   let CAR_TYPES = {};
   let myAbility = null;
   let lastAbilityUse = 0;
+  
+  // Lap timer state
+  let currentLapStartTime = 0;
+  let bestLapTime = null;
+  let previousLapCount = 0;
+  
+  // Kill feed message management
+  let killFeedMessages = [];
+  let messageIdCounter = 0;
+  
+  // Spectator state management
+  let spectatorState = null;
+  let isSpectating = false;
+
+  // Settings system
+  let settings = {
+    showFPS: false,
+    showPing: false
+  };
+  
+  // Performance tracking
+  let fpsCounter = 0;
+  let lastFpsUpdate = 0;
+  let frameCount = 0;
+  let currentFPS = 0;
+  let pingValue = 0;
+  let lastPingTime = 0;
+
+  function formatTime(milliseconds) {
+    if (!milliseconds || milliseconds <= 0) return '0:00.000';
+    
+    const totalSeconds = Math.floor(milliseconds / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    const ms = milliseconds % 1000;
+    
+    return `${minutes}:${seconds.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
+  }
+
+  // Settings system functions
+  function loadSettings() {
+    try {
+      const savedSettings = localStorage.getItem('driftz-settings');
+      if (savedSettings) {
+        settings = { ...settings, ...JSON.parse(savedSettings) };
+      }
+    } catch (e) {
+      console.warn('Failed to load settings from localStorage:', e);
+    }
+    
+    // Apply loaded settings to UI
+    fpsToggle.checked = settings.showFPS;
+    pingToggle.checked = settings.showPing;
+    updatePerformanceOverlay();
+  }
+  
+  function saveSettings() {
+    try {
+      localStorage.setItem('driftz-settings', JSON.stringify(settings));
+    } catch (e) {
+      console.warn('Failed to save settings to localStorage:', e);
+    }
+  }
+  
+  function updatePerformanceOverlay() {
+    // Show/hide performance overlay based on settings
+    if (settings.showFPS || settings.showPing) {
+      performanceOverlay.classList.remove('hidden');
+    } else {
+      performanceOverlay.classList.add('hidden');
+    }
+    
+    // Show/hide individual displays
+    if (settings.showFPS) {
+      fpsDisplay.classList.remove('hidden');
+    } else {
+      fpsDisplay.classList.add('hidden');
+    }
+    
+    if (settings.showPing) {
+      pingDisplay.classList.remove('hidden');
+    } else {
+      pingDisplay.classList.add('hidden');
+    }
+  }
+  
+  function updateFPS() {
+    frameCount++;
+    const now = performance.now();
+    
+    if (now - lastFpsUpdate >= 1000) {
+      currentFPS = Math.round((frameCount * 1000) / (now - lastFpsUpdate));
+      frameCount = 0;
+      lastFpsUpdate = now;
+      
+      if (settings.showFPS) {
+        fpsDisplay.textContent = `FPS: ${currentFPS}`;
+      }
+    }
+  }
+  
+  function updatePing() {
+    const now = Date.now();
+    if (now - lastPingTime >= 2000 && socket.connected) { // Send ping every 2 seconds
+      lastPingTime = now;
+      const startTime = now;
+      
+      socket.emit('ping', startTime, (responseTime) => {
+        pingValue = Date.now() - startTime;
+        if (settings.showPing) {
+          pingDisplay.textContent = `Ping: ${pingValue}ms`;
+        }
+      });
+    }
+  }
+  
+  function openSettings() {
+    settingsModal.classList.remove('hidden');
+  }
+  
+  function closeSettings() {
+    settingsModal.classList.add('hidden');
+  }
+  
+  // Kill feed functions
+  function addKillFeedMessage(text, type = 'info') {
+    const messageId = messageIdCounter++;
+    const message = {
+      id: messageId,
+      text: text,
+      type: type,
+      timestamp: Date.now()
+    };
+    
+    killFeedMessages.unshift(message); // Add to beginning of array
+    
+    // Keep only the last 5 messages
+    if (killFeedMessages.length > 5) {
+      killFeedMessages = killFeedMessages.slice(0, 5);
+    }
+    
+    renderKillFeed();
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+      removeKillFeedMessage(messageId);
+    }, 5000);
+  }
+  
+  function removeKillFeedMessage(messageId) {
+    const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+    if (messageElement) {
+      messageElement.classList.add('fade-out');
+      setTimeout(() => {
+        killFeedMessages = killFeedMessages.filter(msg => msg.id !== messageId);
+        renderKillFeed();
+      }, 300); // Wait for fade-out animation
+    }
+  }
+  
+  function renderKillFeed() {
+    killFeed.innerHTML = '';
+    
+    if (killFeedMessages.length === 0) {
+      killFeed.classList.add('hidden');
+      return;
+    }
+    
+    killFeed.classList.remove('hidden');
+    
+    killFeedMessages.forEach(message => {
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `kill-feed-message ${message.type}`;
+      messageDiv.setAttribute('data-message-id', message.id);
+      messageDiv.textContent = message.text;
+      killFeed.appendChild(messageDiv);
+    });
+  }
+  
+  // Spectator functions
+  function startSpectating() {
+    if (!isSpectating) {
+      isSpectating = true;
+      socket.emit('requestSpectator');
+      resizeSpectatorCanvas();
+      console.log('Started spectating mode');
+    }
+  }
+  
+  function stopSpectating() {
+    isSpectating = false;
+    spectatorState = null;
+    spectatorCtx.clearRect(0, 0, spectatorCanvas.width, spectatorCanvas.height);
+  }
+  
+  function resizeSpectatorCanvas() {
+    spectatorCanvas.width = window.innerWidth;
+    spectatorCanvas.height = window.innerHeight;
+  }
+  
 
   function resizeCanvas() {
     gameCanvas.width = window.innerWidth;
     gameCanvas.height = window.innerHeight;
   }
-  window.addEventListener('resize', resizeCanvas);
+  window.addEventListener('resize', () => {
+    resizeCanvas();
+    resizeSpectatorCanvas();
+  });
   resizeCanvas();
+  resizeSpectatorCanvas();
+  
+  // Start spectating when page loads (menu is visible)
+  startSpectating();
 
   async function initCarSelection() {
     try {
@@ -72,6 +322,9 @@
       carTypes = Object.keys(CAR_TYPES);
       currentCarIndex = 0;
       updateCarCard();
+      
+      // Initialize settings system
+      loadSettings();
     } catch (error) {
       console.error('Failed to load car types:', error);
       carCard.innerHTML = '<p>Failed to load car types. Please refresh the page.</p>';
@@ -108,14 +361,30 @@
   
   initCarSelection();
 
+  function sanitizeName(name) {
+    // Remove control characters and non-printable ASCII
+    let sanitized = name.replace(/[\x00-\x1F\x7F]/g, '');
+
+    // Remove excessive combining diacritical marks (glitch text)
+    // This regex targets Unicode combining diacritical marks (U+0300 to U+036F)
+    // and similar characters that can be spammed.
+    sanitized = sanitized.replace(/[\u0300-\u036F\u1AB0-\u1AFF\u1DC0-\u1DFF\u20D0-\u20FF\uFE20-\uFE2F]+/g, '');
+
+    // Trim whitespace and limit length
+    sanitized = sanitized.trim().substring(0, 20); // Limit to 20 characters
+
+    return sanitized || 'Anon'; // Default to 'Anon' if empty after sanitization
+  }
+
   joinButton.addEventListener('click', () => {
     const selected = document.querySelector('input[name="car"]:checked');
     const carType = selected ? selected.value : 'Speedster';
-    const name = nameInput.value.trim() || 'Anon';
+    const name = sanitizeName(nameInput.value); // Apply sanitization
     socket.emit('joinGame', { carType, name });
   });
 
   socket.on('joined', (data) => {
+    stopSpectating(); // Stop spectating when joining game
     menu.style.display = 'none';
     loadingScreen.classList.remove('hidden'); // Show loading screen
     gameCanvas.style.display = 'block';
@@ -134,13 +403,12 @@
         myAbility = {
           name: carType.abilityName || carType.ability,
           cooldown: carType.abilityCooldown || 0,
-          icon: getAbilityIcon(carType.ability)
         };
-        abilityIndicator.style.display = 'block';
+        abilityHud.classList.remove('hidden');
         updateAbilityHUD();
       } else {
         myAbility = null;
-        abilityIndicator.style.display = 'none';
+        abilityHud.classList.add('hidden');
       }
     }
     
@@ -167,6 +435,14 @@
       mySocketId: data.mySocketId,
       map: data.map
     });
+
+    // Update myAbility cooldown if player data is available
+    const me = data.players.find(p => p.socketId === data.mySocketId);
+    if (me && myAbility) {
+      const carDef = CAR_TYPES[me.type];
+      const baseCooldown = carDef.abilityCooldown || 0;
+      myAbility.cooldown = Math.max(0, baseCooldown - (me.abilityCooldownReduction || 0));
+    }
 
     // Mark that we've received our first state - safe to start rendering
     hasReceivedFirstState = true;
@@ -221,6 +497,14 @@
       map: lastState.map
     });
 
+    // Update myAbility cooldown if player data is available
+    const me = newPlayers.find(p => p.socketId === (data.mySocketId || lastState.mySocketId));
+    if (me && myAbility) {
+      const carDef = CAR_TYPES[me.type];
+      const baseCooldown = carDef.abilityCooldown || 0;
+      myAbility.cooldown = Math.max(0, baseCooldown - (me.abilityCooldownReduction || 0));
+    }
+
     // Mark that we've received our first data - safe to start rendering
     hasReceivedFirstState = true;
     
@@ -247,6 +531,20 @@
     }
   });
 
+  // Handle kill feed messages
+  socket.on('killFeedMessage', ({ text, type }) => {
+    addKillFeedMessage(text, type);
+  });
+
+  // Handle spectator state
+  socket.on('spectatorState', (data) => {
+    spectatorState = data;
+    console.log('Received spectator state:', data.players?.length || 0, 'players', data.map ? 'with map' : 'no map');
+    if (data.players && data.players.length > 0) {
+      console.log('First player:', data.players[0]);
+    }
+  });
+
   socket.on('returnToMenu', ({ winner, crashed }) => {
     clearInterval(sendInputInterval);
     sendInputInterval = null;
@@ -256,7 +554,22 @@
     players = [];
     inputState.cursor.x = 0;
     inputState.cursor.y = 0;
-    upgradeContainer.classList.add('hidden');
+    hideUpgradeCards();
+    
+    // Hide all game-specific UI elements
+    abilityHud.classList.add('hidden');
+    lapCounter.classList.add('hidden');
+    lapTimer.classList.add('hidden');
+    
+    // Reset ability state
+    myAbility = null;
+    lastAbilityUse = 0;
+    
+    // Reset lap timer state
+    currentLapStartTime = 0;
+    previousLapCount = 0;
+    bestLapTime = null;
+    bestLapTimeSpan.textContent = '';
     
     // Reset the first state flag so next game waits for server data
     hasReceivedFirstState = false;
@@ -264,6 +577,9 @@
     
     // Hide loading screen when returning to menu
     loadingScreen.classList.add('hidden');
+    
+    // Restart spectating when back in menu
+    setTimeout(() => startSpectating(), 100); // Small delay to ensure UI is ready
     
     if (winner) {
       messageDiv.textContent = `${winner} completed 10 laps!`;
@@ -298,14 +614,22 @@
         
         if (remaining === 0) {
           // Ability ready - immediate feedback
-          lastAbilityUse = now;
           updateAbilityHUD();
           
           // Visual button press feedback
-          abilityIndicator.style.transform = 'scale(0.95)';
+          abilityHud.style.transform = 'scale(0.95)';
           setTimeout(() => {
-            abilityIndicator.style.transform = 'scale(1)';
+            abilityHud.style.transform = 'scale(1)';
           }, 100);
+
+          // Client-side prediction for Dash ability
+          if (myAbility.name === 'Dash') {
+            const originalLastAbilityUse = lastAbilityUse; // Store original value
+            lastAbilityUse = now; // Update client-side for immediate HUD feedback
+            updateAbilityHUD(); // Re-render HUD with new cooldown
+            // Store originalLastAbilityUse for potential rollback
+            myAbility._originalLastAbilityUse = originalLastAbilityUse;
+          }
         }
       }
       
@@ -326,11 +650,9 @@
           
           // Visual feedback
           upgradeCard.style.transform = 'translateY(-3px) scale(1.1)';
-          upgradeCard.style.borderColor = '#ffffff';
           
           setTimeout(() => {
             upgradeCard.style.transform = '';
-            upgradeCard.style.borderColor = '';
           }, 200);
           
           // Send upgrade request
@@ -343,17 +665,24 @@
   socket.on('abilityResult', (result) => {
     // Handle ability activation feedback
     if (result.success) {
-      console.log(`Ability ${result.type} activated successfully`);
       lastAbilityUse = Date.now();
       updateAbilityHUD();
     } else {
-      console.log(`Ability failed: ${result.reason}`);
+      // Server rejected ability use, revert client-side prediction if it was for Dash
+      if (myAbility && myAbility.name === 'Dash' && myAbility._originalLastAbilityUse !== undefined) {
+        lastAbilityUse = myAbility._originalLastAbilityUse;
+        delete myAbility._originalLastAbilityUse; // Clean up temporary variable
+        updateAbilityHUD(); // Re-render HUD with reverted cooldown
+      }
     }
   });
 
   // Update ability HUD every frame
   function updateAbilityHUD() {
-    if (!myAbility) return;
+    if (!myAbility) {
+      abilityHud.classList.add('hidden');
+      return;
+    }
 
     const now = Date.now();
     const timeSinceUse = now - lastAbilityUse;
@@ -362,28 +691,23 @@
 
     // Update ability info
     abilityName.textContent = myAbility.name;
-    abilityIcon.textContent = myAbility.icon;
+    abilityHud.classList.remove('hidden');
 
-    // Update visual state
-    abilityIndicator.className = 'ability-indicator ' + (isReady ? 'ready' : 'cooldown');
+    // Get the progress background element
+    const progressBg = abilityHud.querySelector('.ability-progress-bg');
+    if (!progressBg) {
+      return;
+    }
 
     if (isReady) {
-      abilityCooldown.textContent = 'READY';
-      abilityCooldown.classList.remove('hidden');
+      // Ability is ready - full green background
+      progressBg.classList.remove('on-cooldown');
+      progressBg.style.transform = 'scaleX(1)';
     } else {
-      const seconds = Math.ceil(remaining / 1000);
-      abilityCooldown.textContent = `${seconds}s`;
-      abilityCooldown.classList.remove('hidden');
-    }
-  }
-
-  // Get ability icon based on ability type
-  function getAbilityIcon(abilityType) {
-    switch (abilityType) {
-      case 'dash': return '⚡';
-      case 'spike_trap': return '⚠️';
-      case 'ghost_mode': return '👻';
-      default: return '⚡';
+      // Ability is on cooldown - red background that shrinks as cooldown progresses
+      progressBg.classList.add('on-cooldown');
+      const progress = remaining / myAbility.cooldown;
+      progressBg.style.transform = `scaleX(${progress})`;
     }
   }
 
@@ -393,6 +717,15 @@
     
     const car = CAR_TYPES[carType];
     if (!car || !car.upgrades) return;
+    
+    // Create upgrade points display
+    const upgradePointsDisplay = document.createElement('div');
+    upgradePointsDisplay.className = 'upgrade-points-display';
+    upgradePointsDisplay.innerHTML = `
+      <div class="upgrade-points-label">Points</div>
+      <div class="upgrade-points-count" id="upgradePointsCounter">0</div>
+    `;
+    upgradeCardsContainer.appendChild(upgradePointsDisplay);
     
     const upgrades = car.upgrades;
     let keyIndex = 1;
@@ -418,9 +751,10 @@
       upgradeCard.className = 'upgrade-card';
       upgradeCard.setAttribute('data-stat', statName);
       upgradeCard.setAttribute('data-key', keyIndex.toString());
+      upgradeCard.style.borderColor = upgrade.color;
       
       upgradeCard.innerHTML = `
-        <div class="upgrade-key-indicator">${keyIndex}</div>
+        <div class="upgrade-key-indicator" style="background-color: ${upgrade.color}">${keyIndex}</div>
         <div class="upgrade-name">${upgrade.name}</div>
       `;
       
@@ -429,6 +763,24 @@
       upgradeCardsContainer.appendChild(upgradeCardContainer);
       keyIndex++;
     }
+  }
+
+  // Hide upgrade cards completely
+  function hideUpgradeCards() {
+    upgradeCardsContainer.classList.add('hidden');
+    upgradeCardsContainer.classList.remove('compact');
+    
+    // Hide ability HUD
+    abilityHud.classList.add('hidden');
+    
+    // Hide lap counter and lap timer
+    lapCounter.classList.add('hidden');
+    lapTimer.classList.add('hidden');
+    currentLapStartTime = 0;
+    bestLapTime = null;
+    previousLapCount = 0;
+    bestLapTimeSpan.textContent = '';
+    currentLapTimeSpan.textContent = '0:00.000';
   }
 
   // Update upgrade cards and progress blocks based on current state
@@ -629,16 +981,37 @@
   // Socket disconnection handlers
   socket.on('disconnect', () => {
     console.log('Socket disconnected');
+    hideUpgradeCards();
+    
+    // Hide all game-specific UI elements on disconnect
+    abilityHud.classList.add('hidden');
+    lapCounter.classList.add('hidden');
+    lapTimer.classList.add('hidden');
+    
     showDisconnectionOverlay();
   });
 
   socket.on('connect_error', (error) => {
     console.log('Connection error:', error);
+    hideUpgradeCards();
+    
+    // Hide all game-specific UI elements on connection error
+    abilityHud.classList.add('hidden');
+    lapCounter.classList.add('hidden');
+    lapTimer.classList.add('hidden');
+    
     showDisconnectionOverlay();
   });
 
   socket.on('reconnect_failed', () => {
     console.log('Reconnection failed');
+    hideUpgradeCards();
+    
+    // Hide all game-specific UI elements on reconnection failure
+    abilityHud.classList.add('hidden');
+    lapCounter.classList.add('hidden');
+    lapTimer.classList.add('hidden');
+    
     showDisconnectionOverlay();
   });
 
@@ -699,10 +1072,50 @@
     }
   });
 
+  // Spectator rendering function
+  function drawSpectatorView() {
+    if (!spectatorState || !isSpectating) {
+      // Show "waiting for game" message when no spectator data
+      spectatorCtx.clearRect(0, 0, spectatorCanvas.width, spectatorCanvas.height);
+      spectatorCtx.fillStyle = 'rgba(20, 20, 30, 0.3)';
+      spectatorCtx.fillRect(0, 0, spectatorCanvas.width, spectatorCanvas.height);
+      spectatorCtx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+      spectatorCtx.font = '24px Arial';
+      spectatorCtx.textAlign = 'center';
+      spectatorCtx.fillText('Connecting to server...', spectatorCanvas.width / 2, spectatorCanvas.height / 2);
+      return;
+    }
+
+    // Use unified renderGame function for spectator view (even with empty player list)
+    renderGame(spectatorCanvas, spectatorCtx, spectatorState, {
+      mode: 'spectator',
+      centerPlayer: null,
+      mapData: spectatorState.map,
+      showHUD: false,
+      alpha: 0.7,
+      showCheckpoints: false,
+      showAbilityObjects: true
+    });
+    
+    // If no players, show a subtle overlay message
+    if (!spectatorState.players || spectatorState.players.length === 0) {
+      spectatorCtx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+      spectatorCtx.font = '18px Arial';
+      spectatorCtx.textAlign = 'center';
+      spectatorCtx.fillText('Waiting for players to join...', spectatorCanvas.width / 2, spectatorCanvas.height - 50);
+    }
+  }
+
   // Continuous rendering for smooth interpolation
   function renderLoop() {
+    // Update performance metrics
+    updateFPS();
+    updatePing();
+    
     if (sendInputInterval) { // Only render when in game
       drawGame();
+    } else if (isSpectating) { // Render spectator view when in menu
+      drawSpectatorView();
     }
     requestAnimationFrame(renderLoop);
   }
@@ -716,11 +1129,9 @@
       
       // Visual feedback
       upgradeCard.style.transform = 'translateY(-3px) scale(1.1)';
-      upgradeCard.style.borderColor = '#ffffff';
       
       setTimeout(() => {
         upgradeCard.style.transform = '';
-        upgradeCard.style.borderColor = '';
       }, 200);
       
       // Send upgrade request
@@ -784,157 +1195,200 @@
     return interpolateStates(state1, state2, t);
   }
 
-  function drawGame() {
-    // Don't render until we've received our first state from server
-    if (!hasReceivedFirstState) {
-      return;
+  // Camera system functions
+  function calculateMapBounds(mapShapes) {
+    if (!mapShapes || !Array.isArray(mapShapes)) {
+      return { minX: -100, maxX: 100, minY: -100, maxY: 100 };
     }
     
-    const currentState = getInterpolatedState();
-    if (!currentState) return;
-
-    // Update global state for rendering
-    players = currentState.players || [];
-    abilityObjects = currentState.abilityObjects || [];
-    const dynamicObjects = currentState.dynamicObjects || [];
-    mySocketId = currentState.mySocketId || mySocketId;
-    const width = gameCanvas.width;
-    const height = gameCanvas.height;
-    ctx.clearRect(0, 0, width, height);
-    const me = players.find((p) => p.socketId === mySocketId);
-    const centerX = width / 2;
-    const centerY = height / 2;
-    let scale = 1;
-    // scale map
-    if (currentMap && Array.isArray(currentMap.shapes)) {
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-      currentMap.shapes.forEach((shape) => {
-        if (Array.isArray(shape.vertices)) {
-          shape.vertices.forEach((v) => {
-            minX = Math.min(minX, v.x);
-            maxX = Math.max(maxX, v.x);
-            minY = Math.min(minY, v.y);
-            maxY = Math.max(maxY, v.y);
-          });
-        }
-      });
-      const sizeX = maxX - minX;
-      const sizeY = maxY - minY;
-      const size = Math.max(sizeX, sizeY) || 1;
-      scale = (Math.min(width, height) * 2.5) / size;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    
+    mapShapes.forEach(shape => {
+      if (Array.isArray(shape.vertices)) {
+        shape.vertices.forEach(v => {
+          minX = Math.min(minX, v.x);
+          maxX = Math.max(maxX, v.x);
+          minY = Math.min(minY, v.y);
+          maxY = Math.max(maxY, v.y);
+        });
+      }
+    });
+    
+    return { minX, maxX, minY, maxY };
+  }
+  
+  function calculateScale(canvas, mapBounds, mode = 'player') {
+    const { minX, maxX, minY, maxY } = mapBounds;
+    const sizeX = maxX - minX;
+    const sizeY = maxY - minY;
+    const size = Math.max(sizeX, sizeY) || 1;
+    
+    if (mode === 'spectator') {
+      // Zoom out more to fit entire map in spectator view
+      return (Math.min(canvas.width, canvas.height) * 0.9) / size;
+    } else {
+      // Player mode - closer zoom
+      return (Math.min(canvas.width, canvas.height) * 2.5) / size;
     }
-    // map
-    if (me && currentMap && Array.isArray(currentMap.shapes)) {
-      for (const shape of currentMap.shapes) {
-        ctx.beginPath()
+  }
+  
+  function getCameraTransform(options) {
+    const { canvas, mapBounds, mode, centerPlayer } = options;
+    
+    let centerX = canvas.width / 2;
+    let centerY = canvas.height / 2;
+    let focusX = 0;
+    let focusY = 0;
+    
+    if (mode === 'player' && centerPlayer) {
+      // Player-centered camera
+      focusX = centerPlayer.x;
+      focusY = centerPlayer.y;
+    } else if (mode === 'spectator' && mapBounds) {
+      // Map-centered camera
+      focusX = (mapBounds.minX + mapBounds.maxX) / 2;
+      focusY = (mapBounds.minY + mapBounds.maxY) / 2;
+    }
+    
+    const scale = calculateScale(canvas, mapBounds, mode);
+    
+    return { centerX, centerY, focusX, focusY, scale };
+  }
 
+  // Unified rendering function for both player and spectator modes
+  function renderGame(canvas, ctx, gameState, options = {}) {
+    const {
+      mode = 'player',
+      centerPlayer = null,
+      mapData = null,
+      showHUD = true,
+      alpha = 1.0,
+      showCheckpoints = true,
+      showAbilityObjects = true
+    } = options;
+    
+    if (!gameState) return;
+    
+    const width = canvas.width;
+    const height = canvas.height;
+    ctx.clearRect(0, 0, width, height);
+    
+    // Set global alpha for spectator mode
+    ctx.globalAlpha = alpha;
+    
+    // Get map data (prioritize passed mapData, fallback to currentMap)
+    const mapToUse = mapData || currentMap;
+    
+    // Calculate camera transform
+    const mapBounds = calculateMapBounds(mapToUse?.shapes);
+    const { centerX, centerY, focusX, focusY, scale } = getCameraTransform({
+      canvas,
+      mapBounds,
+      mode,
+      centerPlayer
+    });
+    
+    // Extract game objects
+    const players = gameState.players || [];
+    const abilityObjects = gameState.abilityObjects || [];
+    const dynamicObjects = gameState.dynamicObjects || [];
+    
+    // Render map
+    if (mapToUse && Array.isArray(mapToUse.shapes)) {
+      for (const shape of mapToUse.shapes) {
+        ctx.beginPath();
+        
         const color = Array.isArray(shape.fillColor)
           ? `rgb(${shape.fillColor[0]}, ${shape.fillColor[1]}, ${shape.fillColor[2]})`
-          : 'rgb(50, 50, 50)'
-        ctx.fillStyle = color
-        // map
-        if (me && currentMap && Array.isArray(currentMap.shapes)) {
-          for (const shape of currentMap.shapes) {
-            ctx.beginPath()
-
-            const color = Array.isArray(shape.fillColor)
-              ? `rgb(${shape.fillColor[0]}, ${shape.fillColor[1]}, ${shape.fillColor[2]})`
-              : 'rgb(50, 50, 50)'
-            ctx.fillStyle = color
-
-            if (Array.isArray(shape.vertices)) {
-              const verts = shape.vertices.map(v => ({
-                x: centerX + (v.x - me.x) * scale,
-                y: centerY - (v.y - me.y) * scale
-              }))
-              ctx.moveTo(verts[0].x, verts[0].y)
-              for (let i = 1; i < verts.length; i++) {
-                ctx.lineTo(verts[i].x, verts[i].y)
+          : 'rgb(50, 50, 50)';
+        ctx.fillStyle = color;
+        
+        if (Array.isArray(shape.vertices)) {
+          const verts = shape.vertices.map(v => ({
+            x: centerX + (v.x - focusX) * scale,
+            y: centerY - (v.y - focusY) * scale
+          }));
+          ctx.moveTo(verts[0].x, verts[0].y);
+          for (let i = 1; i < verts.length; i++) {
+            ctx.lineTo(verts[i].x, verts[i].y);
+          }
+          ctx.closePath();
+          ctx.fill();
+          
+          // Draw border stripes if available
+          if (Array.isArray(shape.borderColors) && shape.borderColors.length > 0) {
+            const lineWidth = (shape.borderWidth || 8) * scale;
+            const stripeLength = (shape.stripeLength || shape.borderWidth * 1.8 || 25) * scale;
+            const baseColor = shape.borderColors[0] || '#ff0000';
+            
+            for (let i = 0; i < verts.length; i++) {
+              const a = verts[i];
+              const b = verts[(i + 1) % verts.length];
+              
+              const dx = b.x - a.x;
+              const dy = b.y - a.y;
+              const len = Math.hypot(dx, dy);
+              const steps = Math.max(1, Math.floor(len / stripeLength));
+              
+              const perpX = -dy / len;
+              const perpY = dx / len;
+              const offsetX = (perpX * lineWidth) / 2;
+              const offsetY = (perpY * lineWidth) / 2;
+              
+              for (let s = 0; s < steps; s++) {
+                const t0 = s / steps;
+                const t1 = (s + 1) / steps;
+                const x0 = a.x + dx * t0;
+                const y0 = a.y + dy * t0;
+                const x1 = a.x + dx * t1;
+                const y1 = a.y + dy * t1;
+                
+                ctx.beginPath();
+                ctx.moveTo(x0 + offsetX, y0 + offsetY);
+                ctx.lineTo(x1 + offsetX, y1 + offsetY);
+                ctx.lineTo(x1 - offsetX, y1 - offsetY);
+                ctx.lineTo(x0 - offsetX, y0 - offsetY);
+                ctx.closePath();
+                
+                const isLastStripe = s === steps - 1;
+                ctx.fillStyle = isLastStripe
+                  ? baseColor
+                  : shape.borderColors[s % shape.borderColors.length];
+                ctx.fill();
               }
-              ctx.closePath()
-              ctx.fill()
-
-              if (Array.isArray(shape.borderColors) && shape.borderColors.length > 0) {
-                const lineWidth = shape.borderWidth || 8
-                const stripeLength = shape.stripeLength || shape.borderWidth * 1.8 || 25
-                const baseColor = shape.borderColors[0] || '#ff0000'
-
-                for (let i = 0; i < verts.length; i++) {
-                  const a = verts[i]
-                  const b = verts[(i + 1) % verts.length]
-
-                  const dx = b.x - a.x
-                  const dy = b.y - a.y
-                  const len = Math.hypot(dx, dy)
-                  const steps = Math.max(1, Math.floor(len / stripeLength))
-
-                  const perpX = -dy / len
-                  const perpY = dx / len
-                  const offsetX = (perpX * lineWidth) / 2
-                  const offsetY = (perpY * lineWidth) / 2
-
-                  for (let s = 0; s < steps; s++) {
-                    const t0 = s / steps
-                    const t1 = (s + 1) / steps
-                    const x0 = a.x + dx * t0
-                    const y0 = a.y + dy * t0
-                    const x1 = a.x + dx * t1
-                    const y1 = a.y + dy * t1
-
-                    ctx.beginPath()
-                    ctx.moveTo(x0 + offsetX, y0 + offsetY)
-                    ctx.lineTo(x1 + offsetX, y1 + offsetY)
-                    ctx.lineTo(x1 - offsetX, y1 - offsetY)
-                    ctx.lineTo(x0 - offsetX, y0 - offsetY)
-                    ctx.closePath()
-
-                    const isLastStripe = s === steps - 1
-                    ctx.fillStyle = isLastStripe
-                      ? baseColor
-                      : shape.borderColors[s % shape.borderColors.length]
-                    ctx.fill()
-                  }
-
-                  const radius = lineWidth / 2
-                  ctx.beginPath()
-                  ctx.arc(a.x, a.y, radius, 0, Math.PI * 2)
-                  ctx.fillStyle = baseColor
-                  ctx.fill()
-                }
-              }
+              
+              const radius = lineWidth / 2;
+              ctx.beginPath();
+              ctx.arc(a.x, a.y, radius, 0, Math.PI * 2);
+              ctx.fillStyle = baseColor;
+              ctx.fill();
             }
           }
         }
       }
-      let maxX = -Infinity;
-      currentMap.shapes.forEach((shape) => {
-        if (shape.hollow) return;
-        if (Array.isArray(shape.vertices))
-          shape.vertices.forEach((v) => { if (v.x > maxX) maxX = v.x; });
-      });
     }
 
-    // start/finish poly
-    if (currentMap && currentMap.start && currentMap.start.vertices && me) {
-      const screenVerts = currentMap.start.vertices.map(v => ({
-        x: centerX + (v.x - me.x) * scale,
-        y: centerY - (v.y - me.y) * scale
-      }))
-      drawCheckerboard(ctx, screenVerts, 20, { x: 0, y: 0 }, scale, me, centerX, centerY)
+    // Start/finish checkerboard (only show in player mode or if centerPlayer exists)
+    if (showCheckpoints && mapToUse && mapToUse.start && mapToUse.start.vertices) {
+      const screenVerts = mapToUse.start.vertices.map(v => ({
+        x: centerX + (v.x - focusX) * scale,
+        y: centerY - (v.y - focusY) * scale
+      }));
+      drawCheckerboard(ctx, screenVerts, 20, { x: 0, y: 0 }, scale, { x: focusX, y: focusY }, centerX, centerY);
     }
 
-    // checkpoints
-    if (currentMap.checkpoints) {
-      for (const cp of currentMap.checkpoints) {
+    // Checkpoints (only show in player mode and if we have a center player)
+    if (showCheckpoints && mapToUse && mapToUse.checkpoints && centerPlayer) {
+      for (const cp of mapToUse.checkpoints) {
         if (cp.type === 'line' && cp.vertices.length >= 2) {
           const a = cp.vertices[0];
           const b = cp.vertices[1];
           ctx.beginPath();
-          ctx.moveTo(centerX + (a.x - me.x) * scale, centerY - (a.y - me.y) * scale);
-          ctx.lineTo(centerX + (b.x - me.x) * scale, centerY - (b.y - me.y) * scale);
+          ctx.moveTo(centerX + (a.x - focusX) * scale, centerY - (a.y - focusY) * scale);
+          ctx.lineTo(centerX + (b.x - focusX) * scale, centerY - (b.y - focusY) * scale);
           
           // Color checkpoints based on visit status
-          const isVisited = me && me.checkpointsVisited && me.checkpointsVisited.includes(cp.id);
+          const isVisited = centerPlayer && centerPlayer.checkpointsVisited && centerPlayer.checkpointsVisited.includes(cp.id);
           ctx.strokeStyle = isVisited ? '#00ff00' : '#ffff00'; // Green if visited, yellow if not
           ctx.lineWidth = 2;
           ctx.stroke();
@@ -942,35 +1396,167 @@
       }
     }
 
-    // players
+    // Dynamic objects
+    dynamicObjects.forEach((obj) => {
+      if (obj.vertices && obj.vertices.length) {
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        
+        ctx.beginPath();
+        obj.vertices.forEach((v, i) => {
+          const x = (obj.position.x + v.x - focusX) * scale;
+          const y = (obj.position.y + v.y - focusY) * scale;
+          if (i === 0) ctx.moveTo(x, -y);
+          else ctx.lineTo(x, -y);
+        });
+        ctx.closePath();
+        
+        // Adjust colors based on damage
+        let fillColor = obj.fillColor || [139, 69, 19];
+        let strokeColor = obj.strokeColor || [101, 67, 33];
+        
+        // Visual damage feedback
+        if (obj.health !== undefined && obj.maxHealth !== undefined) {
+          const healthRatio = obj.health / obj.maxHealth;
+          if (healthRatio <= 0) {
+            // Destroyed - make it darker and more transparent
+            fillColor = [69, 34, 9]; // Much darker brown
+            strokeColor = [50, 33, 16];
+            ctx.globalAlpha = 0.5; // Semi-transparent
+          } else if (healthRatio < 0.5) {
+            // Damaged - darken the colors
+            fillColor = fillColor.map(c => Math.floor(c * (0.5 + healthRatio * 0.5)));
+            strokeColor = strokeColor.map(c => Math.floor(c * (0.5 + healthRatio * 0.5)));
+          }
+        }
+        
+        // Fill color
+        if (fillColor && Array.isArray(fillColor)) {
+          ctx.fillStyle = `rgb(${fillColor[0]}, ${fillColor[1]}, ${fillColor[2]})`;
+          ctx.fill();
+        }
+        
+        // Stroke color
+        if (strokeColor && Array.isArray(strokeColor)) {
+          ctx.strokeStyle = `rgb(${strokeColor[0]}, ${strokeColor[1]}, ${strokeColor[2]})`;
+          ctx.lineWidth = (obj.strokeWidth || 2) * scale;
+          ctx.stroke();
+        }
+        
+        ctx.restore();
+        
+        // Draw health bar for dynamic objects
+        if (obj.health !== undefined && obj.maxHealth !== undefined && obj.health < obj.maxHealth) {
+          const objScreenX = centerX + (obj.position.x - focusX) * scale;
+          const objScreenY = centerY - (obj.position.y - focusY) * scale;
+          
+          const barWidth = 30 * scale;
+          const barHeight = 4 * scale;
+          const barX = objScreenX - barWidth / 2;
+          const barY = objScreenY - 40 * scale;
+          
+          const healthRatio = Math.max(0, obj.health / obj.maxHealth);
+          
+          // Background
+          ctx.fillStyle = '#333';
+          ctx.fillRect(barX, barY, barWidth, barHeight);
+          
+          // Health bar
+          ctx.fillStyle = healthRatio > 0.5 ? '#0a0' : healthRatio > 0.25 ? '#aa0' : '#a00';
+          ctx.fillRect(barX, barY, barWidth * healthRatio, barHeight);
+          
+          // Border
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(barX, barY, barWidth, barHeight);
+        }
+      }
+    });
+
+    // Spike traps and ability objects
+    if (showAbilityObjects) {
+      abilityObjects.forEach((obj) => {
+        if (obj.type === 'spike_trap' && obj.vertices && obj.vertices.length) {
+          ctx.save();
+          ctx.translate(centerX, centerY);
+          
+          ctx.beginPath();
+          obj.vertices.forEach((v, i) => {
+            const x = (obj.position.x + v.x - focusX) * scale;
+            const y = (obj.position.y + v.y - focusY) * scale;
+            if (i === 0) ctx.moveTo(x, -y);
+            else ctx.lineTo(x, -y);
+          });
+          ctx.closePath();
+          
+          ctx.fillStyle = obj.render?.fillStyle || '#888888';
+          ctx.fill();
+          ctx.strokeStyle = obj.render?.strokeStyle || '#444444';
+          ctx.lineWidth = (obj.render?.lineWidth || 2) * scale;
+          ctx.stroke();
+          
+          ctx.restore();
+        }
+      });
+    }
+
+    // Players
     players.forEach((p) => {
-      const dx = p.x - (me ? me.x : 0);
-      const dy = p.y - (me ? me.y : 0);
+      const dx = p.x - focusX;
+      const dy = p.y - focusY;
       const screenX = centerX + dx * scale;
       const screenY = centerY - dy * scale;
-      if (p.vertices && p.vertices.length) {
-        ctx.beginPath()
-        p.vertices.forEach((v, i) => {
-          const x = (p.x + v.x - me.x) * scale
-          const y = (p.y + v.y - me.y) * scale
-          if (i === 0) ctx.moveTo(centerX + x, centerY - y)
-          else ctx.lineTo(centerX + x, centerY - y)
-        })
-        ctx.closePath()
-        ctx.fillStyle = `rgb(${p.color.fill[0]},${p.color.fill[1]},${p.color.fill[2]})`
-        ctx.fill()
+      
+      ctx.save();
+      
+      // Get vertices - either from player object or look up from CAR_TYPES
+      let vertices = p.vertices;
+      if (!vertices && p.type && CAR_TYPES[p.type]) {
+        vertices = CAR_TYPES[p.type].shape.vertices;
+      }
+      
+      if (vertices && vertices.length) {
+        ctx.beginPath();
+        
+        // Handle rotation for spectator players
+        const angle = p.angle || 0;
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        
+        vertices.forEach((v, i) => {
+          // Apply rotation if we have an angle (spectator mode)
+          let rotatedX, rotatedY;
+          if (p.angle !== undefined) {
+            rotatedX = v.x * cos - v.y * sin;
+            rotatedY = v.x * sin + v.y * cos;
+          } else {
+            rotatedX = v.x;
+            rotatedY = v.y;
+          }
+          
+          const x = (p.x + rotatedX - focusX) * scale;
+          const y = (p.y + rotatedY - focusY) * scale;
+          if (i === 0) ctx.moveTo(centerX + x, centerY - y);
+          else ctx.lineTo(centerX + x, centerY - y);
+        });
+        ctx.closePath();
+        ctx.fillStyle = `rgb(${p.color.fill[0]},${p.color.fill[1]},${p.color.fill[2]})`;
+        ctx.fill();
       } else if (p.radius) {
-        ctx.beginPath()
-        ctx.arc(0, 0, p.radius * scale, 0, 2 * Math.PI)
-        ctx.fill()
+        ctx.beginPath();
+        ctx.arc(screenX, screenY, p.radius * scale, 0, 2 * Math.PI);
+        ctx.fillStyle = `rgb(${p.color.fill[0]},${p.color.fill[1]},${p.color.fill[2]})`;
+        ctx.fill();
       }
 
-      ctx.strokeStyle = `rgb(${p.color.stroke[0]}, ${p.color.stroke[1]}, ${p.color.stroke[2]})`
-      ctx.lineWidth = p.color.strokeWidth * scale
-      ctx.lineJoin = 'round'
-      ctx.stroke()
+      if (p.color && p.color.stroke) {
+        ctx.strokeStyle = `rgb(${p.color.stroke[0]}, ${p.color.stroke[1]}, ${p.color.stroke[2]})`;
+        ctx.lineWidth = (p.color.strokeWidth || 2) * scale;
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+      }
 
-      ctx.restore()
+      ctx.restore();
 
       // Player name with black outline and smooth font
       const fontSize = Math.max(6, 10 * scale);
@@ -1034,128 +1620,69 @@
       }
     });
 
-    // dynamic objects
-    dynamicObjects.forEach((obj) => {
-      if (obj.vertices && obj.vertices.length && me) {
-        ctx.save();
-        ctx.translate(centerX, centerY);
-        
-        ctx.beginPath();
-        obj.vertices.forEach((v, i) => {
-          const x = (obj.position.x + v.x - me.x) * scale;
-          const y = (obj.position.y + v.y - me.y) * scale;
-          if (i === 0) ctx.moveTo(x, -y);
-          else ctx.lineTo(x, -y);
-        });
-        ctx.closePath();
-        
-        // Adjust colors based on damage
-        let fillColor = obj.fillColor || [139, 69, 19];
-        let strokeColor = obj.strokeColor || [101, 67, 33];
-        
-        // Visual damage feedback
-        if (obj.health !== undefined && obj.maxHealth !== undefined) {
-          const healthRatio = obj.health / obj.maxHealth;
-          if (healthRatio <= 0) {
-            // Destroyed - make it darker and more transparent
-            fillColor = [69, 34, 9]; // Much darker brown
-            strokeColor = [50, 33, 16];
-            ctx.globalAlpha = 0.5; // Semi-transparent
-          } else if (healthRatio < 0.5) {
-            // Damaged - darken the colors
-            fillColor = fillColor.map(c => Math.floor(c * (0.5 + healthRatio * 0.5)));
-            strokeColor = strokeColor.map(c => Math.floor(c * (0.5 + healthRatio * 0.5)));
+    // Update HUD elements (only in player mode)
+    if (showHUD && centerPlayer && mode === 'player') {
+      lapsSpan.textContent = `Lap ${centerPlayer.laps} of ${centerPlayer.maxLaps}`;
+      
+      // Update upgrade points counter beside cards
+      const upgradePointsCounter = document.getElementById('upgradePointsCounter');
+      if (upgradePointsCounter) {
+        upgradePointsCounter.textContent = centerPlayer.upgradePoints;
+      }
+      
+      // Handle lap timer
+      const now = Date.now();
+      
+      // Check if a new lap was completed
+      if (centerPlayer.laps > previousLapCount) {
+        // A lap was just completed
+        if (currentLapStartTime > 0) {
+          const lapTime = now - currentLapStartTime;
+          
+          // Update best lap time if this is better or first lap
+          if (!bestLapTime || lapTime < bestLapTime) {
+            bestLapTime = lapTime;
+            bestLapTimeSpan.textContent = formatTime(bestLapTime);
           }
         }
         
-        // fill color
-        if (fillColor && Array.isArray(fillColor)) {
-          ctx.fillStyle = `rgb(${fillColor[0]}, ${fillColor[1]}, ${fillColor[2]})`;
-          ctx.fill();
-        }
-        
-        // stroke color
-        if (strokeColor && Array.isArray(strokeColor)) {
-          ctx.strokeStyle = `rgb(${strokeColor[0]}, ${strokeColor[1]}, ${strokeColor[2]})`;
-          ctx.lineWidth = (obj.strokeWidth || 2) * scale;
-          ctx.stroke();
-        }
-        
-        ctx.restore();
-        
-        // Draw health bar for dynamic objects
-        if (obj.health !== undefined && obj.maxHealth !== undefined && obj.health < obj.maxHealth) {
-          const objScreenX = centerX + (obj.position.x - me.x) * scale;
-          const objScreenY = centerY - (obj.position.y - me.y) * scale;
-          
-          const barWidth = 30 * scale;
-          const barHeight = 4 * scale;
-          const barX = objScreenX - barWidth / 2;
-          const barY = objScreenY - 40 * scale;
-          
-          const healthRatio = Math.max(0, obj.health / obj.maxHealth);
-          
-          // Background
-          ctx.fillStyle = '#333';
-          ctx.fillRect(barX, barY, barWidth, barHeight);
-          
-          // Health bar
-          ctx.fillStyle = healthRatio > 0.5 ? '#0a0' : healthRatio > 0.25 ? '#aa0' : '#a00';
-          ctx.fillRect(barX, barY, barWidth * healthRatio, barHeight);
-          
-          // Border
-          ctx.strokeStyle = '#000';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(barX, barY, barWidth, barHeight);
-        }
+        // Start timing the new lap
+        currentLapStartTime = now;
+        previousLapCount = centerPlayer.laps;
+      } else if (centerPlayer.laps < previousLapCount) {
+        // Laps reset (new game/crashed) - reset timer
+        currentLapStartTime = now;
+        bestLapTime = null;
+        bestLapTimeSpan.textContent = '';
+        previousLapCount = centerPlayer.laps;
+      } else if (currentLapStartTime === 0 && centerPlayer.laps === 0) {
+        // First time in game - start timing
+        currentLapStartTime = now;
+        previousLapCount = 0;
       }
-    });
-
-    // spike traps
-    abilityObjects.forEach((obj) => {
-      if (obj.type === 'spike_trap' && obj.vertices && obj.vertices.length) {
-        ctx.save();
-        ctx.translate(centerX, centerY);
-        
-        ctx.beginPath();
-        obj.vertices.forEach((v, i) => {
-          const x = (obj.position.x + v.x - (me ? me.x : 0)) * scale;
-          const y = (obj.position.y + v.y - (me ? me.y : 0)) * scale;
-          if (i === 0) ctx.moveTo(x, -y);
-          else ctx.lineTo(x, -y);
-        });
-        ctx.closePath();
-        
-        ctx.fillStyle = obj.render?.fillStyle || '#888888';
-        ctx.fill();
-        ctx.strokeStyle = obj.render?.strokeStyle || '#444444';
-        ctx.lineWidth = (obj.render?.lineWidth || 2) * scale;
-        ctx.stroke();
-        
-        ctx.restore();
-      }
-    });
-
-    if (me) {
-      lapsSpan.textContent = `Laps: ${me.laps}`;
-      upgradePointsSpan.textContent = me.upgradePoints;
       
-      // Show upgrades if player has points OR has completed at least 1 lap
-      const shouldShowUpgrades = me.upgradePoints > 0 || me.laps >= 1;
-      const isCompactMode = me.laps >= 1 && me.upgradePoints === 0;
+      // Update current lap time display
+      if (currentLapStartTime > 0) {
+        const currentLapTime = now - currentLapStartTime;
+        currentLapTimeSpan.textContent = formatTime(currentLapTime);
+        lapTimer.classList.remove('hidden');
+      } else {
+        lapTimer.classList.add('hidden');
+      }
+      
+      // Show upgrades if player has points OR has ever earned upgrade points
+      const hasEverHadUpgrades = centerPlayer.upgradePoints > 0 || Object.keys(centerPlayer.upgradeUsage || {}).length > 0;
+      const shouldShowUpgrades = hasEverHadUpgrades;
+      const isCompactMode = hasEverHadUpgrades && centerPlayer.upgradePoints === 0;
+      
+      // Show lap counter and timer whenever in game
+      lapCounter.classList.remove('hidden');
+      lapTimer.classList.remove('hidden');
       
       if (shouldShowUpgrades) {
-        // Show upgrade points container only if player has points to spend
-        if (me.upgradePoints > 0) {
-          upgradeContainer.classList.remove('hidden');
-        } else {
-          upgradeContainer.classList.add('hidden');
-        }
-        
         upgradeCardsContainer.classList.remove('hidden');
         upgradeCardsContainer.classList.toggle('compact', isCompactMode);
       } else {
-        upgradeContainer.classList.add('hidden');
         upgradeCardsContainer.classList.add('hidden');
         upgradeCardsContainer.classList.remove('compact');
       }
@@ -1163,9 +1690,40 @@
       // Update upgrade display if we have car type info
       const selectedCar = document.querySelector('input[name="car"]:checked');
       if (selectedCar) {
-        updateUpgradeDisplay(me, selectedCar.value);
+        updateUpgradeDisplay(centerPlayer, selectedCar.value);
       }
     }
+    
+    // Reset global alpha
+    ctx.globalAlpha = 1.0;
+  }
+
+  // Wrapper function for player mode (maintains compatibility)
+  function drawGame() {
+    // Don't render until we've received our first state from server
+    if (!hasReceivedFirstState) {
+      return;
+    }
+    
+    const currentState = getInterpolatedState();
+    if (!currentState) return;
+
+    // Update global state for rendering
+    players = currentState.players || [];
+    abilityObjects = currentState.abilityObjects || [];
+    mySocketId = currentState.mySocketId || mySocketId;
+    
+    const me = players.find((p) => p.socketId === mySocketId);
+    
+    renderGame(gameCanvas, ctx, currentState, {
+      mode: 'player',
+      centerPlayer: me,
+      mapData: currentMap,
+      showHUD: true,
+      alpha: 1.0,
+      showCheckpoints: true,
+      showAbilityObjects: true
+    });
   }
 
   // HELPERS
