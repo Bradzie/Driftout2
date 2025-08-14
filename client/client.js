@@ -21,6 +21,11 @@
   const currentLapTimeSpan = document.getElementById('currentLapTime');
   const bestLapTimeSpan = document.getElementById('bestLapTime');
   
+  // Get boost display elements
+  const boostDisplay = document.getElementById('boostDisplay');
+  const boostBar = document.getElementById('boostBar');
+  const boostText = document.getElementById('boostText');
+  
   // Get kill feed element
   const killFeed = document.getElementById('killFeed');
   
@@ -88,7 +93,7 @@
   let gameStates = []; // Buffer of recent game states
   let interpolationDelay = 50; // ms behind server for smoother interpolation
   
-  let inputState = { cursor: { x: 0, y: 0 } };
+  let inputState = { cursor: { x: 0, y: 0 }, boostActive: false };
   let sendInputInterval = null;
   let hasReceivedFirstState = false; // Flag to prevent rendering before first server data
   
@@ -193,6 +198,7 @@
     abilityHud.classList.add('hidden');
     lapCounter.classList.add('hidden');
     lapTimer.classList.add('hidden');
+    boostDisplay.classList.add('hidden');
     
     // Reset ability state
     myAbility = null;
@@ -688,6 +694,7 @@
     abilityHud.classList.add('hidden');
     lapCounter.classList.add('hidden');
     lapTimer.classList.add('hidden');
+    boostDisplay.classList.add('hidden');
     
     // Reset ability state
     myAbility = null;
@@ -720,6 +727,17 @@
     const cy = rect.top + rect.height / 2;
     inputState.cursor.x = e.clientX - cx;
     inputState.cursor.y = e.clientY - cy;
+  });
+
+  // Right-click boost handling
+  gameCanvas.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    inputState.boostActive = true;
+  });
+
+  gameCanvas.addEventListener('mouseup', (e) => {
+    e.preventDefault();
+    inputState.boostActive = false;
   });
 
   // Ability and upgrade input handling
@@ -895,9 +913,10 @@
     // Hide ability HUD
     abilityHud.classList.add('hidden');
     
-    // Hide lap counter and lap timer
+    // Hide lap counter, lap timer, and boost display
     lapCounter.classList.add('hidden');
     lapTimer.classList.add('hidden');
+    boostDisplay.classList.add('hidden');
     currentLapStartTime = 0;
     bestLapTime = null;
     previousLapCount = 0;
@@ -1109,6 +1128,7 @@
     abilityHud.classList.add('hidden');
     lapCounter.classList.add('hidden');
     lapTimer.classList.add('hidden');
+    boostDisplay.classList.add('hidden');
     
     showDisconnectionOverlay();
   });
@@ -1121,6 +1141,7 @@
     abilityHud.classList.add('hidden');
     lapCounter.classList.add('hidden');
     lapTimer.classList.add('hidden');
+    boostDisplay.classList.add('hidden');
     
     showDisconnectionOverlay();
   });
@@ -1133,6 +1154,7 @@
     abilityHud.classList.add('hidden');
     lapCounter.classList.add('hidden');
     lapTimer.classList.add('hidden');
+    boostDisplay.classList.add('hidden');
     
     showDisconnectionOverlay();
   });
@@ -1853,9 +1875,33 @@
       const shouldShowUpgrades = hasEverHadUpgrades;
       const isCompactMode = hasEverHadUpgrades && centerPlayer.upgradePoints === 0;
       
-      // Show lap counter and timer whenever in game
+      // Show lap counter, timer, and boost display whenever in game
       lapCounter.classList.remove('hidden');
       lapTimer.classList.remove('hidden');
+      boostDisplay.classList.remove('hidden');
+      
+      // Update boost display
+      if (centerPlayer.currentBoost !== undefined && centerPlayer.maxBoost !== undefined) {
+        const currentBoost = Math.round(centerPlayer.currentBoost);
+        const maxBoost = centerPlayer.maxBoost;
+        const boostPercentage = (currentBoost / maxBoost) * 100;
+        
+        // Update boost text
+        boostText.textContent = `${currentBoost}/${maxBoost}`;
+        
+        // Update boost bar width
+        boostBar.style.width = `${boostPercentage}%`;
+        
+        // Update boost bar color based on percentage
+        boostBar.className = 'boost-bar';
+        if (boostPercentage <= 25) {
+          boostBar.classList.add('low');
+        } else if (boostPercentage <= 60) {
+          boostBar.classList.add('medium');
+        } else {
+          boostBar.classList.add('high');
+        }
+      }
       
       if (shouldShowUpgrades) {
         upgradeCardsContainer.classList.remove('hidden');

@@ -863,6 +863,70 @@ html, body {
   color: #2ed573;
 }
 
+/* BOOST DISPLAY STYLES */
+.boost-display {
+  position: fixed;
+  bottom: 160px;
+  right: 20px;
+  background: rgba(20, 20, 20, 0.9);
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-family: 'Overpass', monospace;
+  backdrop-filter: blur(10px);
+  z-index: 50;
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.boost-label {
+  color: #ffa502;
+  font-size: 0.7em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  text-align: center;
+}
+
+.boost-bar-container {
+  width: 120px;
+  height: 8px;
+  background: rgba(50, 50, 50, 0.8);
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 165, 2, 0.3);
+}
+
+.boost-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #ff6b6b 0%, #ffa502 50%, #2ed573 100%);
+  border-radius: 3px;
+  transition: width 0.2s ease;
+  width: 100%;
+}
+
+.boost-bar.low {
+  background: linear-gradient(90deg, #ff6b6b 0%, #ff7675 100%);
+}
+
+.boost-bar.medium {
+  background: linear-gradient(90deg, #ff7675 0%, #ffa502 100%);
+}
+
+.boost-bar.high {
+  background: linear-gradient(90deg, #ffa502 0%, #2ed573 100%);
+}
+
+.boost-text {
+  color: #ffffff;
+  font-size: 0.8em;
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+  text-align: center;
+}
+
 /* DEBUG PANEL STYLES */
 .debug-panel {
   position: fixed;

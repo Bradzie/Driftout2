@@ -6,6 +6,7 @@ const CAR_TYPES = {
     displayHandling: 40,
     maxHealth: 8,
     acceleration: 0.015,
+    boost: 100,
     regen: 0.05,
     color: { fill: [47, 152, 206], stroke: [28, 89, 121], strokeWidth: 4 },
     shape: {
@@ -49,6 +50,7 @@ const CAR_TYPES = {
     displayHandling: 70,
     maxHealth: 20,
     acceleration: 0.12,
+    boost: 40,
     regen: 0.05,
     color: { fill: [157, 230, 160], stroke: [99, 145, 101], strokeWidth: 4 },
     shape: {
@@ -88,6 +90,7 @@ const CAR_TYPES = {
     displayHandling: 20,
     maxHealth: 16,
     acceleration: 0.01,
+    boost: 75,
     regen: 0.1,
     ability: 'dash',
     abilityName: 'Dash',
@@ -137,6 +140,7 @@ const CAR_TYPES = {
     displayHandling: 60,
     maxHealth: 12,
     acceleration: 0.04,
+    boost: 50,
     regen: 0.1,
     ability: 'spike_trap',
     abilityName: 'Trap',

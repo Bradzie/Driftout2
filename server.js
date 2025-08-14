@@ -409,6 +409,11 @@ class Car {
     this.cursor = { x: 0, y: 0 }; // direction and intensity from client
     this.justCrashed = false;
     
+    // Boost system
+    this.maxBoost = CAR_TYPES[type].boost;
+    this.currentBoost = this.maxBoost;
+    this.boostActive = false;
+    
     // Ability system
     const carDef = CAR_TYPES[type];
     this.ability = carDef.ability ? abilityRegistry.create(carDef.ability) : null;
@@ -481,7 +486,21 @@ class Car {
       const max = MAX_ROT_SPEED
       angVel = HELPERS.clamp(angVel + targetAngVel * dt, -max, max)
       Matter.Body.setAngularVelocity(body, angVel)
-      const forceMag = this.stats.acceleration * throttle
+      let acceleration = this.stats.acceleration;
+      // Apply boost: 50% more acceleration when boost is active
+      if (this.boostActive && this.currentBoost > 0) {
+        acceleration *= 2.0;
+        // Consume boost at a rate of 100 boost per second
+        const boostConsumptionRate = 10; // boost units per second
+        this.currentBoost = Math.max(0, this.currentBoost - boostConsumptionRate * dt);
+        
+        // Stop boost if we run out
+        if (this.currentBoost <= 0) {
+          this.boostActive = false;
+        }
+      }
+      
+      const forceMag = acceleration * throttle
       const force = {
         x: Math.cos(body.angle) * forceMag,
         y: Math.sin(body.angle) * forceMag
@@ -549,6 +568,9 @@ class Car {
       this.upgradePoints += 1
       this.checkpointsVisited.clear()
       this.hasLeftStartSinceLap = false
+      
+      // Restore boost on lap completion
+      this.currentBoost = this.maxBoost
     }
 
     let outsideSolid = false;
@@ -586,6 +608,10 @@ class Car {
     this.currentHealth = this.stats.maxHealth;
     this.prevFinishCheck = null;
     this.upgradeUsage = {};
+    
+    // Restore boost on new life
+    this.currentBoost = this.maxBoost;
+    this.boostActive = false;
     this.justCrashed = false;
     this.crashedByPlayer = false;
     this.killFeedSent = false;
@@ -685,7 +711,9 @@ class Room {
         })),
         abilityCooldownReduction: car.abilityCooldownReduction || 0,
         crashed: car.justCrashed || false,
-        crashedAt: car.crashedAt || null
+        crashedAt: car.crashedAt || null,
+        currentBoost: car.currentBoost,
+        maxBoost: car.maxBoost
       });
     }
     return cars;
@@ -818,6 +846,11 @@ io.on('connection', (socket) => {
       // Store timestamp for potential lag compensation
       myCar.lastInputTime = data.timestamp || Date.now();
       myCar.inputSequence = data.sequence || 0;
+    }
+    
+    // Handle boost input
+    if (typeof data.boostActive === 'boolean') {
+      myCar.boostActive = data.boostActive && myCar.currentBoost > 0;
     }
   });
   socket.on('upgrade', (data) => {
