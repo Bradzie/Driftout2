@@ -26,10 +26,22 @@ module.exports = {
       },
       {
         vertices: [
-          { x: -400, y: -400 },
+          { x: -400, y: -100 },
+          { x: -100, y: -100 },
+          { x: -100, y: -400 },
           { x:  400, y: -400 },
           { x:  400, y:  400 },
           { x: -400, y:  400 }
+        ],
+        borderColors: ['#ff4d4d', '#ffffff'],
+        borderWidth: 20
+      },
+      {
+        vertices: [
+          { x: -400, y: -400 },
+          { x:  -200, y: -400 },
+          { x:  -200, y:  -200 },
+          { x: -400, y:  -200 }
         ],
         borderColors: ['#ff4d4d', '#ffffff'],
         borderWidth: 20
@@ -39,6 +51,22 @@ module.exports = {
         borderColors: ['#ff4d4d', '#ffffff'],
         borderWidth: 5
       },
+    ],
+    dynamicObjects: [
+      {
+        id: 'brownBox1',
+        position: { x: 0, y: 500 },
+        size: { width: 60, height: 60 },
+        shape: 'rectangle',
+        isStatic: false,
+        density: 0.01, // Low density so it moves easily
+        friction: 0.3,
+        restitution: 0.4,
+        //maxHealth: 100, // Health points before destruction
+        fillColor: [139, 69, 19], // Brown color
+        strokeColor: [101, 67, 33], // Darker brown
+        strokeWidth: 2
+      }
     ],
     checkpoints: [
       {

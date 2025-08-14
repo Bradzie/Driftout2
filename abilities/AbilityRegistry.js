@@ -30,7 +30,6 @@ class AbilityRegistry {
     // Create a temporary instance to get the ID
     const tempInstance = new AbilityClass();
     this.abilityClasses.set(tempInstance.id, AbilityClass);
-    console.log(`Registered ability: ${tempInstance.id}`);
   }
 
   /**

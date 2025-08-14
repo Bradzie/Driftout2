@@ -3,45 +3,286 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Driftout2</title>
+  <title>Driftz IO</title>
+  <link rel="icon" type="image/png" href="favicon.png" />
   <link rel="stylesheet" href="style.css" />
   <!-- Socket.io client -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 </head>
 <body>
   <div id="menu" class="overlay">
-    <h1 class="title">DRIFTOUT</h1>
+    <h1 class="title">DRIFTZ.IO</h1>
     <input type="text" id="nameInput" placeholder="Name" maxlength="20" />
     <div id="carSelector" class="car-selector">
       <button id="switchButton" class="nav-button prev-button">🗘</button>
-      <div id="carCard" class="single-car-card"></div>
+      <div id="carCard" class="single-car-card">
+        <input type="radio" name="car" value="" checked style="display: none;" />
+        <div class="car-header">
+          <div id="carName" class="car-name"></div>
+          <div class="car-visual">
+            <svg id="carShape" class="car-shape" width="60" height="60" viewBox="-30 -30 60 60">
+              <polygon id="carPolygon" points="" fill="" stroke="" stroke-width="2" />
+            </svg>
+          </div>
+        </div>
+        <div class="car-stats">
+          <div class="stat-item">
+            <div class="stat-label">Speed</div>
+            <div class="stat-bar">
+              <div id="speedFill" class="stat-fill health" style="width: 0%"></div>
+            </div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Durability</div>
+            <div class="stat-bar">
+              <div id="healthFill" class="stat-fill regen" style="width: 0%"></div>
+            </div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Handling</div>
+            <div class="stat-bar">
+              <div id="handlingFill" class="stat-fill speed" style="width: 0%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
       <button id="joinButton" class="nav-button play-button">➤</button>
     </div>
+    
+    <!-- Settings Button -->
+    <button id="settingsButton" class="settings-button">⚙️</button>
   </div>
 
+  <canvas id="spectatorCanvas" class="spectator-canvas"></canvas>
   <canvas id="gameCanvas"></canvas>
+
+  <!-- Kill Feed -->
+  <div id="killFeed" class="kill-feed hidden">
+    <!-- Dynamic kill feed messages will appear here -->
+  </div>
+
+  <!-- Performance Overlays -->
+  <div id="performanceOverlay" class="performance-overlay hidden">
+    <div id="fpsDisplay" class="fps-display hidden">FPS: --</div>
+    <div id="pingDisplay" class="ping-display hidden">Ping: --ms</div>
+  </div>
 
   <!-- HUD -->
   <div id="hud">
-    <div id="stats">
-      <span id="laps">Laps: 0</span>
-    </div>
-    <div id="abilityHud" class="ability-hud">
-      <div id="abilityIndicator" class="ability-indicator">
-        <div id="abilityIcon" class="ability-icon">⚡</div>
-        <div id="abilityName" class="ability-name">Ability</div>
-        <div id="abilityCooldown" class="ability-cooldown hidden">0s</div>
-      </div>
-    </div>
-    <div id="upgrades" class="hidden">
-      <span>Upgrade points: <span id="upgradePoints">0</span></span>
-      <button data-stat="maxHealth">+ Health</button>
-      <button data-stat="acceleration">+ Accel</button>
-      <button data-stat="regen">+ Regen</button>
-    </div>
+    <!-- Upgrade points HUD removed - now displayed beside upgrade cards -->
   </div>
 
   <div id="message" class="hidden"></div>
+
+  <!-- Upgrade Cards Container -->
+  <div id="upgradeCards" class="upgrade-cards-container hidden">
+    <!-- Dynamic upgrade cards will be generated here -->
+  </div>
+
+  <!-- Ability HUD -->
+  <div id="abilityHud" class="ability-hud hidden">
+    <div class="ability-progress-bg"></div>
+    <span id="abilityName" class="ability-name">Dash</span>
+    <span class="ability-hint">(Space)</span>
+  </div>
+
+  <!-- Lap Counter -->
+  <div id="lapCounter" class="lap-counter hidden">
+    <span id="laps">Laps: 0</span>
+  </div>
+
+  <!-- Lap Timer -->
+  <div id="lapTimer" class="lap-timer hidden">
+    <div class="lap-timer-current">
+      <span class="lap-timer-label">Current</span>
+      <span id="currentLapTime" class="lap-timer-time">0:00.000</span>
+    </div>
+    <div class="lap-timer-best">
+      <span class="lap-timer-label">Best</span>
+      <span id="bestLapTime" class="lap-timer-time"></span>
+    </div>
+  </div>
+
+  <!-- Loading Screen Template -->
+  <div id="loadingScreen" class="overlay loading-overlay hidden">
+    <div class="loading-content">
+      <div class="game-title">DRIFTOUT2</div>
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Connecting to server...</div>
+      <div class="loading-subtext">Waiting for game data</div>
+    </div>
+  </div>
+
+  <!-- Disconnection Overlay Template -->
+  <div id="disconnectionOverlay" class="overlay disconnect-overlay hidden">
+    <div class="disconnect-content">
+      <div class="disconnect-title">DISCONNECTED</div>
+      <div class="disconnect-message">Unable to connect to game server</div>
+      <div class="disconnect-details">
+        The connection has been lost. This can happen due to:<br>
+        • Network connectivity issues<br>
+        • Server maintenance or restart<br>
+        • Browser sleeping inactive tabs
+      </div>
+      <button id="disconnectRefreshBtn" class="disconnect-refresh-btn">CLICK TO REFRESH</button>
+    </div>
+  </div>
+
+  <!-- Menu Disconnection Warning Template -->
+  <div id="menuDisconnectionWarning" class="menu-warning hidden">
+    <div class="warning-title">DISCONNECTED</div>
+    <div class="warning-message">Unable to connect to game server</div>
+    <div class="warning-details">
+      The connection has been lost. This can happen due to:<br>
+      • Network connectivity issues<br>
+      • Server maintenance or restart<br>
+      • Browser sleeping inactive tabs
+    </div>
+    <button id="menuRefreshBtn" class="menu-refresh-btn">CLICK TO REFRESH</button>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="settings-modal hidden">
+    <div class="settings-content">
+      <div class="settings-header">
+        <h2 class="settings-title">Settings</h2>
+        <button id="settingsCloseBtn" class="settings-close-btn">×</button>
+      </div>
+      
+      <div class="settings-body">
+        <!-- Graphics Section -->
+        <div class="settings-section">
+          <h3 class="settings-section-title">Graphics</h3>
+          <div class="settings-row">
+            <label class="settings-label">FPS Counter</label>
+            <div class="toggle-switch">
+              <input type="checkbox" id="fpsToggle" class="toggle-input">
+              <span class="toggle-slider"></span>
+            </div>
+          </div>
+          <div class="settings-row">
+            <label class="settings-label">Ping Display</label>
+            <div class="toggle-switch">
+              <input type="checkbox" id="pingToggle" class="toggle-input">
+              <span class="toggle-slider"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Performance Section (placeholder) -->
+        <div class="settings-section">
+          <h3 class="settings-section-title">Performance</h3>
+          <div class="settings-placeholder">
+            Additional performance settings will be added here
+          </div>
+        </div>
+
+        <!-- Audio Section (placeholder) -->
+        <div class="settings-section">
+          <h3 class="settings-section-title">Audio</h3>
+          <div class="settings-placeholder">
+            Audio settings will be added here
+          </div>
+        </div>
+
+        <!-- Controls Section (placeholder) -->
+        <div class="settings-section">
+          <h3 class="settings-section-title">Controls</h3>
+          <div class="settings-placeholder">
+            Control customization will be added here
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Debug Admin Panel -->
+  <div id="debugPanel" class="debug-panel hidden">
+    <div class="debug-header">
+      <span class="debug-title">Debug</span>
+      <button id="debugToggle" class="debug-toggle">−</button>
+    </div>
+    <div id="debugContent" class="debug-content">
+      
+      <!-- Player Controls -->
+      <div class="debug-section">
+        <h4>Player Controls</h4>
+        <div class="debug-row">
+          <label>Upgrade Points:</label>
+          <input type="number" id="debugUpgradePoints" min="0" max="50" value="1">
+          <button id="debugGivePoints" class="debug-btn">Give</button>
+        </div>
+        <div class="debug-row">
+          <label>Laps:</label>
+          <input type="number" id="debugLaps" min="0" max="100" value="0">
+          <button id="debugSetLaps" class="debug-btn">Set</button>
+        </div>
+        <div class="debug-row">
+          <label>Health:</label>
+          <input type="range" id="debugHealth" min="0" max="100" value="100" class="debug-slider">
+          <span id="debugHealthValue">100</span>
+          <button id="debugSetHealth" class="debug-btn">Set</button>
+        </div>
+      </div>
+
+      <!-- Position Controls -->
+      <div class="debug-section">
+        <h4>Position & State</h4>
+        <div class="debug-row">
+          <button id="debugResetPosition" class="debug-btn">Reset to Start</button>
+          <button id="debugToggleGodMode" class="debug-btn" data-active="false">God Mode: OFF</button>
+        </div>
+      </div>
+
+      <!-- Ability Controls -->
+      <div class="debug-section">
+        <h4>Abilities</h4>
+        <div class="debug-row">
+          <button id="debugResetAbility" class="debug-btn">Reset Cooldown</button>
+          <button id="debugForceAbility" class="debug-btn">Force Activate</button>
+        </div>
+      </div>
+
+      <!-- Stats Controls -->
+      <div class="debug-section">
+        <h4>Car Stats</h4>
+        <div class="debug-row">
+          <label>Max Health:</label>
+          <input type="range" id="debugMaxHealth" min="1" max="200" value="20" class="debug-slider">
+          <span id="debugMaxHealthValue">20</span>
+        </div>
+        <div class="debug-row">
+          <label>Speed:</label>
+          <input type="range" id="debugSpeed" min="0.001" max="1" step="0.001" value="0.1" class="debug-slider">
+          <span id="debugSpeedValue">0.1</span>
+        </div>
+        <div class="debug-row">
+          <label>Regen:</label>
+          <input type="range" id="debugRegen" min="0" max="5" step="0.01" value="0.1" class="debug-slider">
+          <span id="debugRegenValue">0.1</span>
+        </div>
+        <button id="debugSetStats" class="debug-btn full-width">Apply Stats</button>
+      </div>
+
+      <!-- Quick Actions -->
+      <div class="debug-section">
+        <h4>Quick Actions</h4>
+        <div class="debug-row">
+          <button id="debugResetUpgrades" class="debug-btn danger" onclick="return confirm('Reset all upgrades?')">Reset Upgrades</button>
+          <button id="debugGetPlayerData" class="debug-btn">Refresh Data</button>
+        </div>
+      </div>
+
+      <!-- Player Data Display -->
+      <div class="debug-section">
+        <h4>Player Data</h4>
+        <div id="debugPlayerData" class="debug-data">
+          Click "Refresh Data" to load player information
+        </div>
+      </div>
+
+    </div>
+  </div>
 
   <script src="client.js"></script>
 </body>
