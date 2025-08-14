@@ -107,8 +107,18 @@ Matter.Events.on(engine, 'collisionStart', (event) => {
         applyMutualCollisionDamage(carA, carB, impulse, relativeSpeed)
       } else {
         // Handle single car collisions (with walls, etc.) using original system
-        if (carA && !carA.isGhost) carA.applyCollisionDamage(bodyB, impulse, relativeSpeed)
-        if (carB && !carB.isGhost) carB.applyCollisionDamage(bodyA, impulse, relativeSpeed)
+        if (carA && !carA.isGhost) {
+          // Check if bodyB is a dynamic object with damageScale
+          const damageScale = (bodyB.dynamicObject && typeof bodyB.dynamicObject.damageScale === 'number') 
+            ? bodyB.dynamicObject.damageScale : 1.0;
+          carA.applyCollisionDamage(bodyB, impulse, relativeSpeed, damageScale);
+        }
+        if (carB && !carB.isGhost) {
+          // Check if bodyA is a dynamic object with damageScale
+          const damageScale = (bodyA.dynamicObject && typeof bodyA.dynamicObject.damageScale === 'number') 
+            ? bodyA.dynamicObject.damageScale : 1.0;
+          carB.applyCollisionDamage(bodyA, impulse, relativeSpeed, damageScale);
+        }
       }
       
       // Handle dynamic object damage (can be damaged by cars)
@@ -167,9 +177,11 @@ function applyMutualCollisionDamage(carA, carB, impulse, relativeSpeed) {
   
   if (carACrashed) {
     carA.justCrashed = true;
+    carA.crashedByPlayer = true; // Mark as player collision crash
   }
   if (carBCrashed) {
     carB.justCrashed = true;
+    carB.crashedByPlayer = true; // Mark as player collision crash
   }
   
   // Award upgrade points for successful collision kills and broadcast crash events
@@ -352,6 +364,11 @@ function setTrackBodies(mapKey) {
           dynObj.size.height, 
           bodyOptions
         )
+      }
+      
+      // Apply frictionAir if specified
+      if (typeof dynObj.frictionAir === 'number') {
+        body.frictionAir = dynObj.frictionAir;
       }
       
       // Store additional properties for rendering
@@ -569,19 +586,22 @@ class Car {
     this.currentHealth = this.stats.maxHealth;
     this.prevFinishCheck = null;
     this.upgradeUsage = {};
+    this.justCrashed = false;
+    this.crashedByPlayer = false;
+    this.killFeedSent = false;
     Matter.Body.setPosition(this.body, { x: startPos.x, y: startPos.y });
     Matter.Body.setVelocity(this.body, { x: 0, y: 0 });
     Matter.Body.setAngularVelocity(this.body, 0);
     Matter.Body.setAngle(this.body, 0);
   }
-  applyCollisionDamage(otherBody, impulse, relativeVelocity = 0) {
+  applyCollisionDamage(otherBody, impulse, relativeVelocity = 0, damageScale = 1.0) {
     // Don't take damage if god mode is enabled
     if (this.godMode) return;
     
     // Don't take damage if other body is static (walls, barriers)
     if (otherBody.isStatic) {
       const WALL_DAMAGE_SCALE = 0.02
-      const damage = impulse * WALL_DAMAGE_SCALE
+      const damage = impulse * WALL_DAMAGE_SCALE * damageScale
       this.currentHealth -= damage
     } else {
       // Physics-based damage calculation using density ratios
@@ -600,7 +620,7 @@ class Car {
       const damageMultiplier = Math.max(MIN_DAMAGE_MULTIPLIER, Math.min(MAX_DAMAGE_MULTIPLIER, densityRatio * velocityFactor))
       
       const BASE_DAMAGE_SCALE = 0.05 // Increased for more intense collisions
-      const damage = impulse * damageMultiplier * BASE_DAMAGE_SCALE
+      const damage = impulse * damageMultiplier * BASE_DAMAGE_SCALE * damageScale
       
       this.currentHealth -= damage
     }
@@ -623,6 +643,7 @@ class Room {
   constructor(id) {
     this.id = id;
     this.players = new Map(); // socket.id -> Car
+    this.sockets = new Map();
   }
   addPlayer(socket, carType, name) {
     const carId = uuidv4();
@@ -772,12 +793,25 @@ io.on('connection', (socket) => {
   
   socket.on('joinGame', ({ carType, name }) => {
     if (!CAR_TYPES[carType]) return;
+    
+    // Clean up any existing car for this socket across all rooms (handles rejoin after crash)
+    for (const room of rooms) {
+      if (room.players.has(socket.id)) {
+        console.log(`Cleaning up existing car for socket ${socket.id} in room ${room.id}`);
+        room.removePlayer(socket);
+      }
+    }
+    
     currentRoom = assignRoom();
     myCar = currentRoom.addPlayer(socket, carType, name);
     socket.emit('joined', { roomId: currentRoom.id, carId: myCar.id });
   });
   socket.on('input', (data) => {
     if (!myCar) return;
+    
+    // Ignore input from crashed cars
+    if (myCar.crashedAt) return;
+    
     if (data.cursor) {
       myCar.cursor.x = data.cursor.x;
       myCar.cursor.y = data.cursor.y;
@@ -813,9 +847,28 @@ io.on('connection', (socket) => {
           case 'regen':
             myCar.stats.regen += amount;
             break;
-          case 'density':
+          case 'size': {
+            const scaleFactor = amount * 0.7;
+            const currentVertices = myCar.body.vertices.map(v => ({ x: v.x, y: v.y }));
+
+            const centerX = currentVertices.reduce((sum, v) => sum + v.x, 0) / currentVertices.length;
+            const centerY = currentVertices.reduce((sum, v) => sum + v.y, 0) / currentVertices.length;
+
+            const scaledVertices = currentVertices.map(vertex => {
+              const translatedX = vertex.x - centerX;
+              const translatedY = vertex.y - centerY;
+              const scaledX = translatedX * scaleFactor;
+              const scaledY = translatedY * scaleFactor;
+              return { x: scaledX + centerX, y: scaledY + centerY };
+            });
+
+            Matter.Body.setVertices(myCar.body, [scaledVertices]);
             Matter.Body.setDensity(myCar.body, myCar.body.density + amount);
+            myCar.displaySize += amount;
+            myCar.acceleration += amount * 0.1;
+
             break;
+          }
           case 'abilityCooldown':
             // Store cooldown reduction on the car
             if (!myCar.abilityCooldownReduction) myCar.abilityCooldownReduction = 0;
@@ -940,7 +993,12 @@ io.on('connection', (socket) => {
   }
 
   socket.on('disconnect', () => {
-    if (currentRoom) currentRoom.removePlayer(socket);
+    // Clean up from all rooms to be safe
+    for (const room of rooms) {
+      if (room.players.has(socket.id)) {
+        room.removePlayer(socket);
+      }
+    }
     spectators.delete(socket.id); // Remove from spectators
   });
 });
@@ -1011,18 +1069,41 @@ function gameLoop() {
         if (car.justCrashed) {
           const sock = io.sockets.sockets.get(sid);
           if (sock) {
+            // Check if this was a solo crash (not from player collision) and message hasn't been sent yet
+            if (!car.crashedByPlayer && !car.killFeedSent) {
+              // Broadcast solo crash message to kill feed (send once to each player)
+              for (const [socketId, otherCar] of room.players.entries()) {
+                const socket = io.sockets.sockets.get(socketId);
+                if (socket) {
+                  socket.emit('killFeedMessage', {
+                    text: `${car.name} crashed!`,
+                    type: 'crash'
+                  });
+                }
+              }
+              // Mark that killfeed message has been sent for this crash
+              car.killFeedSent = true;
+            }
+            
             // Mark the crash timestamp for delayed cleanup
-            car.crashedAt = Date.now();
-            // Stop the car from moving
-            Matter.Body.setVelocity(car.body, { x: 0, y: 0 });
-            Matter.Body.setAngularVelocity(car.body, 0);
+            if (!car.crashedAt) {
+              console.log(`crashed`)
+              car.crashedAt = Date.now();
+              // Stop the car from moving
+              Matter.Body.setVelocity(car.body, { x: 0, y: 0 });
+              Matter.Body.setAngularVelocity(car.body, 0);
+            }
+            
+            // Don't reset justCrashed here - we need it for client fade detection
+            // The killFeedSent flag prevents message spam instead
           }
         }
       }
       
       // Clean up cars that have been crashed for longer than fade duration
       for (const [sid, car] of [...room.players.entries()]) {
-        if (car.crashedAt && Date.now() - car.crashedAt > 600) { // 600ms to account for network delay
+        if (car.crashedAt && Date.now() - car.crashedAt > 300) { //500ms
+          console.log(`Cleaning up crashed car ${car.name} (${sid}) after ${Date.now() - car.crashedAt}ms`);
           Matter.World.remove(world, car.body);
           room.players.delete(sid);
         }
@@ -1038,7 +1119,11 @@ gameLoop();
 setInterval(() => {
   for (const room of rooms) {
     const state = room.state;
-    for (const [socketId] of room.players) {
+    const playerSocketIds = Array.from(room.players.values()).map(p => p.socketId);
+    const spectatorSocketIds = Array.from(spectators.keys());
+    const allSocketIds = [...new Set([...playerSocketIds, ...spectatorSocketIds])];
+
+    for (const socketId of allSocketIds) {
       const socket = io.sockets.sockets.get(socketId);
       if (socket) {
         const map = MAP_TYPES[currentMapKey];
@@ -1154,7 +1239,9 @@ function broadcastToSpectators() {
   
   // Create spectator-optimized state (always include map, even with no players)
   const spectatorState = {
-    players: room && room.players.size > 0 ? Array.from(room.players.values()).map(car => ({
+    players: room && room.players.size > 0 ? Array.from(room.players.values())
+      .filter(car => !car.crashedAt) // Exclude crashed cars from spectator view
+      .map(car => ({
       id: car.id,
       name: car.name,
       type: car.type,

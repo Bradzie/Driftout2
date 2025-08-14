@@ -19,7 +19,8 @@ module.exports = {
           { x:  600, y: -600 },
           { x:  600, y:  100 },
           { x:  800, y:  100 },
-          { x:  800, y:  800 },
+          { x:  800, y:  650 },
+          { x:  650, y:  800 },
           { x:  200, y:  800 },
           { x:  -400, y:  750 },
           { x: -600, y:  600 }
@@ -58,19 +59,85 @@ module.exports = {
     ],
     dynamicObjects: [
       {
-        id: 'brownBox1',
-        position: { x: 0, y: 500 },
+        id: 'metalBox1',
+        position: { x: -300, y: 450 },
+        size: { width: 25, height: 25 },
+        shape: 'rectangle',
+        isStatic: false,
+        density: 0.3, // High density
+        friction: 0.3,
+        frictionAir: 0.2, // High air resistance - slows down quickly
+        restitution: 0.1,
+        damageScale: 0.0,
+        //maxHealth: 100, // Health points before destruction
+        fillColor: [216, 216, 216], // silver color
+        strokeColor: [128, 128, 128], // Darker brown
+        strokeWidth: 4
+      },
+      {
+        id: 'woodBox1',
+        position: { x: -200, y: 450 },
         size: { width: 25, height: 25 },
         shape: 'rectangle',
         isStatic: false,
         density: 0.001, // Low density so it moves easily
         friction: 0.3,
-        restitution: 0.1,
+        frictionAir: 0.1,
+        restitution: 0.3,
+        damageScale: 0.0,
         //maxHealth: 100, // Health points before destruction
         fillColor: [139, 69, 19], // Brown color
         strokeColor: [101, 67, 33], // Darker brown
         strokeWidth: 4
-      }
+      },
+      {
+        id: 'woodBox2',
+        position: { x: -100, y: 450 },
+        size: { width: 25, height: 25 },
+        shape: 'rectangle',
+        isStatic: false,
+        density: 0.001, // Low density so it moves easily
+        friction: 0.3,
+        frictionAir: 0.1,
+        restitution: 0.3,
+        damageScale: 0.0,
+        //maxHealth: 100, // Health points before destruction
+        fillColor: [139, 69, 19], // Brown color
+        strokeColor: [101, 67, 33], // Darker brown
+        strokeWidth: 4
+      },
+      {
+        id: 'woodBox3',
+        position: { x: 0, y: 450 },
+        size: { width: 25, height: 25 },
+        shape: 'rectangle',
+        isStatic: false,
+        density: 0.001, // Low density so it moves easily
+        friction: 0.3,
+        frictionAir: 0.1,
+        restitution: 0.3,
+        damageScale: 0.0,
+        //maxHealth: 100, // Health points before destruction
+        fillColor: [139, 69, 19], // Brown color
+        strokeColor: [101, 67, 33], // Darker brown
+        strokeWidth: 4
+      },
+      {
+        id: 'woodBox4',
+        position: { x: 100, y: 450 },
+        size: { width: 25, height: 25 },
+        shape: 'rectangle',
+        isStatic: false,
+        density: 0.001, // Low density so it moves easily
+        friction: 0.3,
+        frictionAir: 0.1,
+        restitution: 0.3,
+        damageScale: 0.0,
+        //maxHealth: 100, // Health points before destruction
+        fillColor: [139, 69, 19], // Brown color
+        strokeColor: [101, 67, 33], // Darker brown
+        strokeWidth: 4
+      },
     ],
     checkpoints: [
       {
@@ -85,7 +152,7 @@ module.exports = {
       },
       {
         type: 'line',
-        vertices: [{ x: 0, y: 400 }, { x: 0, y: 760 }],
+        vertices: [{ x: 0, y: 400 }, { x: 0, y: 770 }],
         id: 'checkpoint-3'
       },
     ]

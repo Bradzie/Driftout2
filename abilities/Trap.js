@@ -132,6 +132,11 @@ class SpikeTrapAbility extends Ability {
       return false;
     }
 
+    // Don't damage ghost mode cars or god mode cars
+    if (car.isGhost || car.godMode) {
+      return false;
+    }
+
     const now = Date.now();
     if (!car.trapDamageHistory) {
       car.trapDamageHistory = new Map();
