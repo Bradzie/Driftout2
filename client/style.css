@@ -365,13 +365,11 @@ html, body {
 
 .kill-feed-message {
   background: rgba(20, 20, 20, 0.95);
-  border-radius: 6px;
   padding: 8px 12px;
   margin-bottom: 6px;
   font-family: 'Overpass', sans-serif;
   font-size: 0.85em;
   font-weight: 600;
-  backdrop-filter: blur(10px);
   border-left: 3px solid;
   animation: killFeedSlideIn 0.3s ease-out forwards;
   opacity: 0;

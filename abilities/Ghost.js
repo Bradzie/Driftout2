@@ -50,7 +50,8 @@ class GhostModeAbility extends Ability {
       success: true, 
       type: 'ghost_mode',
       duration: this.duration,
-      expiresAt: car.ghostExpiresAt
+      expiresAt: car.ghostExpiresAt,
+      serverTime: currentTime
     };
   }
 

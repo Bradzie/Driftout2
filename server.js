@@ -184,7 +184,7 @@ function applyMutualCollisionDamage(carA, carB, impulse, relativeSpeed) {
         const socket = io.sockets.sockets.get(socketId);
         if (socket) {
           socket.emit('killFeedMessage', {
-            text: `💥 ${carB.name} crashed ${carA.name}!`,
+            text: `${carB.name} crashed ${carA.name}!`,
             type: 'crash'
           });
         }
@@ -201,7 +201,7 @@ function applyMutualCollisionDamage(carA, carB, impulse, relativeSpeed) {
         const socket = io.sockets.sockets.get(socketId);
         if (socket) {
           socket.emit('killFeedMessage', {
-            text: `💥 ${carA.name} crashed ${carB.name}!`,
+            text: `${carA.name} crashed ${carB.name}!`,
             type: 'crash'
           });
         }
@@ -215,7 +215,7 @@ function applyMutualCollisionDamage(carA, carB, impulse, relativeSpeed) {
         const socket = io.sockets.sockets.get(socketId);
         if (socket) {
           socket.emit('killFeedMessage', {
-            text: `💥 ${carA.name} and ${carB.name} crashed!`,
+            text: `${carA.name} and ${carB.name} crashed!`,
             type: 'crash'
           });
         }
@@ -662,7 +662,9 @@ class Room {
           x: v.x - pos.x,
           y: v.y - pos.y
         })),
-        abilityCooldownReduction: car.abilityCooldownReduction || 0
+        abilityCooldownReduction: car.abilityCooldownReduction || 0,
+        crashed: car.justCrashed || false,
+        crashedAt: car.crashedAt || null
       });
     }
     return cars;
@@ -980,7 +982,7 @@ function gameLoop() {
             const sock = io.sockets.sockets.get(sid);
             if (sock) {
               sock.emit('killFeedMessage', {
-                text: `🏆 ${winnerName} has won!`,
+                text: `${winnerName} has won!`,
                 type: 'win'
               });
             }
@@ -1009,8 +1011,18 @@ function gameLoop() {
         if (car.justCrashed) {
           const sock = io.sockets.sockets.get(sid);
           if (sock) {
-            sock.emit('returnToMenu', { crashed: true });
+            // Mark the crash timestamp for delayed cleanup
+            car.crashedAt = Date.now();
+            // Stop the car from moving
+            Matter.Body.setVelocity(car.body, { x: 0, y: 0 });
+            Matter.Body.setAngularVelocity(car.body, 0);
           }
+        }
+      }
+      
+      // Clean up cars that have been crashed for longer than fade duration
+      for (const [sid, car] of [...room.players.entries()]) {
+        if (car.crashedAt && Date.now() - car.crashedAt > 600) { // 600ms to account for network delay
           Matter.World.remove(world, car.body);
           room.players.delete(sid);
         }
@@ -1107,6 +1119,39 @@ function broadcastToSpectators() {
   
   const room = rooms[0]; // Using first room for simplicity
   
+  // Create ability objects with full data (same format as game state)
+  const clientAbilityObjects = gameState.abilityObjects.map(obj => ({
+    id: obj.id,
+    type: obj.type,
+    position: obj.body.position,
+    vertices: obj.body.vertices.map(v => ({ x: v.x - obj.body.position.x, y: v.y - obj.body.position.y })),
+    createdBy: obj.createdBy,
+    expiresAt: obj.expiresAt,
+    render: obj.body.render
+  }));
+  
+  // Create dynamic objects with full data (same format as game state)
+  const clientDynamicObjects = currentDynamicBodies.map(body => {
+    const objData = {
+      id: body.dynamicObject?.id || body.id,
+      position: body.position,
+      angle: body.angle,
+      vertices: body.vertices.map(v => ({ x: v.x - body.position.x, y: v.y - body.position.y })),
+      fillColor: body.dynamicObject?.fillColor || [139, 69, 19], // Default brown
+      strokeColor: body.dynamicObject?.strokeColor || [101, 67, 33],
+      strokeWidth: body.dynamicObject?.strokeWidth || 2
+    }
+    
+    // Only include health data if the object has maxHealth defined
+    if (typeof body.dynamicObject?.maxHealth !== 'undefined') {
+      objData.health = body.health || body.dynamicObject.maxHealth
+      objData.maxHealth = body.dynamicObject.maxHealth
+      objData.isDestroyed = body.isDestroyed || false
+    }
+    
+    return objData
+  });
+  
   // Create spectator-optimized state (always include map, even with no players)
   const spectatorState = {
     players: room && room.players.size > 0 ? Array.from(room.players.values()).map(car => ({
@@ -1122,11 +1167,8 @@ function broadcastToSpectators() {
       maxLaps: car.maxLaps,
       color: CAR_TYPES[car.type].color
     })) : [],
-    abilityObjects: gameState.abilityObjects.map(obj => ({
-      x: obj.body.position.x,
-      y: obj.body.position.y,
-      type: obj.type
-    })),
+    abilityObjects: clientAbilityObjects,
+    dynamicObjects: clientDynamicObjects,
     map: MAP_TYPES[currentMapKey], // Always send current map
     timestamp: Date.now()
   };

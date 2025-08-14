@@ -42,6 +42,7 @@ class DashAbility extends Ability {
       type: 'dash',
       force: dashForce,
       position: { x: car.body.position.x, y: car.body.position.y },
+      serverTime: currentTime,
       angle: angle
     };
   }

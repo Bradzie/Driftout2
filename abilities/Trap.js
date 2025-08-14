@@ -75,7 +75,8 @@ class SpikeTrapAbility extends Ability {
       type: 'spike_trap',
       position: position,
       trapId: trapObject.id,
-      duration: this.duration
+      duration: this.duration,
+      serverTime: currentTime
     };
   }
 

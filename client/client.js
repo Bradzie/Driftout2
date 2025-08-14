@@ -114,6 +114,102 @@
   let spectatorState = null;
   let isSpectating = false;
 
+  // Crashed car fade effect tracking
+  let crashedCars = new Map(); // carId -> { car: carData, fadeStartTime: timestamp }
+  let lastKnownPlayers = []; // Track previous players to detect crashes
+  let playerCrashTime = null; // Track when the player themselves crashed
+  const CRASH_FADE_DURATION = 500; // 500ms fade
+  
+  // Detect crashed cars and add them to fade queue
+  function detectCrashedCars(currentPlayers) {
+    const now = Date.now();
+    const currentPlayerIds = new Set(currentPlayers.map(p => p.id));
+    
+    // Check if the player's own car just crashed
+    const myPlayer = currentPlayers.find(p => p.socketId === mySocketId);
+    if (myPlayer && myPlayer.crashed && !playerCrashTime) {
+      playerCrashTime = now;
+      console.log('Player crashed, starting fade timer');
+    }
+    
+    // Find players that were in the last state but not in current state (crashed)
+    for (const previousPlayer of lastKnownPlayers) {
+      if (!currentPlayerIds.has(previousPlayer.id) && !crashedCars.has(previousPlayer.id)) {
+        // Car crashed - add to fade queue
+        crashedCars.set(previousPlayer.id, {
+          car: previousPlayer,
+          fadeStartTime: now
+        });
+      }
+    }
+    
+    // Update last known players
+    lastKnownPlayers = [...currentPlayers];
+    
+    // Clean up expired crashed cars
+    for (const [carId, crashData] of crashedCars.entries()) {
+      if (now - crashData.fadeStartTime > CRASH_FADE_DURATION) {
+        crashedCars.delete(carId);
+      }
+    }
+    
+    // Handle player's own crash fade completion
+    if (playerCrashTime && (now - playerCrashTime) > CRASH_FADE_DURATION) {
+      returnToMenuAfterCrash();
+    }
+  }
+  
+  // Handle returning to menu after player crash fade
+  function returnToMenuAfterCrash() {
+    console.log('Crash fade completed, returning to menu');
+    clearInterval(sendInputInterval);
+    sendInputInterval = null;
+    menu.style.display = 'flex';
+    gameCanvas.style.display = 'none';
+    hud.style.display = 'none';
+    players = [];
+    inputState.cursor.x = 0;
+    inputState.cursor.y = 0;
+    hideUpgradeCards();
+    
+    // Hide all game-specific UI elements
+    abilityHud.classList.add('hidden');
+    lapCounter.classList.add('hidden');
+    lapTimer.classList.add('hidden');
+    
+    // Reset ability state
+    myAbility = null;
+    lastAbilityUse = 0;
+    
+    // Reset lap timer state
+    currentLapStartTime = 0;
+    previousLapCount = 0;
+    bestLapTime = null;
+    bestLapTimeSpan.textContent = '';
+    
+    // Reset the first state flag so next game waits for server data
+    hasReceivedFirstState = false;
+    gameStates = []; // Clear game state buffer
+    
+    // Clear crashed cars tracking
+    crashedCars.clear();
+    lastKnownPlayers = [];
+    playerCrashTime = null;
+    
+    // Hide loading screen when returning to menu
+    loadingScreen.classList.add('hidden');
+    
+    // Restart spectating when back in menu
+    setTimeout(() => startSpectating(), 100); // Small delay to ensure UI is ready
+    
+    // Show crash message
+    messageDiv.textContent = 'You crashed!';
+    messageDiv.classList.remove('hidden');
+    setTimeout(() => {
+      messageDiv.classList.add('hidden');
+    }, 3000);
+  }
+
   // Settings system
   let settings = {
     showFPS: false,
@@ -373,7 +469,7 @@
     // Trim whitespace and limit length
     sanitized = sanitized.trim().substring(0, 20); // Limit to 20 characters
 
-    return sanitized || 'Anon'; // Default to 'Anon' if empty after sanitization
+    return sanitized || 'Unnamed'; // Default to 'Unnamed' if empty after sanitization
   }
 
   joinButton.addEventListener('click', () => {
@@ -425,6 +521,9 @@
   socket.on('state', (data) => {
     // Update last message timestamp for connection monitoring
     lastServerMessage = Date.now();
+    
+    // Detect crashed cars for fade effect
+    detectCrashedCars(data.players || []);
     
     // Buffer the state with timestamp for interpolation
     gameStates.push({
@@ -486,6 +585,9 @@
         }
       }
     });
+    
+    // Detect crashed cars for fade effect
+    detectCrashedCars(newPlayers);
 
     // Add the delta state to buffer
     gameStates.push({
@@ -546,6 +648,8 @@
   });
 
   socket.on('returnToMenu', ({ winner, crashed }) => {
+    // Skip handling crashes here - they're now handled locally with fade
+    if (crashed) return;
     clearInterval(sendInputInterval);
     sendInputInterval = null;
     menu.style.display = 'flex';
@@ -574,6 +678,10 @@
     // Reset the first state flag so next game waits for server data
     hasReceivedFirstState = false;
     gameStates = []; // Clear game state buffer
+    
+    // Clear crashed cars tracking
+    crashedCars.clear();
+    lastKnownPlayers = [];
     
     // Hide loading screen when returning to menu
     loadingScreen.classList.add('hidden');
@@ -665,7 +773,8 @@
   socket.on('abilityResult', (result) => {
     // Handle ability activation feedback
     if (result.success) {
-      lastAbilityUse = Date.now();
+      // Use server timestamp if available, otherwise fall back to client time
+      lastAbilityUse = result.serverTime || Date.now();
       updateAbilityHUD();
     } else {
       // Server rejected ability use, revert client-side prediction if it was for Dash
@@ -1092,17 +1201,24 @@
       centerPlayer: null,
       mapData: spectatorState.map,
       showHUD: false,
-      alpha: 0.7,
+      alpha: 1,
       showCheckpoints: false,
       showAbilityObjects: true
     });
     
     // If no players, show a subtle overlay message
     if (!spectatorState.players || spectatorState.players.length === 0) {
-      spectatorCtx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-      spectatorCtx.font = '18px Arial';
+      spectatorCtx.font = '22px Quicksilver';
       spectatorCtx.textAlign = 'center';
-      spectatorCtx.fillText('Waiting for players to join...', spectatorCanvas.width / 2, spectatorCanvas.height - 50);
+      
+      // Black outline for better readability
+      spectatorCtx.lineWidth = 3;
+      spectatorCtx.strokeStyle = '#000000';
+      spectatorCtx.strokeText('Waiting for players...', spectatorCanvas.width / 2, spectatorCanvas.height - 50);
+      
+      // White fill text
+      spectatorCtx.fillStyle = 'rgba(255, 255, 255, 1)';
+      spectatorCtx.fillText('Waiting for players...', spectatorCanvas.width / 2, spectatorCanvas.height - 50);
     }
   }
 
@@ -1500,14 +1616,42 @@
       });
     }
 
-    // Players
-    players.forEach((p) => {
+    // Combine current players with crashed cars for rendering
+    const allPlayersToRender = [...players];
+    
+    // Add crashed cars with fade effect
+    const now = Date.now();
+    for (const [carId, crashData] of crashedCars.entries()) {
+      const fadeElapsed = now - crashData.fadeStartTime;
+      if (fadeElapsed < CRASH_FADE_DURATION) {
+        // Add crashed car with fade info
+        allPlayersToRender.push({
+          ...crashData.car,
+          _isCrashed: true,
+          _fadeAlpha: 1 - (fadeElapsed / CRASH_FADE_DURATION) // 1.0 to 0.0
+        });
+      }
+    }
+    
+    // Players (including fading crashed cars)
+    allPlayersToRender.forEach((p) => {
       const dx = p.x - focusX;
       const dy = p.y - focusY;
       const screenX = centerX + dx * scale;
       const screenY = centerY - dy * scale;
       
       ctx.save();
+      
+      // Apply fade alpha for crashed cars or player's own crashed car
+      if (p._isCrashed && p._fadeAlpha !== undefined) {
+        ctx.globalAlpha = p._fadeAlpha;
+      } else if (playerCrashTime && p.socketId === mySocketId) {
+        // Apply fade to player's own crashed car
+        const fadeElapsed = Date.now() - playerCrashTime;
+        if (fadeElapsed < CRASH_FADE_DURATION) {
+          ctx.globalAlpha = 1 - (fadeElapsed / CRASH_FADE_DURATION);
+        }
+      }
       
       // Get vertices - either from player object or look up from CAR_TYPES
       let vertices = p.vertices;
@@ -1518,18 +1662,18 @@
       if (vertices && vertices.length) {
         ctx.beginPath();
         
-        // Handle rotation for spectator players
-        const angle = p.angle || 0;
-        const cos = Math.cos(angle);
-        const sin = Math.sin(angle);
-        
         vertices.forEach((v, i) => {
-          // Apply rotation if we have an angle (spectator mode)
+          // In spectator mode, vertices are from CAR_TYPES and need manual rotation
+          // In player mode, vertices are from body.vertices and are already rotated by Matter.js
           let rotatedX, rotatedY;
-          if (p.angle !== undefined) {
+          if (mode === 'spectator' && p.angle !== undefined) {
+            // Apply manual rotation for spectator mode
+            const cos = Math.cos(p.angle);
+            const sin = Math.sin(p.angle);
             rotatedX = v.x * cos - v.y * sin;
             rotatedY = v.x * sin + v.y * cos;
           } else {
+            // Use vertices as-is (already rotated by Matter.js in player mode)
             rotatedX = v.x;
             rotatedY = v.y;
           }
@@ -1557,6 +1701,17 @@
       }
 
       ctx.restore();
+
+      // Apply fade effect to name and health bar too
+      if (p._isCrashed && p._fadeAlpha !== undefined) {
+        ctx.globalAlpha = p._fadeAlpha;
+      } else if (playerCrashTime && p.socketId === mySocketId) {
+        // Apply fade to player's own crashed car name/health
+        const fadeElapsed = Date.now() - playerCrashTime;
+        if (fadeElapsed < CRASH_FADE_DURATION) {
+          ctx.globalAlpha = 1 - (fadeElapsed / CRASH_FADE_DURATION);
+        }
+      }
 
       // Player name with black outline and smooth font
       const fontSize = Math.max(6, 10 * scale);
@@ -1618,6 +1773,9 @@
         ctx.roundRect(barX, barY, barWidth, barHeight, cornerRadius);
         ctx.stroke();
       }
+      
+      // Reset global alpha for next player
+      ctx.globalAlpha = 1.0;
     });
 
     // Update HUD elements (only in player mode)

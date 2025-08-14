@@ -17,7 +17,11 @@ module.exports = {
         vertices: [
           { x: -600, y: -600 },
           { x:  600, y: -600 },
-          { x:  600, y:  600 },
+          { x:  600, y:  100 },
+          { x:  800, y:  100 },
+          { x:  800, y:  800 },
+          { x:  200, y:  800 },
+          { x:  -400, y:  750 },
           { x: -600, y:  600 }
         ],
         fillColor: [100, 100, 100],
@@ -47,25 +51,25 @@ module.exports = {
         borderWidth: 20
       },
       {
-        vertices: circleToPolygon(25, 10, { x: 500, y: 500 }),
+        vertices: circleToPolygon(200, 10, { x: 400, y: 400 }),
         borderColors: ['#ff4d4d', '#ffffff'],
-        borderWidth: 5
+        borderWidth: 20
       },
     ],
     dynamicObjects: [
       {
         id: 'brownBox1',
         position: { x: 0, y: 500 },
-        size: { width: 60, height: 60 },
+        size: { width: 25, height: 25 },
         shape: 'rectangle',
         isStatic: false,
-        density: 0.01, // Low density so it moves easily
+        density: 0.001, // Low density so it moves easily
         friction: 0.3,
-        restitution: 0.4,
+        restitution: 0.1,
         //maxHealth: 100, // Health points before destruction
         fillColor: [139, 69, 19], // Brown color
         strokeColor: [101, 67, 33], // Darker brown
-        strokeWidth: 2
+        strokeWidth: 4
       }
     ],
     checkpoints: [
@@ -81,7 +85,7 @@ module.exports = {
       },
       {
         type: 'line',
-        vertices: [{ x: 0, y: 400 }, { x: 0, y: 600 }],
+        vertices: [{ x: 0, y: 400 }, { x: 0, y: 760 }],
         id: 'checkpoint-3'
       },
     ]

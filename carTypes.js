@@ -1,43 +1,43 @@
 const CAR_TYPES = {
-  Racer: {
-    displayName: 'Racer',
+  Slipstream: {
+    displayName: 'Slipstream',
     displaySpeed: 75,
-    displayHealth: 30,
-    displayHandling: 50,
-    maxHealth: 10,
+    displayHealth: 25,
+    displayHandling: 40,
+    maxHealth: 8,
     acceleration: 0.015,
-    regen: 0.1,
+    regen: 0.05,
     color: { fill: [47, 152, 206], stroke: [28, 89, 121], strokeWidth: 4 },
     shape: {
       vertices: [
         { x: 15, y: 0 },
-        { x: -10, y: 10 },
-        { x: -10, y: -10 }
+        { x: -15, y: 9 },
+        { x: -15, y: -9 }
       ],
     },
     bodyOptions: {
       friction: 0.3,
       restitution: 0.3,
-      frictionAir: 0.005,
+      frictionAir: 0.004,
       density: 0.3
     },
     upgrades: {
       maxHealth: {
         name: 'Health',
-        amount: 1,
+        amount: 2.25,
         maxUpgrades: 5,
         color: '#ef4444' // red
       },
       acceleration: {
         name: 'Speed',
-        amount: 8,
-        maxUpgrades: 3,
+        amount: 0.003,
+        maxUpgrades: 5,
         color: '#3b82f6' // blue
       },
       regen: {
         name: 'Regen',
-        amount: 0.15,
-        maxUpgrades: 4,
+        amount: 0.05,
+        maxUpgrades: 5,
         color: '#10b981' // green
       }
     }
