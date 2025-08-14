@@ -18,9 +18,81 @@ app.get('/api/carTypes', (req, res) => {
   res.json(CAR_TYPES);
 });
 
+// send available maps to client
+app.get('/api/maps', (req, res) => {
+  const mapList = Object.keys(MAP_TYPES).map(key => ({
+    key: key,
+    name: MAP_TYPES[key].name || key,
+    description: MAP_TYPES[key].description || ''
+  }));
+  res.json(mapList);
+});
+
 // send debug mode status to client
 app.get('/api/debug', (req, res) => {
   res.json({ debugMode: DEBUG_MODE });
+});
+
+// Room management API
+app.get('/api/rooms', (req, res) => {
+  const roomList = rooms.map(room => ({
+    id: room.id,
+    name: room.name,
+    currentMap: room.currentMapKey,
+    activePlayerCount: room.activePlayerCount,
+    spectatorCount: room.spectatorCount,
+    totalOccupancy: room.totalOccupancy,
+    maxPlayers: room.maxPlayers,
+    isPrivate: room.isPrivate,
+    isJoinable: room.isJoinable,
+    // Legacy field for backward compatibility
+    playerCount: room.activePlayerCount
+  }));
+  res.json(roomList);
+});
+
+app.post('/api/rooms/create', express.json(), (req, res) => {
+  try {
+    const { name, mapKey, maxPlayers, isPrivate } = req.body;
+    
+    // Validation
+    if (name && name.length > 50) {
+      return res.status(400).json({ error: 'Room name too long' });
+    }
+    if (mapKey && !MAP_TYPES[mapKey]) {
+      return res.status(400).json({ error: 'Invalid map' });
+    }
+    if (maxPlayers && (maxPlayers < 1 || maxPlayers > 16)) {
+      return res.status(400).json({ error: 'Invalid max players (1-16)' });
+    }
+    
+    // Create room
+    const roomId = uuidv4();
+    const room = new Room(roomId, mapKey || null);
+    
+    if (name) room.name = name;
+    if (maxPlayers) room.maxPlayers = maxPlayers;
+    if (typeof isPrivate === 'boolean') room.isPrivate = isPrivate;
+    
+    rooms.push(room);
+    
+    res.json({
+      id: room.id,
+      name: room.name,
+      currentMap: room.currentMapKey,
+      activePlayerCount: room.activePlayerCount,
+      spectatorCount: room.spectatorCount,
+      totalOccupancy: room.totalOccupancy,
+      maxPlayers: room.maxPlayers,
+      isPrivate: room.isPrivate,
+      isJoinable: room.isJoinable,
+      // Legacy field for backward compatibility
+      playerCount: room.activePlayerCount
+    });
+  } catch (error) {
+    console.error('Error creating room:', error);
+    res.status(500).json({ error: 'Failed to create room' });
+  }
 });
 
 const PORT = process.env.PORT || 3000;
@@ -35,8 +107,7 @@ const MAP_TYPES = require('./mapTypes');
 const mapKeys = Object.keys(MAP_TYPES);
 let currentMapIndex = 0;
 let currentMapKey = mapKeys[currentMapIndex];
-let currentTrackBodies = [];
-let currentDynamicBodies = []; // Track dynamic map objects
+// Legacy global track bodies removed - now handled per room
 
 function pointInPolygon(x, y, vertices) {
   let inside = false;
@@ -58,82 +129,15 @@ function pointInPolygon(x, y, vertices) {
 }
 const CAR_TYPES = require('./carTypes');
 
-const engine = Matter.Engine.create();
-engine.gravity.x = 0;
-engine.gravity.y = 0;
-const world = engine.world;
+// Global physics engine removed - now each room has its own
+// const engine = Matter.Engine.create();
+// engine.gravity.x = 0;
+// engine.gravity.y = 0;
+// const world = engine.world;
 
-Matter.Events.on(engine, 'collisionStart', (event) => {
-  for (const pair of event.pairs) {
-    const { bodyA, bodyB } = pair
+// Legacy global world reference removed - using room-specific worlds
 
-    const isCarA = bodyA.label?.startsWith?.('car-')
-    const isCarB = bodyB.label?.startsWith?.('car-')
-    const isSpikeA = bodyA.label === 'spike-trap'
-    const isSpikeB = bodyB.label === 'spike-trap'
-
-    const carA = isCarA ? [...rooms[0].players.values()].find(c => c.body === bodyA) : null
-    const carB = isCarB ? [...rooms[0].players.values()].find(c => c.body === bodyB) : null
-
-    // Handle spike trap collisions (ignore owner completely)
-    if (isSpikeA && carB) {
-      const trap = gameState.abilityObjects.find(obj => obj.body === bodyA)
-      if (trap) {
-        if (trap.createdBy !== carB.id) {
-          SpikeTrapAbility.handleCollision(trap, carB)
-        }
-      }
-    }
-    if (isSpikeB && carA) {
-      const trap = gameState.abilityObjects.find(obj => obj.body === bodyB)
-      if (trap) {
-        if (trap.createdBy !== carA.id) {
-          SpikeTrapAbility.handleCollision(trap, carA)
-        }
-      }
-    }
-
-    // Handle collisions (only if not ghost and not spike traps)
-    if (!isSpikeA && !isSpikeB) {
-      const impulse = pair.collision.depth * 100 // crude impulse estimation
-      
-      // Calculate relative velocity for more accurate damage
-      const relativeVelocityX = bodyA.velocity.x - bodyB.velocity.x
-      const relativeVelocityY = bodyA.velocity.y - bodyB.velocity.y
-      const relativeSpeed = Math.sqrt(relativeVelocityX * relativeVelocityX + relativeVelocityY * relativeVelocityY)
-      
-      // Apply mutual collision damage with overflow mechanics
-      if (carA && carB && !carA.isGhost && !carB.isGhost) {
-        applyMutualCollisionDamage(carA, carB, impulse, relativeSpeed)
-      } else {
-        // Handle single car collisions (with walls, etc.) using original system
-        if (carA && !carA.isGhost) {
-          // Check if bodyB is a dynamic object with damageScale
-          const damageScale = (bodyB.dynamicObject && typeof bodyB.dynamicObject.damageScale === 'number') 
-            ? bodyB.dynamicObject.damageScale : 1.0;
-          carA.applyCollisionDamage(bodyB, impulse, relativeSpeed, damageScale);
-        }
-        if (carB && !carB.isGhost) {
-          // Check if bodyA is a dynamic object with damageScale
-          const damageScale = (bodyA.dynamicObject && typeof bodyA.dynamicObject.damageScale === 'number') 
-            ? bodyA.dynamicObject.damageScale : 1.0;
-          carB.applyCollisionDamage(bodyA, impulse, relativeSpeed, damageScale);
-        }
-      }
-      
-      // Handle dynamic object damage (can be damaged by cars)
-      const isDynamicA = bodyA.label && bodyA.label.startsWith('dynamic-')
-      const isDynamicB = bodyB.label && bodyB.label.startsWith('dynamic-')
-      
-      if (isDynamicA && carB) {
-        applyDynamicObjectDamage(bodyA, bodyB, impulse, relativeSpeed)
-      }
-      if (isDynamicB && carA) {
-        applyDynamicObjectDamage(bodyB, bodyA, impulse, relativeSpeed)
-      }
-    }
-  }
-})
+// Global collision detection removed - now handled per room
 
 // Smart collision damage system with overflow mechanics and collision kill rewards
 function applyMutualCollisionDamage(carA, carB, impulse, relativeSpeed) {
@@ -297,104 +301,16 @@ function applyDynamicObjectDamage(dynamicBody, otherBody, impulse, relativeSpeed
   }
 }
 
-function setTrackBodies(mapKey) {
-  // Remove old static bodies
-  for (const body of currentTrackBodies) {
-    Matter.World.remove(world, body)
-  }
-  currentTrackBodies = []
-
-  // Remove old dynamic bodies  
-  for (const body of currentDynamicBodies) {
-    Matter.World.remove(world, body)
-  }
-  currentDynamicBodies = []
-
-  const map = MAP_TYPES[mapKey]
-  const thickness = 10
-  if (!map) return
-
-  // Create static track walls from shapes
-  if (map.shapes) {
-    for (const shape of map.shapes) {
-      if (shape.hollow) continue
-      if (!Array.isArray(shape.vertices)) continue
-
-      const verts = shape.vertices
-      for (let i = 0; i < verts.length; i++) {
-        const a = verts[i]
-        const b = verts[(i + 1) % verts.length]
-        const dx = b.x - a.x
-        const dy = b.y - a.y
-        const length = Math.sqrt(dx * dx + dy * dy)
-        const angle = Math.atan2(dy, dx)
-        const cx = (a.x + b.x) / 2
-        const cy = (a.y + b.y) / 2
-
-        const bodyOptions = {
-          ...HELPERS.getBodyOptionsFromShape(shape),
-          angle
-        }
-        const wall = Matter.Bodies.rectangle(cx, cy, length + thickness, thickness, bodyOptions)
-
-        currentTrackBodies.push(wall)
-      }
-    }
-  }
-
-  // Create dynamic objects
-  if (map.dynamicObjects) {
-    for (const dynObj of map.dynamicObjects) {
-      if (!dynObj.position || !dynObj.size) continue
-      
-      const bodyOptions = {
-        ...HELPERS.getBodyOptionsFromShape(dynObj),
-        label: `dynamic-${dynObj.id || 'object'}`
-      }
-      
-      let body
-      if (dynObj.shape === 'circle') {
-        body = Matter.Bodies.circle(dynObj.position.x, dynObj.position.y, dynObj.size.radius, bodyOptions)
-      } else {
-        // Default to rectangle
-        body = Matter.Bodies.rectangle(
-          dynObj.position.x, 
-          dynObj.position.y, 
-          dynObj.size.width, 
-          dynObj.size.height, 
-          bodyOptions
-        )
-      }
-      
-      // Apply frictionAir if specified
-      if (typeof dynObj.frictionAir === 'number') {
-        body.frictionAir = dynObj.frictionAir;
-      }
-      
-      // Store additional properties for rendering
-      body.dynamicObject = dynObj
-      currentDynamicBodies.push(body)
-    }
-  }
-
-  // Add all bodies to the world
-  if (currentTrackBodies.length > 0) {
-    Matter.World.add(world, currentTrackBodies)
-  }
-  if (currentDynamicBodies.length > 0) {
-    Matter.World.add(world, currentDynamicBodies)
-  }
-}
-
-setTrackBodies(currentMapKey);
+// Legacy setTrackBodies function removed - now handled per room in Room constructor
 
 class Car {
-  constructor(id, type, roomId, socketId, name) {
+  constructor(id, type, roomId, socketId, name, room = null) {
     this.id = id;
     this.roomId = roomId;
     this.socketId = socketId;
     this.name = name || '';
     this.type = type;
+    this.room = room; // Reference to the room for accessing world and gameState
     this.stats = {
       maxHealth: CAR_TYPES[type].maxHealth,
       acceleration: CAR_TYPES[type].acceleration,
@@ -408,6 +324,8 @@ class Car {
     this.prevFinishCheck = null; // used for lap crossing on square track
     this.cursor = { x: 0, y: 0 }; // direction and intensity from client
     this.justCrashed = false;
+    this.godMode = true; // Spawn protection
+    this.spawnProtectionEnd = Date.now() + 1000; // 1 second of spawn protection
     
     // Boost system
     this.maxBoost = CAR_TYPES[type].boost;
@@ -419,7 +337,8 @@ class Car {
     this.ability = carDef.ability ? abilityRegistry.create(carDef.ability) : null;
     this.isGhost = false;
     this.trapDamageHistory = new Map();
-    const mapDef = MAP_TYPES[currentMapKey];
+    const roomMapKey = this.room ? this.room.currentMapKey : currentMapKey;
+    const mapDef = MAP_TYPES[roomMapKey];
     let startPos = { x: 0, y: 0 };
     this.checkpointsVisited = new Set()
     this._cpLastSides = new Map()
@@ -451,13 +370,26 @@ class Car {
     this.displaySize = 15 // used for rendering hud around car (health bars, etc.)
   }
     Matter.Body.setAngle(this.body, 0);
-    Matter.World.add(world, this.body);
+    if (this.room && this.room.world) {
+      Matter.World.add(this.room.world, this.body);
+    } else {
+      console.error(`Car ${this.id} created without proper room reference - this should not happen!`);
+      throw new Error('Car must be created with valid room reference');
+    }
     this.lastUpdate = Date.now();
   }
   update(dt) {
+    // Check spawn protection
+    if (this.spawnProtectionEnd && Date.now() > this.spawnProtectionEnd) {
+      this.godMode = false;
+      this.spawnProtectionEnd = null;
+    }
+    
     // Update ability effects first
     if (this.ability) {
-      this.ability.update(this, world, gameState, dt);
+      const roomWorld = this.room.world;
+      const roomGameState = this.room.gameState;
+      this.ability.update(this, roomWorld, roomGameState, dt);
     }
     
     const CURSOR_MAX = 100
@@ -513,7 +445,8 @@ class Car {
     );
 
     const pos = this.body.position
-    const checkpoints = MAP_TYPES[currentMapKey]?.checkpoints || []
+    const roomMapKey = this.room ? this.room.currentMapKey : currentMapKey;
+    const checkpoints = MAP_TYPES[roomMapKey]?.checkpoints || []
 
     for (let i = 0; i < checkpoints.length; i++) {
       if (checkpoints[i].id == null)
@@ -553,7 +486,7 @@ class Car {
       this._cpLastSides.set(cp.id, side)
     }
     let insideStart = false
-    const mapDef = MAP_TYPES[currentMapKey]
+    const mapDef = MAP_TYPES[roomMapKey]
     if (mapDef?.start?.vertices?.length) {
       insideStart = pointInPolygon(this.body.position.x, this.body.position.y, mapDef.start.vertices)
     }
@@ -593,7 +526,8 @@ class Car {
     }
   }
   resetCar() {
-    const map = MAP_TYPES[currentMapKey];
+    const roomMapKey = this.room ? this.room.currentMapKey : currentMapKey;
+    const map = MAP_TYPES[roomMapKey];
     let startPos = { x: 0, y: 0 }
     if (map.start?.vertices?.length) {
       const verts = map.start.vertices
@@ -615,6 +549,8 @@ class Car {
     this.justCrashed = false;
     this.crashedByPlayer = false;
     this.killFeedSent = false;
+    this.godMode = true; // Respawn protection
+    this.spawnProtectionEnd = Date.now() + 1000; // 1 second of spawn protection
     Matter.Body.setPosition(this.body, { x: startPos.x, y: startPos.y });
     Matter.Body.setVelocity(this.body, { x: 0, y: 0 });
     Matter.Body.setAngularVelocity(this.body, 0);
@@ -661,26 +597,485 @@ class Car {
       return { success: false, reason: 'no_ability' };
     }
     
-    return this.ability.activate(this, world, gameState);
+    const roomWorld = this.room ? this.room.world : world;
+    const roomGameState = this.room ? this.room.gameState : (gameState || this.room?.gameState);
+    return this.ability.activate(this, roomWorld, roomGameState);
   }
 }
 
 class Room {
-  constructor(id) {
+  constructor(id, mapKey = null) {
     this.id = id;
-    this.players = new Map(); // socket.id -> Car
+    this.name = `Room ${id.substring(0, 8)}`; // Default name using first 8 chars of UUID
+    this.players = new Map(); // socket.id -> Car (active players)
+    this.spectators = new Map(); // socket.id -> socket (spectators)
+    this.allMembers = new Map(); // socket.id -> {socket, state, joinedAt} (all connected users)
     this.sockets = new Map();
+    this.maxPlayers = 8;
+    this.isPrivate = false;
+    
+    // Room-specific physics engine
+    this.engine = Matter.Engine.create();
+    this.engine.gravity.x = 0;
+    this.engine.gravity.y = 0;
+    this.world = this.engine.world;
+    
+    // Room-specific game state
+    this.gameState = {
+      abilityObjects: [], // Spike traps, etc.
+      activeEffects: []   // Ghost modes, shields, etc.
+    };
+    
+    // Room-specific map
+    const mapKeys = Object.keys(MAP_TYPES);
+    this.currentMapIndex = 0;
+    this.currentMapKey = mapKey || mapKeys[this.currentMapIndex];
+    this.currentTrackBodies = [];
+    this.currentDynamicBodies = [];
+    
+    // Set up collision detection for this room's physics world
+    this.setupCollisionDetection();
+    
+    // Set up the track bodies for this room
+    this.setTrackBodies(this.currentMapKey);
   }
+  
+  // User state constants
+  static USER_STATES = {
+    SPECTATING: 'spectating',
+    PLAYING: 'playing',
+    LOBBY: 'lobby'
+  }
+  
+  // Computed properties for occupancy tracking
+  get activePlayerCount() {
+    return this.players.size;
+  }
+  
+  get spectatorCount() {
+    return this.spectators.size;
+  }
+  
+  get totalOccupancy() {
+    return this.allMembers.size;
+  }
+  
+  get availableSlots() {
+    return this.maxPlayers - this.totalOccupancy;
+  }
+  
+  get isJoinable() {
+    return !this.isPrivate && this.availableSlots > 0;
+  }
+  
+  get isEmpty() {
+    return this.totalOccupancy === 0;
+  }
+  
+  setupCollisionDetection() {
+    Matter.Events.on(this.engine, 'collisionStart', (event) => {
+      for (const pair of event.pairs) {
+        const { bodyA, bodyB } = pair
+    
+        const isCarA = bodyA.label?.startsWith?.('car-')
+        const isCarB = bodyB.label?.startsWith?.('car-')
+        const isSpikeA = bodyA.label === 'spike-trap'
+        const isSpikeB = bodyB.label === 'spike-trap'
+    
+        const carA = isCarA ? [...this.players.values()].find(c => c.body === bodyA) : null
+        const carB = isCarB ? [...this.players.values()].find(c => c.body === bodyB) : null
+    
+        // Handle spike trap collisions (ignore owner completely)
+        if (isSpikeA && carB) {
+          const trap = this.gameState.abilityObjects.find(obj => obj.body === bodyA)
+          if (trap) {
+            if (trap.createdBy !== carB.id) {
+              SpikeTrapAbility.handleCollision(trap, carB)
+            }
+          }
+        }
+        if (isSpikeB && carA) {
+          const trap = this.gameState.abilityObjects.find(obj => obj.body === bodyB)
+          if (trap) {
+            if (trap.createdBy !== carA.id) {
+              SpikeTrapAbility.handleCollision(trap, carA)
+            }
+          }
+        }
+    
+        // Handle collisions (only if not ghost and not spike traps)
+        if (!isSpikeA && !isSpikeB) {
+          const impulse = pair.collision.depth * 100 // crude impulse estimation
+          
+          // Calculate relative velocity for more accurate damage
+          const relativeVelocityX = bodyA.velocity.x - bodyB.velocity.x
+          const relativeVelocityY = bodyA.velocity.y - bodyB.velocity.y
+          const relativeSpeed = Math.sqrt(relativeVelocityX * relativeVelocityX + relativeVelocityY * relativeVelocityY)
+          
+          // Apply mutual collision damage with overflow mechanics
+          if (carA && carB && !carA.isGhost && !carB.isGhost) {
+            this.applyMutualCollisionDamage(carA, carB, impulse, relativeSpeed)
+          } else {
+            // Handle single car collisions (with walls, etc.) using original system
+            if (carA && !carA.isGhost) {
+              // Check if bodyB is a dynamic object with damageScale
+              const damageScale = (bodyB.dynamicObject && typeof bodyB.dynamicObject.damageScale === 'number') 
+                ? bodyB.dynamicObject.damageScale : 1.0;
+              carA.applyCollisionDamage(bodyB, impulse, relativeSpeed, damageScale);
+            }
+            if (carB && !carB.isGhost) {
+              // Check if bodyA is a dynamic object with damageScale
+              const damageScale = (bodyA.dynamicObject && typeof bodyA.dynamicObject.damageScale === 'number') 
+                ? bodyA.dynamicObject.damageScale : 1.0;
+              carB.applyCollisionDamage(bodyA, impulse, relativeSpeed, damageScale);
+            }
+          }
+          
+          // Handle dynamic object damage (can be damaged by cars)
+          const isDynamicA = bodyA.label && bodyA.label.startsWith('dynamic-')
+          const isDynamicB = bodyB.label && bodyB.label.startsWith('dynamic-')
+          
+          if (isDynamicA && carB) {
+            this.applyDynamicObjectDamage(bodyA, bodyB, impulse, relativeSpeed)
+          }
+          if (isDynamicB && carA) {
+            this.applyDynamicObjectDamage(bodyB, bodyA, impulse, relativeSpeed)
+          }
+        }
+      }
+    });
+  }
+  
+  // Move collision damage methods from global scope to Room scope
+  applyMutualCollisionDamage(carA, carB, impulse, relativeSpeed) {
+    if (!carA || !carB || carA.godMode || carB.godMode || carA.isGhost || carB.isGhost) return;
+    
+    // Store initial health states
+    const carAInitialHealth = carA.currentHealth;
+    const carBInitialHealth = carB.currentHealth;
+    
+    // Calculate potential damage for both cars using existing physics formulas
+    const damageA = this.calculateCollisionDamage(carA, carB.body, impulse, relativeSpeed);
+    const damageB = this.calculateCollisionDamage(carB, carA.body, impulse, relativeSpeed);
+    
+    // Determine which car has less remaining health
+    const carAHealthRemaining = carA.currentHealth;
+    const carBHealthRemaining = carB.currentHealth;
+    
+    // Apply overflow damage logic
+    let finalDamageA = damageA;
+    let finalDamageB = damageB;
+    
+    // If damageB would exceed carB's remaining health, cap damageA to overflow amount
+    if (damageB > carBHealthRemaining) {
+      const overflow = damageB - carBHealthRemaining;
+      finalDamageA = Math.min(finalDamageA, overflow);
+    }
+    
+    // If damageA would exceed carA's remaining health, cap damageB to overflow amount
+    if (damageA > carAHealthRemaining) {
+      const overflow = damageA - carAHealthRemaining;
+      finalDamageB = Math.min(finalDamageB, overflow);
+    }
+    
+    // Apply the calculated damage
+    carA.currentHealth -= finalDamageA;
+    carB.currentHealth -= finalDamageB;
+    
+    // Check for crashes and award upgrade points for collision kills
+    const carACrashed = carA.currentHealth <= 0;
+    const carBCrashed = carB.currentHealth <= 0;
+    
+    if (carACrashed) {
+      carA.justCrashed = true;
+      carA.crashedByPlayer = true; // Mark as player collision crash
+    }
+    if (carBCrashed) {
+      carB.justCrashed = true;
+      carB.crashedByPlayer = true; // Mark as player collision crash
+    }
+    
+    // Award upgrade points for successful collision kills and broadcast crash events
+    if (carACrashed && !carBCrashed) {
+      // carB killed carA - reward carB
+      carB.upgradePoints += 1;
+      
+      // Broadcast kill feed message to this room
+      this.broadcastKillFeedMessage(`${carB.name} crashed ${carA.name}!`, 'crash');
+    } else if (carBCrashed && !carACrashed) {
+      // carA killed carB - reward carA  
+      carA.upgradePoints += 1;
+      
+      // Broadcast kill feed message to this room
+      this.broadcastKillFeedMessage(`${carA.name} crashed ${carB.name}!`, 'crash');
+    } else if (carACrashed && carBCrashed) {
+      // Both crashed - mutual destruction
+      this.broadcastKillFeedMessage(`${carA.name} and ${carB.name} crashed!`, 'crash');
+    }
+  }
+  
+  calculateCollisionDamage(car, otherBody, impulse, relativeVelocity, damageScale = 1.0) {
+    // Don't take damage if other body is static (walls, barriers)
+    if (otherBody.isStatic) {
+      const WALL_DAMAGE_SCALE = 0.02
+      return impulse * WALL_DAMAGE_SCALE * damageScale
+    } else {
+      // Physics-based damage calculation using density ratios
+      const otherDensity = otherBody.density || 0.001
+      const thisDensity = car.body.density || 0.3
+      
+      // Calculate density ratio (heavier objects deal more damage to lighter ones)
+      const densityRatio = otherDensity / thisDensity
+      
+      // Add velocity factor for more realistic collision damage
+      const velocityFactor = Math.sqrt(Math.abs(relativeVelocity)) / 10 || 1
+      
+      // Cap the damage multiplier to prevent one-hit kills
+      const MAX_DAMAGE_MULTIPLIER = 3.0
+      const MIN_DAMAGE_MULTIPLIER = 0.5
+      const damageMultiplier = Math.max(MIN_DAMAGE_MULTIPLIER, Math.min(MAX_DAMAGE_MULTIPLIER, densityRatio * velocityFactor))
+      
+      const BASE_DAMAGE_SCALE = 0.05 // Increased for more intense collisions
+      return impulse * damageMultiplier * BASE_DAMAGE_SCALE * damageScale
+    }
+  }
+  
+  applyDynamicObjectDamage(dynamicBody, carBody, impulse, relativeSpeed) {
+    // Implementation for dynamic object damage
+    if (dynamicBody.dynamicObject && dynamicBody.dynamicObject.health !== undefined) {
+      const damage = impulse * 0.1; // Adjust damage scale as needed
+      dynamicBody.dynamicObject.health -= damage;
+      
+      if (dynamicBody.dynamicObject.health <= 0) {
+        // Remove the dynamic object
+        Matter.World.remove(this.world, dynamicBody);
+        const index = this.currentDynamicBodies.indexOf(dynamicBody);
+        if (index > -1) {
+          this.currentDynamicBodies.splice(index, 1);
+        }
+      }
+    }
+  }
+  
+  broadcastKillFeedMessage(text, type) {
+    for (const [socketId, car] of this.players.entries()) {
+      const socket = io.sockets.sockets.get(socketId);
+      if (socket) {
+        socket.emit('killFeedMessage', { text, type });
+      }
+    }
+  }
+  
+  setTrackBodies(mapKey) {
+    // Remove old static bodies
+    for (const body of this.currentTrackBodies) {
+      Matter.World.remove(this.world, body)
+    }
+    this.currentTrackBodies = []
+
+    // Remove old dynamic bodies  
+    for (const body of this.currentDynamicBodies) {
+      Matter.World.remove(this.world, body)
+    }
+    this.currentDynamicBodies = []
+
+    const map = MAP_TYPES[mapKey]
+    const thickness = 10
+    if (!map) return
+
+    // Create static track walls from shapes
+    if (map.shapes) {
+      for (const shape of map.shapes) {
+        if (shape.hollow) continue
+        if (!Array.isArray(shape.vertices)) continue
+
+        const verts = shape.vertices
+        if (verts.length < 3) continue
+
+        // Create individual wall segments between vertices (like legacy system)
+        for (let i = 0; i < verts.length; i++) {
+          const a = verts[i]
+          const b = verts[(i + 1) % verts.length]
+          const dx = b.x - a.x
+          const dy = b.y - a.y
+          const length = Math.sqrt(dx * dx + dy * dy)
+          const angle = Math.atan2(dy, dx)
+          const cx = (a.x + b.x) / 2
+          const cy = (a.y + b.y) / 2
+
+          const bodyOptions = {
+            ...HELPERS.getBodyOptionsFromShape(shape),
+            angle
+          }
+          const wall = Matter.Bodies.rectangle(cx, cy, length + thickness, thickness, bodyOptions)
+          this.currentTrackBodies.push(wall)
+        }
+      }
+    }
+
+    // Create dynamic objects
+    if (map.dynamicObjects) {
+      for (const dynObj of map.dynamicObjects) {
+        if (!dynObj.position || typeof dynObj.position.x !== 'number' || typeof dynObj.position.y !== 'number') {
+          continue
+        }
+
+        const bodyOptions = {
+          ...HELPERS.getBodyOptionsFromShape(dynObj),
+          label: `dynamic-${dynObj.id || 'object'}`
+        }
+        
+        let body
+        if (dynObj.shape === 'circle') {
+          body = Matter.Bodies.circle(dynObj.position.x, dynObj.position.y, dynObj.size.radius, bodyOptions)
+        } else {
+          // Default to rectangle
+          body = Matter.Bodies.rectangle(
+            dynObj.position.x, 
+            dynObj.position.y, 
+            dynObj.size.width, 
+            dynObj.size.height, 
+            bodyOptions
+          )
+        }
+        
+        // Apply frictionAir if specified
+        if (typeof dynObj.frictionAir === 'number') {
+          body.frictionAir = dynObj.frictionAir;
+        }
+        
+        // Store additional properties for rendering
+        body.dynamicObject = dynObj
+        this.currentDynamicBodies.push(body)
+      }
+    }
+
+    // Add all bodies to the world
+    if (this.currentTrackBodies.length > 0) {
+      Matter.World.add(this.world, this.currentTrackBodies)
+    }
+    if (this.currentDynamicBodies.length > 0) {
+      Matter.World.add(this.world, this.currentDynamicBodies)
+    }
+  }
+  
+  // User membership management
+  addMember(socket, state = Room.USER_STATES.SPECTATING) {
+    if (this.availableSlots <= 0) {
+      throw new Error('Room is full');
+    }
+    
+    this.allMembers.set(socket.id, {
+      socket: socket,
+      state: state,
+      joinedAt: Date.now()
+    });
+    
+    if (state === Room.USER_STATES.SPECTATING) {
+      this.spectators.set(socket.id, socket);
+    }
+    
+    console.log(`User ${socket.id} joined room ${this.name} as ${state}. Occupancy: ${this.totalOccupancy}/${this.maxPlayers}`);
+  }
+  
+  removeMember(socketId) {
+    const member = this.allMembers.get(socketId);
+    if (!member) return false;
+    
+    // Remove from specific state collections
+    this.spectators.delete(socketId);
+    if (this.players.has(socketId)) {
+      const car = this.players.get(socketId);
+      if (car) {
+        Matter.World.remove(this.world, car.body);
+      }
+      this.players.delete(socketId);
+    }
+    
+    // Remove from main collection
+    this.allMembers.delete(socketId);
+    
+    console.log(`User ${socketId} left room ${this.name}. Occupancy: ${this.totalOccupancy}/${this.maxPlayers}`);
+    return true;
+  }
+  
+  // Transition user from spectator to player
+  promoteToPlayer(socket, carType, name) {
+    const member = this.allMembers.get(socket.id);
+    if (!member) {
+      throw new Error('User not in room');
+    }
+    
+    if (member.state === Room.USER_STATES.PLAYING) {
+      throw new Error('User already playing');
+    }
+    
+    // Remove from spectators
+    this.spectators.delete(socket.id);
+    
+    // Add as player
+    const carId = uuidv4();
+    const car = new Car(carId, carType, this.id, socket.id, name, this);
+    this.players.set(socket.id, car);
+    
+    // Update member state
+    member.state = Room.USER_STATES.PLAYING;
+    
+    console.log(`User ${socket.id} promoted to player in room ${this.name}. Players: ${this.activePlayerCount}, Total: ${this.totalOccupancy}`);
+    return car;
+  }
+  
+  // Transition user from player back to spectator
+  demoteToSpectator(socketId) {
+    const member = this.allMembers.get(socketId);
+    if (!member) return false;
+    
+    if (member.state !== Room.USER_STATES.PLAYING) return false;
+    
+    // Remove from players
+    if (this.players.has(socketId)) {
+      const car = this.players.get(socketId);
+      if (car) {
+        Matter.World.remove(this.world, car.body);
+      }
+      this.players.delete(socketId);
+    }
+    
+    // Add back to spectators
+    this.spectators.set(socketId, member.socket);
+    
+    // Update member state
+    member.state = Room.USER_STATES.SPECTATING;
+    
+    console.log(`User ${socketId} demoted to spectator in room ${this.name}. Players: ${this.activePlayerCount}, Total: ${this.totalOccupancy}`);
+    return true;
+  }
+  
+  getMemberState(socketId) {
+    const member = this.allMembers.get(socketId);
+    return member ? member.state : null;
+  }
+  
+  hasMember(socketId) {
+    return this.allMembers.has(socketId);
+  }
+  
+  // Allow spectators to rejoin the game
+  canRejoinAsPlayer(socketId) {
+    const member = this.allMembers.get(socketId);
+    return member && member.state === Room.USER_STATES.SPECTATING;
+  }
+  
   addPlayer(socket, carType, name) {
     const carId = uuidv4();
-    const car = new Car(carId, carType, this.id, socket.id, name);
+    const car = new Car(carId, carType, this.id, socket.id, name, this);
     this.players.set(socket.id, car);
     return car;
   }
   removePlayer(socket) {
     const car = this.players.get(socket.id);
     if (car) {
-      Matter.World.remove(world, car.body);
+      Matter.World.remove(this.world, car.body);
       this.players.delete(socket.id);
     }
   }
@@ -726,16 +1121,26 @@ class Room {
   }
 }
 
-const rooms = [new Room(uuidv4())];
+// Initialize with a default room
+const rooms = [];
+
+// Create initial room
+function initializeRooms() {
+  if (rooms.length === 0) {
+    console.log('Creating initial default room');
+    const defaultRoom = new Room(uuidv4());
+    defaultRoom.name = 'Main Room';
+    rooms.push(defaultRoom);
+  }
+}
+
+// Initialize rooms on startup
+initializeRooms();
+
+// Legacy global references removed - using room-specific worlds
 
 // Spectator management
 const spectators = new Map(); // socket.id -> socket
-
-// Global game state for ability system
-const gameState = {
-  abilityObjects: [], // Spike traps, etc.
-  activeEffects: []   // Ghost modes, shields, etc.
-};
 
 // Delta compression - track last sent state per client
 const clientLastStates = new Map();
@@ -802,37 +1207,159 @@ function createDeltaState(socketId, currentState) {
 }
 
 function assignRoom() {
-  for (const room of rooms) {
-    if (room.players.size < 8) return room;
+  // Ensure we have at least one room
+  if (rooms.length === 0) {
+    initializeRooms();
   }
+  
+  // Try to find an existing room with space (using new occupancy logic)
+  for (const room of rooms) {
+    if (room.isJoinable) return room;
+  }
+  
+  // If no room available, create a new one
   const newRoom = new Room(uuidv4());
+  newRoom.name = `Room ${rooms.length + 1}`;
   rooms.push(newRoom);
   return newRoom;
+}
+
+// Ensure we always have at least one joinable room
+function ensureDefaultRoom() {
+  if (rooms.length === 0) {
+    initializeRooms();
+    return;
+  }
+  
+  const joinableRooms = rooms.filter(room => room.isJoinable);
+  
+  if (joinableRooms.length === 0) {
+    console.log('Creating default room - no joinable rooms available');
+    const defaultRoom = new Room(uuidv4());
+    defaultRoom.name = 'Main Room';
+    rooms.push(defaultRoom);
+    
+    // Room created successfully - now using room-specific worlds
+  }
+}
+
+// Clean up empty rooms (but always keep at least one)
+function cleanupEmptyRooms() {
+  const nonEmptyRooms = rooms.filter(room => !room.isEmpty);
+  const emptyRooms = rooms.filter(room => room.isEmpty);
+  
+  // Keep at least one room (preferably non-private)
+  if (nonEmptyRooms.length === 0 && emptyRooms.length > 1) {
+    // Keep the first non-private room, or just the first room
+    const roomToKeep = emptyRooms.find(room => !room.isPrivate) || emptyRooms[0];
+    const roomsToRemove = emptyRooms.filter(room => room !== roomToKeep);
+    
+    for (const room of roomsToRemove) {
+      const index = rooms.indexOf(room);
+      if (index > -1) {
+        console.log(`Cleaning up empty room: ${room.name} (${room.id}) - was ${room.totalOccupancy}/${room.maxPlayers}`);
+        rooms.splice(index, 1);
+      }
+    }
+  }
 }
 
 io.on('connection', (socket) => {
   let currentRoom = null;
   let myCar = null;
   
-  // Handle spectator requests
-  socket.on('requestSpectator', () => {
-    spectators.set(socket.id, socket);
-  });
-  
-  socket.on('joinGame', ({ carType, name }) => {
-    if (!CAR_TYPES[carType]) return;
-    
-    // Clean up any existing car for this socket across all rooms (handles rejoin after crash)
+  // Handle spectator requests (with room support)
+  socket.on('requestSpectator', (data = {}) => {
+    const { roomId } = data;
+    // Clean up from other rooms first
     for (const room of rooms) {
-      if (room.players.has(socket.id)) {
-        console.log(`Cleaning up existing car for socket ${socket.id} in room ${room.id}`);
-        room.removePlayer(socket);
+      if (room.hasMember(socket.id)) {
+        room.removeMember(socket.id);
       }
     }
     
-    currentRoom = assignRoom();
-    myCar = currentRoom.addPlayer(socket, carType, name);
-    socket.emit('joined', { roomId: currentRoom.id, carId: myCar.id });
+    // Ensure we have at least one room
+    if (rooms.length === 0) {
+      initializeRooms();
+    }
+    
+    // Find target room or use first available
+    let targetRoom = null;
+    if (roomId) {
+      targetRoom = rooms.find(room => room.id === roomId);
+    }
+    if (!targetRoom) {
+      targetRoom = rooms[0]; // Default to first room if none specified
+    }
+    
+    try {
+      if (targetRoom.isJoinable) {
+        targetRoom.addMember(socket, Room.USER_STATES.SPECTATING);
+        currentRoom = targetRoom;
+        console.log(`User ${socket.id} started spectating room ${targetRoom.name}`);
+      } else {
+        // Still add to global spectators for backward compatibility
+        spectators.set(socket.id, socket);
+        console.log(`User ${socket.id} spectating globally (room full)`);
+      }
+    } catch (error) {
+      // Fallback to global spectators
+      spectators.set(socket.id, socket);
+      console.log(`User ${socket.id} spectating globally (fallback)`);
+    }
+  });
+  
+  socket.on('joinGame', ({ carType, name, roomId }) => {
+    if (!CAR_TYPES[carType]) return;
+    
+    // Clean up any existing memberships across all rooms
+    for (const room of rooms) {
+      if (room.hasMember(socket.id)) {
+        console.log(`Removing user ${socket.id} from room ${room.name} before joining new game`);
+        room.removeMember(socket.id);
+      }
+    }
+    
+    // Find target room - either specified room ID or auto-assign
+    let targetRoom = null;
+    if (roomId) {
+      // Try to join specific room
+      targetRoom = rooms.find(room => room.id === roomId);
+      if (!targetRoom) {
+        socket.emit('joinError', { error: 'Room not found' });
+        return;
+      }
+      if (!targetRoom.isJoinable) {
+        socket.emit('joinError', { error: 'Room is full' });
+        return;
+      }
+    } else {
+      // Auto-assign room (backwards compatibility)
+      targetRoom = assignRoom();
+    }
+    
+    try {
+      // Check if user is already a spectator in this room
+      if (targetRoom.canRejoinAsPlayer(socket.id)) {
+        // User is spectating, promote them to player
+        myCar = targetRoom.promoteToPlayer(socket, carType, name);
+      } else {
+        // Add user to room as member first, then promote to player
+        targetRoom.addMember(socket, Room.USER_STATES.SPECTATING);
+        myCar = targetRoom.promoteToPlayer(socket, carType, name);
+      }
+      
+      currentRoom = targetRoom;
+      socket.emit('joined', { 
+        roomId: currentRoom.id, 
+        carId: myCar.id,
+        roomName: currentRoom.name,
+        currentMap: currentRoom.currentMapKey
+      });
+    } catch (error) {
+      console.error(`Error joining game for socket ${socket.id}:`, error);
+      socket.emit('joinError', { error: error.message });
+    }
   });
   socket.on('input', (data) => {
     if (!myCar) return;
@@ -917,8 +1444,8 @@ io.on('connection', (socket) => {
   });
   
   socket.on('useAbility', () => {
-    if (!myCar) return;
-    const result = myCar.useAbility(gameState);
+    if (!myCar || !currentRoom) return;
+    const result = myCar.useAbility(currentRoom.gameState);
     socket.emit('abilityResult', result);
   });
   
@@ -1026,13 +1553,26 @@ io.on('connection', (socket) => {
   }
 
   socket.on('disconnect', () => {
-    // Clean up from all rooms to be safe
+    // Clean up from all rooms using new membership system
     for (const room of rooms) {
-      if (room.players.has(socket.id)) {
-        room.removePlayer(socket);
+      if (room.hasMember(socket.id)) {
+        console.log(`User ${socket.id} disconnected from room ${room.name}`);
+        room.removeMember(socket.id);
       }
     }
-    spectators.delete(socket.id); // Remove from spectators
+    
+    // Clean up from global spectators (legacy)
+    spectators.delete(socket.id);
+    
+    // Reset local variables
+    currentRoom = null;
+    myCar = null;
+    
+    // Ensure at least one joinable room remains after disconnection
+    ensureDefaultRoom();
+    
+    // Clean up empty rooms
+    cleanupEmptyRooms();
   });
 });
 
@@ -1048,16 +1588,16 @@ function gameLoop() {
   lastTime = now;
   physicsAccumulator += dt;
     while (physicsAccumulator >= timeStep) {
-    // Clean up expired ability objects
-    gameState.abilityObjects = gameState.abilityObjects.filter(obj => {
-      if (Date.now() > obj.expiresAt) {
-        Matter.World.remove(world, obj.body);
-        return false;
-      }
-      return true;
-    });
-
+    
     for (const room of rooms) {
+      // Clean up expired ability objects per room
+      room.gameState.abilityObjects = room.gameState.abilityObjects.filter(obj => {
+        if (Date.now() > obj.expiresAt) {
+          Matter.World.remove(room.world, obj.body);
+          return false;
+        }
+        return true;
+      });
       let roundWinner = null;
       for (const [sid, car] of room.players.entries()) {
         car.update(timeStep);
@@ -1081,9 +1621,11 @@ function gameLoop() {
           
           // Short delay to let the kill feed message display before returning to menu
           setTimeout(() => {
-            currentMapIndex = (currentMapIndex + 1) % mapKeys.length;
-            currentMapKey = mapKeys[currentMapIndex];
-            setTrackBodies(currentMapKey);
+            // Cycle to next map for this room
+            const mapKeys = Object.keys(MAP_TYPES);
+            room.currentMapIndex = (room.currentMapIndex + 1) % mapKeys.length;
+            room.currentMapKey = mapKeys[room.currentMapIndex];
+            room.setTrackBodies(room.currentMapKey);
             room.resetRound();
             for (const [sid, car] of room.players.entries()) {
               const sock = io.sockets.sockets.get(sid);
@@ -1092,7 +1634,7 @@ function gameLoop() {
               }
             }
             for (const [sid, car] of room.players.entries()) {
-              Matter.World.remove(world, car.body);
+              Matter.World.remove(room.world, car.body);
             }
             room.players.clear();
           }, 1500); // 1.5 second delay to show win message
@@ -1137,12 +1679,19 @@ function gameLoop() {
       for (const [sid, car] of [...room.players.entries()]) {
         if (car.crashedAt && Date.now() - car.crashedAt > 300) { //500ms
           console.log(`Cleaning up crashed car ${car.name} (${sid}) after ${Date.now() - car.crashedAt}ms`);
-          Matter.World.remove(world, car.body);
-          room.players.delete(sid);
+          
+          // Demote crashed player to spectator instead of removing entirely
+          const wasPlayer = room.players.has(sid);
+          if (wasPlayer) {
+            room.demoteToSpectator(sid);
+            console.log(`Player ${car.name} (${sid}) demoted to spectator after crash`);
+          }
         }
       }
+      
+      // Update physics engine for this room
+      Matter.Engine.update(room.engine, timeStep * 1000);
     }
-    Matter.Engine.update(engine, timeStep * 1000);
     physicsAccumulator -= timeStep;
   }
   setImmediate(gameLoop);
@@ -1153,14 +1702,15 @@ setInterval(() => {
   for (const room of rooms) {
     const state = room.state;
     const playerSocketIds = Array.from(room.players.values()).map(p => p.socketId);
-    const spectatorSocketIds = Array.from(spectators.keys());
-    const allSocketIds = [...new Set([...playerSocketIds, ...spectatorSocketIds])];
+    const roomSpectatorSocketIds = Array.from(room.spectators.keys());
+    const globalSpectatorSocketIds = Array.from(spectators.keys()); // Legacy support
+    const allSocketIds = [...new Set([...playerSocketIds, ...roomSpectatorSocketIds, ...globalSpectatorSocketIds])];
 
     for (const socketId of allSocketIds) {
       const socket = io.sockets.sockets.get(socketId);
       if (socket) {
-        const map = MAP_TYPES[currentMapKey];
-        const clientAbilityObjects = gameState.abilityObjects.map(obj => ({
+        const map = MAP_TYPES[room.currentMapKey];
+        const clientAbilityObjects = room.gameState.abilityObjects.map(obj => ({
           id: obj.id,
           type: obj.type,
           position: obj.body.position,
@@ -1170,7 +1720,7 @@ setInterval(() => {
           render: obj.body.render
         }));
         
-        const clientDynamicObjects = currentDynamicBodies.map(body => {
+        const clientDynamicObjects = room.currentDynamicBodies.map(body => {
           const objData = {
             id: body.dynamicObject?.id || body.id,
             position: body.position,
@@ -1233,77 +1783,102 @@ setInterval(() => {
 
 // Spectator broadcasting function
 function broadcastToSpectators() {
-  if (spectators.size === 0) return;
+  // Check if there are any spectators (global + room-specific)
+  const hasGlobalSpectators = spectators.size > 0;
+  const hasRoomSpectators = rooms.some(room => room.spectators.size > 0);
   
-  const room = rooms[0]; // Using first room for simplicity
+  if (!hasGlobalSpectators && !hasRoomSpectators) return;
   
-  // Create ability objects with full data (same format as game state)
-  const clientAbilityObjects = gameState.abilityObjects.map(obj => ({
-    id: obj.id,
-    type: obj.type,
-    position: obj.body.position,
-    vertices: obj.body.vertices.map(v => ({ x: v.x - obj.body.position.x, y: v.y - obj.body.position.y })),
-    createdBy: obj.createdBy,
-    expiresAt: obj.expiresAt,
-    render: obj.body.render
-  }));
-  
-  // Create dynamic objects with full data (same format as game state)
-  const clientDynamicObjects = currentDynamicBodies.map(body => {
-    const objData = {
-      id: body.dynamicObject?.id || body.id,
-      position: body.position,
-      angle: body.angle,
-      vertices: body.vertices.map(v => ({ x: v.x - body.position.x, y: v.y - body.position.y })),
-      fillColor: body.dynamicObject?.fillColor || [139, 69, 19], // Default brown
-      strokeColor: body.dynamicObject?.strokeColor || [101, 67, 33],
-      strokeWidth: body.dynamicObject?.strokeWidth || 2
+  // Broadcast to spectators in each room + global spectators for the first room
+  for (const room of rooms) {
+    // Create ability objects with full data (same format as game state)
+    const clientAbilityObjects = room.gameState.abilityObjects.map(obj => ({
+      id: obj.id,
+      type: obj.type,
+      position: obj.body.position,
+      vertices: obj.body.vertices.map(v => ({ x: v.x - obj.body.position.x, y: v.y - obj.body.position.y })),
+      createdBy: obj.createdBy,
+      expiresAt: obj.expiresAt,
+      render: obj.body.render
+    }));
+    
+    // Create dynamic objects with full data (same format as game state)
+    const clientDynamicObjects = room.currentDynamicBodies.map(body => {
+      const objData = {
+        id: body.dynamicObject?.id || body.id,
+        position: body.position,
+        angle: body.angle,
+        vertices: body.vertices.map(v => ({ x: v.x - body.position.x, y: v.y - body.position.y })),
+        fillColor: body.dynamicObject?.fillColor || [139, 69, 19], // Default brown
+        strokeColor: body.dynamicObject?.strokeColor || [101, 67, 33],
+        strokeWidth: body.dynamicObject?.strokeWidth || 2
+      }
+      
+      // Only include health data if the object has maxHealth defined
+      if (typeof body.dynamicObject?.maxHealth !== 'undefined') {
+        objData.health = body.health || body.dynamicObject.maxHealth
+        objData.maxHealth = body.dynamicObject.maxHealth
+        objData.isDestroyed = body.isDestroyed || false
+      }
+      
+      return objData
+    });
+    
+    // Create spectator-optimized state (always include map, even with no players)
+    const spectatorState = {
+      players: room && room.players.size > 0 ? Array.from(room.players.values())
+        .filter(car => !car.crashedAt) // Exclude crashed cars from spectator view
+        .map(car => ({
+        id: car.id,
+        name: car.name,
+        type: car.type,
+        x: car.body.position.x,
+        y: car.body.position.y,
+        angle: car.body.angle,
+        health: car.currentHealth,
+        maxHealth: car.stats.maxHealth,
+        laps: car.laps,
+        maxLaps: car.maxLaps,
+        color: CAR_TYPES[car.type].color
+      })) : [],
+      abilityObjects: clientAbilityObjects,
+      dynamicObjects: clientDynamicObjects,
+      map: MAP_TYPES[room.currentMapKey], // Always send current map
+      timestamp: Date.now()
+    };
+    
+    // Send to room-specific spectators
+    for (const [socketId, socket] of room.spectators) {
+      if (socket.connected) {
+        socket.emit('spectatorState', spectatorState);
+      } else {
+        room.spectators.delete(socketId); // Clean up disconnected spectators
+      }
     }
     
-    // Only include health data if the object has maxHealth defined
-    if (typeof body.dynamicObject?.maxHealth !== 'undefined') {
-      objData.health = body.health || body.dynamicObject.maxHealth
-      objData.maxHealth = body.dynamicObject.maxHealth
-      objData.isDestroyed = body.isDestroyed || false
-    }
-    
-    return objData
-  });
-  
-  // Create spectator-optimized state (always include map, even with no players)
-  const spectatorState = {
-    players: room && room.players.size > 0 ? Array.from(room.players.values())
-      .filter(car => !car.crashedAt) // Exclude crashed cars from spectator view
-      .map(car => ({
-      id: car.id,
-      name: car.name,
-      type: car.type,
-      x: car.body.position.x,
-      y: car.body.position.y,
-      angle: car.body.angle,
-      health: car.currentHealth,
-      maxHealth: car.stats.maxHealth,
-      laps: car.laps,
-      maxLaps: car.maxLaps,
-      color: CAR_TYPES[car.type].color
-    })) : [],
-    abilityObjects: clientAbilityObjects,
-    dynamicObjects: clientDynamicObjects,
-    map: MAP_TYPES[currentMapKey], // Always send current map
-    timestamp: Date.now()
-  };
-  
-  // Send to all spectators
-  for (const [socketId, socket] of spectators) {
-    if (socket.connected) {
-      socket.emit('spectatorState', spectatorState);
-    } else {
-      spectators.delete(socketId); // Clean up disconnected spectators
+    // Send to global spectators (legacy support) - only for first room
+    if (room === rooms[0]) {
+      for (const [socketId, socket] of spectators) {
+        if (socket.connected) {
+          socket.emit('spectatorState', spectatorState);
+        } else {
+          spectators.delete(socketId); // Clean up disconnected spectators
+        }
+      }
     }
   }
 }
 
 let broadcastTick = 0;
+
+// Room maintenance interval - run every 30 seconds
+setInterval(() => {
+  cleanupEmptyRooms();
+  ensureDefaultRoom();
+}, 30000);
+
+// Run initial room maintenance
+ensureDefaultRoom();
 
 server.listen(PORT, () => {
   console.log(`Driftout2 server listening on port ${PORT}`);

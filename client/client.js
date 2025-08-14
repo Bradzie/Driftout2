@@ -48,6 +48,20 @@
   const fpsDisplay = document.getElementById('fpsDisplay');
   const pingDisplay = document.getElementById('pingDisplay');
   
+  // Get room browser elements
+  const roomBrowserButton = document.getElementById('roomBrowserButton');
+  const roomBrowserModal = document.getElementById('roomBrowserModal');
+  const roomBrowserCloseBtn = document.getElementById('roomBrowserCloseBtn');
+  const quickJoinButton = document.getElementById('quickJoinButton');
+  const refreshRoomsButton = document.getElementById('refreshRoomsButton');
+  const roomsList = document.getElementById('roomsList');
+  const createRoomName = document.getElementById('createRoomName');
+  const createRoomMap = document.getElementById('createRoomMap');
+  const createRoomMaxPlayers = document.getElementById('createRoomMaxPlayers');
+  const maxPlayersValue = document.getElementById('maxPlayersValue');
+  const createRoomPrivate = document.getElementById('createRoomPrivate');
+  const createRoomButton = document.getElementById('createRoomButton');
+  
   // Get references to car card template elements
   const carRadioInput = document.querySelector('input[name="car"]');
   const carName = document.getElementById('carName');
@@ -82,6 +96,25 @@
     settings.showPing = e.target.checked;
     saveSettings();
     updatePerformanceOverlay();
+  });
+  
+  // Room browser event listeners
+  roomBrowserButton.addEventListener('click', openRoomBrowser);
+  roomBrowserCloseBtn.addEventListener('click', closeRoomBrowser);
+  quickJoinButton.addEventListener('click', handleQuickJoin);
+  refreshRoomsButton.addEventListener('click', loadRooms);
+  createRoomButton.addEventListener('click', handleCreateRoom);
+  
+  // Close room browser when clicking outside modal
+  roomBrowserModal.addEventListener('click', (e) => {
+    if (e.target === roomBrowserModal) {
+      closeRoomBrowser();
+    }
+  });
+  
+  // Update max players value display
+  createRoomMaxPlayers.addEventListener('input', (e) => {
+    maxPlayersValue.textContent = e.target.value;
   });
 
   const ctx = gameCanvas.getContext('2d');
@@ -342,6 +375,220 @@
   
   function closeSettings() {
     settingsModal.classList.add('hidden');
+  }
+  
+  // Room browser variables
+  let roomsRefreshInterval = null;
+  let availableMaps = [];
+  let availableRooms = [];
+  
+  // Room browser functions
+  function openRoomBrowser() {
+    roomBrowserModal.classList.remove('hidden');
+    loadMaps();
+    loadRooms();
+    
+    // Start auto-refresh
+    if (roomsRefreshInterval) {
+      clearInterval(roomsRefreshInterval);
+    }
+    roomsRefreshInterval = setInterval(loadRooms, 3000); // Refresh every 3 seconds
+  }
+  
+  function closeRoomBrowser() {
+    roomBrowserModal.classList.add('hidden');
+    
+    // Stop auto-refresh
+    if (roomsRefreshInterval) {
+      clearInterval(roomsRefreshInterval);
+      roomsRefreshInterval = null;
+    }
+  }
+  
+  async function loadMaps() {
+    try {
+      const response = await fetch('/api/maps');
+      if (!response.ok) throw new Error('Failed to load maps');
+      
+      availableMaps = await response.json();
+      
+      // Populate map dropdown
+      createRoomMap.innerHTML = '';
+      availableMaps.forEach(map => {
+        const option = document.createElement('option');
+        option.value = map.key;
+        option.textContent = map.name || map.key;
+        if (map.description) {
+          option.title = map.description;
+        }
+        createRoomMap.appendChild(option);
+      });
+      
+      // Select first map by default
+      if (availableMaps.length > 0) {
+        createRoomMap.value = availableMaps[0].key;
+      }
+    } catch (error) {
+      console.error('Failed to load maps:', error);
+    }
+  }
+  
+  async function loadRooms() {
+    try {
+      const response = await fetch('/api/rooms');
+      if (!response.ok) throw new Error('Failed to load rooms');
+      
+      availableRooms = await response.json();
+      displayRooms(availableRooms);
+    } catch (error) {
+      console.error('Failed to load rooms:', error);
+      roomsList.innerHTML = '<div class="error-message">Failed to load rooms. Please try again.</div>';
+    }
+  }
+  
+  function displayRooms(rooms) {
+    if (rooms.length === 0) {
+      roomsList.innerHTML = '<div class="no-rooms-message">No rooms available. Create one below!</div>';
+      return;
+    }
+    
+    roomsList.innerHTML = '';
+    
+    rooms.forEach(room => {
+      const roomCard = document.createElement('div');
+      roomCard.className = 'room-card';
+      
+      const isJoinable = room.isJoinable && !room.isPrivate;
+      const isFull = room.totalOccupancy >= room.maxPlayers;
+      
+      roomCard.innerHTML = `
+        <div class="room-name">
+          ${escapeHtml(room.name)}
+          ${room.isPrivate ? '<span class="room-private-badge">Private</span>' : ''}
+          ${isFull ? '<span class="room-full-badge">Full</span>' : ''}
+        </div>
+        <div class="room-info">
+          <div class="room-info-row">
+            <span>Map:</span>
+            <span>${escapeHtml(room.currentMap || 'Unknown')}</span>
+          </div>
+          <div class="room-info-row">
+            <span>Players:</span>
+            <span>${room.totalOccupancy || room.playerCount || 0}/${room.maxPlayers}</span>
+          </div>
+        </div>
+        <button class="room-join-button" 
+                ${!isJoinable || isFull ? 'disabled' : ''}
+                data-room-id="${room.id}">
+          ${isFull ? 'Room Full' : isJoinable ? 'Join Room' : 'Private'}
+        </button>
+      `;
+      
+      roomsList.appendChild(roomCard);
+      
+      // Add event listener to join button
+      const joinButton = roomCard.querySelector('.room-join-button');
+      if (joinButton && !joinButton.disabled) {
+        joinButton.addEventListener('click', () => {
+          const roomId = joinButton.dataset.roomId;
+          joinSpecificRoom(roomId);
+        });
+      }
+    });
+  }
+  
+  function joinSpecificRoom(roomId) {
+    const selected = document.querySelector('input[name="car"]:checked');
+    const carType = selected ? selected.value : 'Speedster';
+    const name = sanitizeName(nameInput.value);
+    
+    closeRoomBrowser();
+    //socket.emit('joinGame', { carType, name, roomId });
+  }
+  
+  function handleQuickJoin() {
+    const selected = document.querySelector('input[name="car"]:checked');
+    const carType = selected ? selected.value : 'Speedster';
+    const name = sanitizeName(nameInput.value);
+    
+    closeRoomBrowser();
+    //socket.emit('joinGame', { carType, name }); // No roomId = auto-assign
+  }
+  
+  async function handleCreateRoom() {
+    const roomName = createRoomName.value.trim();
+    const mapKey = createRoomMap.value;
+    const maxPlayers = parseInt(createRoomMaxPlayers.value);
+    const isPrivate = createRoomPrivate.checked;
+    
+    // Validation
+    if (!roomName) {
+      alert('Please enter a room name');
+      return;
+    }
+    
+    if (roomName.length > 50) {
+      alert('Room name must be 50 characters or less');
+      return;
+    }
+    
+    if (!mapKey) {
+      alert('Please select a map');
+      return;
+    }
+    
+    // Disable button during creation
+    createRoomButton.disabled = true;
+    createRoomButton.textContent = 'Creating...';
+    
+    try {
+      const response = await fetch('/api/rooms/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: roomName,
+          mapKey: mapKey,
+          maxPlayers: maxPlayers,
+          isPrivate: isPrivate
+        })
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create room');
+      }
+      
+      const newRoom = await response.json();
+      
+      // Clear form
+      createRoomName.value = '';
+      createRoomMaxPlayers.value = 8;
+      maxPlayersValue.textContent = '8';
+      createRoomPrivate.checked = false;
+      
+      // Refresh rooms list
+      await loadRooms();
+      
+      // Auto-join the created room
+      joinSpecificRoom(newRoom.id);
+      
+    } catch (error) {
+      console.error('Failed to create room:', error);
+      alert(`Failed to create room: ${error.message}`);
+    } finally {
+      // Re-enable button
+      createRoomButton.disabled = false;
+      createRoomButton.textContent = 'Create Room';
+    }
+  }
+  
+  // Utility function to escape HTML
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
   }
   
   // Kill feed functions

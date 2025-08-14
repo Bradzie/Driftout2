@@ -11,7 +11,7 @@
 </head>
 <body>
   <div id="menu" class="overlay">
-    <h1 class="title">DRIFTZ.IO</h1>
+    <h1 class="title">DRIFTOUT.APP</h1>
     <input type="text" id="nameInput" placeholder="Name" maxlength="20" />
     <div id="carSelector" class="car-selector">
       <button id="switchButton" class="nav-button prev-button">🗘</button>
@@ -48,6 +48,9 @@
       </div>
       <button id="joinButton" class="nav-button play-button">➤</button>
     </div>
+    
+    <!-- Room Browser Button -->
+    <button id="roomBrowserButton" class="room-browser-button">Browse Rooms</button>
     
     <!-- Settings Button -->
     <button id="settingsButton" class="settings-button">⚙️</button>
@@ -199,6 +202,66 @@
           <h3 class="settings-section-title">Controls</h3>
           <div class="settings-placeholder">
             Control customization will be added here
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Room Browser Modal -->
+  <div id="roomBrowserModal" class="room-browser-modal hidden">
+    <div class="room-browser-content">
+      <div class="room-browser-header">
+        <h2 class="room-browser-title">Browse Rooms</h2>
+        <button id="roomBrowserCloseBtn" class="room-browser-close-btn">×</button>
+      </div>
+      
+      <div class="room-browser-body">
+        <!-- Quick Join Section -->
+        <div class="room-browser-section">
+          <div class="quick-join-section">
+            <button id="quickJoinButton" class="quick-join-button">Quick Join (Auto-assign)</button>
+          </div>
+        </div>
+        
+        <!-- Room List Section -->
+        <div class="room-browser-section">
+          <div class="section-header">
+            <h3 class="section-title">Available Rooms</h3>
+            <button id="refreshRoomsButton" class="refresh-button">🔄</button>
+          </div>
+          <div id="roomsList" class="rooms-list">
+            <div class="loading-message">Loading rooms...</div>
+          </div>
+        </div>
+        
+        <!-- Create Room Section -->
+        <div class="room-browser-section">
+          <h3 class="section-title">Create New Room</h3>
+          <div class="create-room-form">
+            <div class="form-row">
+              <label class="form-label">Room Name</label>
+              <input type="text" id="createRoomName" class="form-input" placeholder="My Awesome Room" maxlength="50">
+            </div>
+            <div class="form-row">
+              <label class="form-label">Map</label>
+              <select id="createRoomMap" class="form-select">
+                <option value="">Loading maps...</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label class="form-label">Max Players: <span id="maxPlayersValue">8</span></label>
+              <input type="range" id="createRoomMaxPlayers" class="form-slider" min="2" max="16" value="8">
+            </div>
+            <div class="form-row">
+              <label class="form-checkbox-label">
+                <input type="checkbox" id="createRoomPrivate" class="form-checkbox">
+                <span class="form-checkbox-text">Private Room</span>
+              </label>
+            </div>
+            <div class="form-row">
+              <button id="createRoomButton" class="create-room-button">Create Room</button>
+            </div>
           </div>
         </div>
       </div>
