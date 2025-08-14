@@ -1,43 +1,44 @@
 const CAR_TYPES = {
-  Racer: {
-    displayName: 'Racer',
+  Slipstream: {
+    displayName: 'Slipstream',
     displaySpeed: 75,
-    displayHealth: 30,
-    displayHandling: 50,
-    maxHealth: 10,
+    displayHealth: 25,
+    displayHandling: 40,
+    maxHealth: 8,
     acceleration: 0.015,
-    regen: 0.1,
+    boost: 100,
+    regen: 0.05,
     color: { fill: [47, 152, 206], stroke: [28, 89, 121], strokeWidth: 4 },
     shape: {
       vertices: [
         { x: 15, y: 0 },
-        { x: -10, y: 10 },
-        { x: -10, y: -10 }
+        { x: -15, y: 9 },
+        { x: -15, y: -9 }
       ],
     },
     bodyOptions: {
       friction: 0.3,
       restitution: 0.3,
-      frictionAir: 0.005,
+      frictionAir: 0.004,
       density: 0.3
     },
     upgrades: {
       maxHealth: {
         name: 'Health',
-        amount: 1,
-        maxUpgrades: 5,
+        amount: 2.25,
+        maxUpgrades: 6,
         color: '#ef4444' // red
       },
       acceleration: {
         name: 'Speed',
-        amount: 8,
-        maxUpgrades: 3,
+        amount: 0.003,
+        maxUpgrades: 8,
         color: '#3b82f6' // blue
       },
       regen: {
         name: 'Regen',
-        amount: 0.15,
-        maxUpgrades: 4,
+        amount: 0.05,
+        maxUpgrades: 6,
         color: '#10b981' // green
       }
     }
@@ -49,7 +50,8 @@ const CAR_TYPES = {
     displayHandling: 70,
     maxHealth: 20,
     acceleration: 0.12,
-    regen: 0.1,
+    boost: 40,
+    regen: 0.05,
     color: { fill: [157, 230, 160], stroke: [99, 145, 101], strokeWidth: 4 },
     shape: {
       vertices: circleToPolygon(15, 16)
@@ -63,20 +65,20 @@ const CAR_TYPES = {
     upgrades: {
       maxHealth: {
         name: 'Health',
-        amount: 4,
-        maxUpgrades: 6,
+        amount: 2,
+        maxUpgrades: 8,
         color: '#ef4444' // red
       },
       density: {
-        name: 'Mass',
-        amount: 0.1,
-        maxUpgrades: 3,
+        name: 'Size',
+        amount: 0.15,
+        maxUpgrades: 6,
         color: '#8b5cf6' // purple
       },
       regen: {
         name: 'Regen',
-        amount: 0.05,
-        maxUpgrades: 2,
+        amount: 0.1,
+        maxUpgrades: 4,
         color: '#10b981' // green
       }
     }
@@ -88,6 +90,7 @@ const CAR_TYPES = {
     displayHandling: 20,
     maxHealth: 16,
     acceleration: 0.01,
+    boost: 75,
     regen: 0.1,
     ability: 'dash',
     abilityName: 'Dash',
@@ -137,6 +140,7 @@ const CAR_TYPES = {
     displayHandling: 60,
     maxHealth: 12,
     acceleration: 0.04,
+    boost: 50,
     regen: 0.1,
     ability: 'spike_trap',
     abilityName: 'Trap',

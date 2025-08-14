@@ -21,6 +21,11 @@
   const currentLapTimeSpan = document.getElementById('currentLapTime');
   const bestLapTimeSpan = document.getElementById('bestLapTime');
   
+  // Get boost display elements
+  const boostDisplay = document.getElementById('boostDisplay');
+  const boostBar = document.getElementById('boostBar');
+  const boostText = document.getElementById('boostText');
+  
   // Get kill feed element
   const killFeed = document.getElementById('killFeed');
   
@@ -42,6 +47,20 @@
   const performanceOverlay = document.getElementById('performanceOverlay');
   const fpsDisplay = document.getElementById('fpsDisplay');
   const pingDisplay = document.getElementById('pingDisplay');
+  
+  // Get room browser elements
+  const roomBrowserButton = document.getElementById('roomBrowserButton');
+  const roomBrowserModal = document.getElementById('roomBrowserModal');
+  const roomBrowserCloseBtn = document.getElementById('roomBrowserCloseBtn');
+  const quickJoinButton = document.getElementById('quickJoinButton');
+  const refreshRoomsButton = document.getElementById('refreshRoomsButton');
+  const roomsList = document.getElementById('roomsList');
+  const createRoomName = document.getElementById('createRoomName');
+  const createRoomMap = document.getElementById('createRoomMap');
+  const createRoomMaxPlayers = document.getElementById('createRoomMaxPlayers');
+  const maxPlayersValue = document.getElementById('maxPlayersValue');
+  const createRoomPrivate = document.getElementById('createRoomPrivate');
+  const createRoomButton = document.getElementById('createRoomButton');
   
   // Get references to car card template elements
   const carRadioInput = document.querySelector('input[name="car"]');
@@ -78,6 +97,25 @@
     saveSettings();
     updatePerformanceOverlay();
   });
+  
+  // Room browser event listeners
+  roomBrowserButton.addEventListener('click', openRoomBrowser);
+  roomBrowserCloseBtn.addEventListener('click', closeRoomBrowser);
+  quickJoinButton.addEventListener('click', handleQuickJoin);
+  refreshRoomsButton.addEventListener('click', loadRooms);
+  createRoomButton.addEventListener('click', handleCreateRoom);
+  
+  // Close room browser when clicking outside modal
+  roomBrowserModal.addEventListener('click', (e) => {
+    if (e.target === roomBrowserModal) {
+      closeRoomBrowser();
+    }
+  });
+  
+  // Update max players value display
+  createRoomMaxPlayers.addEventListener('input', (e) => {
+    maxPlayersValue.textContent = e.target.value;
+  });
 
   const ctx = gameCanvas.getContext('2d');
   let players = [];
@@ -88,7 +126,7 @@
   let gameStates = []; // Buffer of recent game states
   let interpolationDelay = 50; // ms behind server for smoother interpolation
   
-  let inputState = { cursor: { x: 0, y: 0 } };
+  let inputState = { cursor: { x: 0, y: 0 }, boostActive: false };
   let sendInputInterval = null;
   let hasReceivedFirstState = false; // Flag to prevent rendering before first server data
   
@@ -113,6 +151,121 @@
   // Spectator state management
   let spectatorState = null;
   let isSpectating = false;
+
+  // Crashed car fade effect tracking
+  let crashedCars = new Map(); // carId -> { car: carData, fadeStartTime: timestamp }
+  let lastKnownPlayers = []; // Track previous players to detect crashes
+  let playerCrashTime = null; // Track when the player themselves crashed
+  const CRASH_FADE_DURATION = 500; // 500ms fade
+  
+  // Detect crashed cars and add them to fade queue
+  function detectCrashedCars(currentPlayers) {
+    const now = Date.now();
+    const currentPlayerIds = new Set(currentPlayers.map(p => p.id));
+    
+    // Check if the player's own car just crashed
+    const myPlayer = currentPlayers.find(p => p.socketId === mySocketId);
+    if (myPlayer && myPlayer.crashed && !playerCrashTime) {
+      playerCrashTime = now;
+      console.log('Player crashed, starting fade timer');
+      
+      // Don't stop input interval here - we need it for the fade detection
+      // Just zero out the cursor to stop car movement
+      inputState.cursor.x = 0;
+      inputState.cursor.y = 0;
+    }
+    
+    // Find players that were in the last state but not in current state (crashed)
+    for (const previousPlayer of lastKnownPlayers) {
+      if (!currentPlayerIds.has(previousPlayer.id) && !crashedCars.has(previousPlayer.id)) {
+        // Car crashed - add to fade queue
+        crashedCars.set(previousPlayer.id, {
+          car: previousPlayer,
+          fadeStartTime: now
+        });
+      }
+    }
+    
+    // Also check for players currently marked as crashed (but still in game state)
+    for (const currentPlayer of currentPlayers) {
+      if (currentPlayer.crashed && !crashedCars.has(currentPlayer.id)) {
+        // Car just crashed - add to fade queue
+        crashedCars.set(currentPlayer.id, {
+          car: currentPlayer,
+          fadeStartTime: now
+        });
+      }
+    }
+    
+    // Update last known players
+    lastKnownPlayers = [...currentPlayers];
+    
+    // Clean up expired crashed cars
+    for (const [carId, crashData] of crashedCars.entries()) {
+      if (now - crashData.fadeStartTime > CRASH_FADE_DURATION) {
+        crashedCars.delete(carId);
+      }
+    }
+    
+    // Handle player's own crash fade completion
+    if (playerCrashTime && (now - playerCrashTime) > CRASH_FADE_DURATION) {
+      returnToMenuAfterCrash();
+    }
+    //console.log(`detecting crashes`)
+  }
+  
+  // Handle returning to menu after player crash fade
+  function returnToMenu() {
+    console.log('Returning to menu');
+    clearInterval(sendInputInterval);
+    sendInputInterval = null;
+    menu.style.display = 'flex';
+    gameCanvas.style.display = 'none';
+    hud.style.display = 'none';
+    players = [];
+    inputState.cursor.x = 0;
+    inputState.cursor.y = 0;
+    hideUpgradeCards();
+    
+    // Hide all game-specific UI elements
+    abilityHud.classList.add('hidden');
+    lapCounter.classList.add('hidden');
+    lapTimer.classList.add('hidden');
+    boostDisplay.classList.add('hidden');
+    
+    // Reset ability state
+    myAbility = null;
+    lastAbilityUse = 0;
+    
+    // Reset lap timer state
+    currentLapStartTime = 0;
+    previousLapCount = 0;
+    bestLapTime = null;
+    bestLapTimeSpan.textContent = '';
+    
+    // Reset the first state flag so next game waits for server data
+    hasReceivedFirstState = false;
+    gameStates = []; // Clear game state buffer
+    
+    // Clear crashed cars tracking
+    crashedCars.clear();
+    lastKnownPlayers = [];
+    playerCrashTime = null;
+    
+    // Reset socket ID to avoid confusion on rejoin
+    mySocketId = null;
+    
+    // Hide loading screen when returning to menu
+    loadingScreen.classList.add('hidden');
+    
+    // Restart spectating when back in menu
+    setTimeout(() => startSpectating(), 100); // Small delay to ensure UI is ready
+  }
+
+  function returnToMenuAfterCrash() {
+    console.log('Crash fade completed, returning to menu');
+    returnToMenu();
+  }
 
   // Settings system
   let settings = {
@@ -222,6 +375,220 @@
   
   function closeSettings() {
     settingsModal.classList.add('hidden');
+  }
+  
+  // Room browser variables
+  let roomsRefreshInterval = null;
+  let availableMaps = [];
+  let availableRooms = [];
+  
+  // Room browser functions
+  function openRoomBrowser() {
+    roomBrowserModal.classList.remove('hidden');
+    loadMaps();
+    loadRooms();
+    
+    // Start auto-refresh
+    if (roomsRefreshInterval) {
+      clearInterval(roomsRefreshInterval);
+    }
+    roomsRefreshInterval = setInterval(loadRooms, 3000); // Refresh every 3 seconds
+  }
+  
+  function closeRoomBrowser() {
+    roomBrowserModal.classList.add('hidden');
+    
+    // Stop auto-refresh
+    if (roomsRefreshInterval) {
+      clearInterval(roomsRefreshInterval);
+      roomsRefreshInterval = null;
+    }
+  }
+  
+  async function loadMaps() {
+    try {
+      const response = await fetch('/api/maps');
+      if (!response.ok) throw new Error('Failed to load maps');
+      
+      availableMaps = await response.json();
+      
+      // Populate map dropdown
+      createRoomMap.innerHTML = '';
+      availableMaps.forEach(map => {
+        const option = document.createElement('option');
+        option.value = map.key;
+        option.textContent = map.name || map.key;
+        if (map.description) {
+          option.title = map.description;
+        }
+        createRoomMap.appendChild(option);
+      });
+      
+      // Select first map by default
+      if (availableMaps.length > 0) {
+        createRoomMap.value = availableMaps[0].key;
+      }
+    } catch (error) {
+      console.error('Failed to load maps:', error);
+    }
+  }
+  
+  async function loadRooms() {
+    try {
+      const response = await fetch('/api/rooms');
+      if (!response.ok) throw new Error('Failed to load rooms');
+      
+      availableRooms = await response.json();
+      displayRooms(availableRooms);
+    } catch (error) {
+      console.error('Failed to load rooms:', error);
+      roomsList.innerHTML = '<div class="error-message">Failed to load rooms. Please try again.</div>';
+    }
+  }
+  
+  function displayRooms(rooms) {
+    if (rooms.length === 0) {
+      roomsList.innerHTML = '<div class="no-rooms-message">No rooms available. Create one below!</div>';
+      return;
+    }
+    
+    roomsList.innerHTML = '';
+    
+    rooms.forEach(room => {
+      const roomCard = document.createElement('div');
+      roomCard.className = 'room-card';
+      
+      const isJoinable = room.isJoinable && !room.isPrivate;
+      const isFull = room.totalOccupancy >= room.maxPlayers;
+      
+      roomCard.innerHTML = `
+        <div class="room-name">
+          ${escapeHtml(room.name)}
+          ${room.isPrivate ? '<span class="room-private-badge">Private</span>' : ''}
+          ${isFull ? '<span class="room-full-badge">Full</span>' : ''}
+        </div>
+        <div class="room-info">
+          <div class="room-info-row">
+            <span>Map:</span>
+            <span>${escapeHtml(room.currentMap || 'Unknown')}</span>
+          </div>
+          <div class="room-info-row">
+            <span>Players:</span>
+            <span>${room.totalOccupancy || room.playerCount || 0}/${room.maxPlayers}</span>
+          </div>
+        </div>
+        <button class="room-join-button" 
+                ${!isJoinable || isFull ? 'disabled' : ''}
+                data-room-id="${room.id}">
+          ${isFull ? 'Room Full' : isJoinable ? 'Join Room' : 'Private'}
+        </button>
+      `;
+      
+      roomsList.appendChild(roomCard);
+      
+      // Add event listener to join button
+      const joinButton = roomCard.querySelector('.room-join-button');
+      if (joinButton && !joinButton.disabled) {
+        joinButton.addEventListener('click', () => {
+          const roomId = joinButton.dataset.roomId;
+          joinSpecificRoom(roomId);
+        });
+      }
+    });
+  }
+  
+  function joinSpecificRoom(roomId) {
+    const selected = document.querySelector('input[name="car"]:checked');
+    const carType = selected ? selected.value : 'Speedster';
+    const name = sanitizeName(nameInput.value);
+    
+    closeRoomBrowser();
+    //socket.emit('joinGame', { carType, name, roomId });
+  }
+  
+  function handleQuickJoin() {
+    const selected = document.querySelector('input[name="car"]:checked');
+    const carType = selected ? selected.value : 'Speedster';
+    const name = sanitizeName(nameInput.value);
+    
+    closeRoomBrowser();
+    //socket.emit('joinGame', { carType, name }); // No roomId = auto-assign
+  }
+  
+  async function handleCreateRoom() {
+    const roomName = createRoomName.value.trim();
+    const mapKey = createRoomMap.value;
+    const maxPlayers = parseInt(createRoomMaxPlayers.value);
+    const isPrivate = createRoomPrivate.checked;
+    
+    // Validation
+    if (!roomName) {
+      alert('Please enter a room name');
+      return;
+    }
+    
+    if (roomName.length > 50) {
+      alert('Room name must be 50 characters or less');
+      return;
+    }
+    
+    if (!mapKey) {
+      alert('Please select a map');
+      return;
+    }
+    
+    // Disable button during creation
+    createRoomButton.disabled = true;
+    createRoomButton.textContent = 'Creating...';
+    
+    try {
+      const response = await fetch('/api/rooms/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: roomName,
+          mapKey: mapKey,
+          maxPlayers: maxPlayers,
+          isPrivate: isPrivate
+        })
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create room');
+      }
+      
+      const newRoom = await response.json();
+      
+      // Clear form
+      createRoomName.value = '';
+      createRoomMaxPlayers.value = 8;
+      maxPlayersValue.textContent = '8';
+      createRoomPrivate.checked = false;
+      
+      // Refresh rooms list
+      await loadRooms();
+      
+      // Auto-join the created room
+      joinSpecificRoom(newRoom.id);
+      
+    } catch (error) {
+      console.error('Failed to create room:', error);
+      alert(`Failed to create room: ${error.message}`);
+    } finally {
+      // Re-enable button
+      createRoomButton.disabled = false;
+      createRoomButton.textContent = 'Create Room';
+    }
+  }
+  
+  // Utility function to escape HTML
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
   }
   
   // Kill feed functions
@@ -373,7 +740,7 @@
     // Trim whitespace and limit length
     sanitized = sanitized.trim().substring(0, 20); // Limit to 20 characters
 
-    return sanitized || 'Anon'; // Default to 'Anon' if empty after sanitization
+    return sanitized || 'Unnamed'; // Default to 'Unnamed' if empty after sanitization
   }
 
   joinButton.addEventListener('click', () => {
@@ -385,6 +752,16 @@
 
   socket.on('joined', (data) => {
     stopSpectating(); // Stop spectating when joining game
+    
+    // Reset crash state immediately when joining new game
+    crashedCars.clear();
+    lastKnownPlayers = [];
+    playerCrashTime = null;
+    
+    // Clear game state buffers to prevent camera confusion
+    gameStates = [];
+    hasReceivedFirstState = false;
+    
     menu.style.display = 'none';
     loadingScreen.classList.remove('hidden'); // Show loading screen
     gameCanvas.style.display = 'block';
@@ -425,6 +802,9 @@
   socket.on('state', (data) => {
     // Update last message timestamp for connection monitoring
     lastServerMessage = Date.now();
+
+    // Detect crashed cars for fade effect
+    detectCrashedCars(data.players || []);
     
     // Buffer the state with timestamp for interpolation
     gameStates.push({
@@ -486,6 +866,9 @@
         }
       }
     });
+    
+    // Detect crashed cars for fade effect
+    detectCrashedCars(newPlayers);
 
     // Add the delta state to buffer
     gameStates.push({
@@ -539,13 +922,11 @@
   // Handle spectator state
   socket.on('spectatorState', (data) => {
     spectatorState = data;
-    console.log('Received spectator state:', data.players?.length || 0, 'players', data.map ? 'with map' : 'no map');
-    if (data.players && data.players.length > 0) {
-      console.log('First player:', data.players[0]);
-    }
   });
 
   socket.on('returnToMenu', ({ winner, crashed }) => {
+    // Skip handling crashes here - they're now handled locally with fade
+    if (crashed) return;
     clearInterval(sendInputInterval);
     sendInputInterval = null;
     menu.style.display = 'flex';
@@ -560,6 +941,7 @@
     abilityHud.classList.add('hidden');
     lapCounter.classList.add('hidden');
     lapTimer.classList.add('hidden');
+    boostDisplay.classList.add('hidden');
     
     // Reset ability state
     myAbility = null;
@@ -575,23 +957,15 @@
     hasReceivedFirstState = false;
     gameStates = []; // Clear game state buffer
     
+    // Clear crashed cars tracking
+    crashedCars.clear();
+    lastKnownPlayers = [];
+    
     // Hide loading screen when returning to menu
     loadingScreen.classList.add('hidden');
     
     // Restart spectating when back in menu
     setTimeout(() => startSpectating(), 100); // Small delay to ensure UI is ready
-    
-    if (winner) {
-      messageDiv.textContent = `${winner} completed 10 laps!`;
-    } else if (crashed) {
-      messageDiv.textContent = `You crashed!`;
-    } else {
-      messageDiv.textContent = '';
-    }
-    messageDiv.classList.remove('hidden');
-    setTimeout(() => {
-      messageDiv.classList.add('hidden');
-    }, 3000);
   });
 
   gameCanvas.addEventListener('mousemove', (e) => {
@@ -600,6 +974,17 @@
     const cy = rect.top + rect.height / 2;
     inputState.cursor.x = e.clientX - cx;
     inputState.cursor.y = e.clientY - cy;
+  });
+
+  // Right-click boost handling
+  gameCanvas.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    inputState.boostActive = true;
+  });
+
+  gameCanvas.addEventListener('mouseup', (e) => {
+    e.preventDefault();
+    inputState.boostActive = false;
   });
 
   // Ability and upgrade input handling
@@ -665,7 +1050,8 @@
   socket.on('abilityResult', (result) => {
     // Handle ability activation feedback
     if (result.success) {
-      lastAbilityUse = Date.now();
+      // Use server timestamp if available, otherwise fall back to client time
+      lastAbilityUse = result.serverTime || Date.now();
       updateAbilityHUD();
     } else {
       // Server rejected ability use, revert client-side prediction if it was for Dash
@@ -752,6 +1138,7 @@
       upgradeCard.setAttribute('data-stat', statName);
       upgradeCard.setAttribute('data-key', keyIndex.toString());
       upgradeCard.style.borderColor = upgrade.color;
+      upgradeCard.style.backgroundColor = upgrade.color;
       
       upgradeCard.innerHTML = `
         <div class="upgrade-key-indicator" style="background-color: ${upgrade.color}">${keyIndex}</div>
@@ -773,9 +1160,10 @@
     // Hide ability HUD
     abilityHud.classList.add('hidden');
     
-    // Hide lap counter and lap timer
+    // Hide lap counter, lap timer, and boost display
     lapCounter.classList.add('hidden');
     lapTimer.classList.add('hidden');
+    boostDisplay.classList.add('hidden');
     currentLapStartTime = 0;
     bestLapTime = null;
     previousLapCount = 0;
@@ -987,6 +1375,7 @@
     abilityHud.classList.add('hidden');
     lapCounter.classList.add('hidden');
     lapTimer.classList.add('hidden');
+    boostDisplay.classList.add('hidden');
     
     showDisconnectionOverlay();
   });
@@ -999,6 +1388,7 @@
     abilityHud.classList.add('hidden');
     lapCounter.classList.add('hidden');
     lapTimer.classList.add('hidden');
+    boostDisplay.classList.add('hidden');
     
     showDisconnectionOverlay();
   });
@@ -1011,6 +1401,7 @@
     abilityHud.classList.add('hidden');
     lapCounter.classList.add('hidden');
     lapTimer.classList.add('hidden');
+    boostDisplay.classList.add('hidden');
     
     showDisconnectionOverlay();
   });
@@ -1092,17 +1483,24 @@
       centerPlayer: null,
       mapData: spectatorState.map,
       showHUD: false,
-      alpha: 0.7,
+      alpha: 1,
       showCheckpoints: false,
       showAbilityObjects: true
     });
     
     // If no players, show a subtle overlay message
     if (!spectatorState.players || spectatorState.players.length === 0) {
-      spectatorCtx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-      spectatorCtx.font = '18px Arial';
+      spectatorCtx.font = '22px Quicksilver';
       spectatorCtx.textAlign = 'center';
-      spectatorCtx.fillText('Waiting for players to join...', spectatorCanvas.width / 2, spectatorCanvas.height - 50);
+      
+      // Black outline for better readability
+      spectatorCtx.lineWidth = 3;
+      spectatorCtx.strokeStyle = '#000000';
+      spectatorCtx.strokeText('Waiting for players...', spectatorCanvas.width / 2, spectatorCanvas.height - 50);
+      
+      // White fill text
+      spectatorCtx.fillStyle = 'rgba(255, 255, 255, 1)';
+      spectatorCtx.fillText('Waiting for players...', spectatorCanvas.width / 2, spectatorCanvas.height - 50);
     }
   }
 
@@ -1500,14 +1898,49 @@
       });
     }
 
-    // Players
-    players.forEach((p) => {
+    // Start with all active players (non-crashed)
+    const allPlayersToRender = [];
+    
+    // Add active players (not crashed)
+    for (const player of players) {
+      if (!player.crashed) {
+        allPlayersToRender.push(player);
+      }
+    }
+    
+    // Add crashed cars with fade effect (only render these, don't use server crashed cars)
+    const now = Date.now();
+    for (const [carId, crashData] of crashedCars.entries()) {
+      const fadeElapsed = now - crashData.fadeStartTime;
+      if (fadeElapsed < CRASH_FADE_DURATION) {
+        // Add crashed car with fade info - use the stored car data, not server data
+        allPlayersToRender.push({
+          ...crashData.car,
+          _isCrashed: true,
+          _fadeAlpha: 1 - (fadeElapsed / CRASH_FADE_DURATION) // 1.0 to 0.0
+        });
+      }
+    }
+    
+    // Players (including fading crashed cars)
+    allPlayersToRender.forEach((p) => {
       const dx = p.x - focusX;
       const dy = p.y - focusY;
       const screenX = centerX + dx * scale;
       const screenY = centerY - dy * scale;
       
       ctx.save();
+      
+      // Apply fade alpha for crashed cars or player's own crashed car
+      if (p._isCrashed && p._fadeAlpha !== undefined) {
+        ctx.globalAlpha = p._fadeAlpha;
+      } else if (playerCrashTime && p.socketId === mySocketId && p.crashed) {
+        // Apply fade to player's own crashed car (only if server says it's crashed)
+        const fadeElapsed = Date.now() - playerCrashTime;
+        if (fadeElapsed < CRASH_FADE_DURATION) {
+          ctx.globalAlpha = 1 - (fadeElapsed / CRASH_FADE_DURATION);
+        }
+      }
       
       // Get vertices - either from player object or look up from CAR_TYPES
       let vertices = p.vertices;
@@ -1518,18 +1951,18 @@
       if (vertices && vertices.length) {
         ctx.beginPath();
         
-        // Handle rotation for spectator players
-        const angle = p.angle || 0;
-        const cos = Math.cos(angle);
-        const sin = Math.sin(angle);
-        
         vertices.forEach((v, i) => {
-          // Apply rotation if we have an angle (spectator mode)
+          // In spectator mode, vertices are from CAR_TYPES and need manual rotation
+          // In player mode, vertices are from body.vertices and are already rotated by Matter.js
           let rotatedX, rotatedY;
-          if (p.angle !== undefined) {
+          if (mode === 'spectator' && p.angle !== undefined) {
+            // Apply manual rotation for spectator mode
+            const cos = Math.cos(p.angle);
+            const sin = Math.sin(p.angle);
             rotatedX = v.x * cos - v.y * sin;
             rotatedY = v.x * sin + v.y * cos;
           } else {
+            // Use vertices as-is (already rotated by Matter.js in player mode)
             rotatedX = v.x;
             rotatedY = v.y;
           }
@@ -1557,6 +1990,17 @@
       }
 
       ctx.restore();
+
+      // Apply fade effect to name and health bar too
+      if (p._isCrashed && p._fadeAlpha !== undefined) {
+        ctx.globalAlpha = p._fadeAlpha;
+      } else if (playerCrashTime && p.socketId === mySocketId && p.crashed) {
+        // Apply fade to player's own crashed car name/health (only if server says it's crashed)
+        const fadeElapsed = Date.now() - playerCrashTime;
+        if (fadeElapsed < CRASH_FADE_DURATION) {
+          ctx.globalAlpha = 1 - (fadeElapsed / CRASH_FADE_DURATION);
+        }
+      }
 
       // Player name with black outline and smooth font
       const fontSize = Math.max(6, 10 * scale);
@@ -1618,6 +2062,9 @@
         ctx.roundRect(barX, barY, barWidth, barHeight, cornerRadius);
         ctx.stroke();
       }
+      
+      // Reset global alpha for next player
+      ctx.globalAlpha = 1.0;
     });
 
     // Update HUD elements (only in player mode)
@@ -1675,9 +2122,33 @@
       const shouldShowUpgrades = hasEverHadUpgrades;
       const isCompactMode = hasEverHadUpgrades && centerPlayer.upgradePoints === 0;
       
-      // Show lap counter and timer whenever in game
+      // Show lap counter, timer, and boost display whenever in game
       lapCounter.classList.remove('hidden');
       lapTimer.classList.remove('hidden');
+      boostDisplay.classList.remove('hidden');
+      
+      // Update boost display
+      if (centerPlayer.currentBoost !== undefined && centerPlayer.maxBoost !== undefined) {
+        const currentBoost = Math.round(centerPlayer.currentBoost);
+        const maxBoost = centerPlayer.maxBoost;
+        const boostPercentage = (currentBoost / maxBoost) * 100;
+        
+        // Update boost text
+        boostText.textContent = `${currentBoost}/${maxBoost}`;
+        
+        // Update boost bar width
+        boostBar.style.width = `${boostPercentage}%`;
+        
+        // Update boost bar color based on percentage
+        boostBar.className = 'boost-bar';
+        if (boostPercentage <= 25) {
+          boostBar.classList.add('low');
+        } else if (boostPercentage <= 60) {
+          boostBar.classList.add('medium');
+        } else {
+          boostBar.classList.add('high');
+        }
+      }
       
       if (shouldShowUpgrades) {
         upgradeCardsContainer.classList.remove('hidden');
@@ -1714,6 +2185,12 @@
     mySocketId = currentState.mySocketId || mySocketId;
     
     const me = players.find((p) => p.socketId === mySocketId);
+
+    if (!me || !players.map(p => p.id).includes(me.id)) {
+      console.log(players)
+      returnToMenu();
+      return;
+    }
     
     renderGame(gameCanvas, ctx, currentState, {
       mode: 'player',

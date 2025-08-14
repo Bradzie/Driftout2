@@ -75,7 +75,8 @@ class SpikeTrapAbility extends Ability {
       type: 'spike_trap',
       position: position,
       trapId: trapObject.id,
-      duration: this.duration
+      duration: this.duration,
+      serverTime: currentTime
     };
   }
 
@@ -128,6 +129,11 @@ class SpikeTrapAbility extends Ability {
 
   static handleCollision(trap, car) {
     if (trap.createdBy === car.id) {
+      return false;
+    }
+
+    // Don't damage ghost mode cars or god mode cars
+    if (car.isGhost || car.godMode) {
       return false;
     }
 
