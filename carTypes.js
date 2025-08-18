@@ -1,6 +1,6 @@
 const CAR_TYPES = {
-  Slipstream: {
-    displayName: 'Slipstream',
+  Stream: {
+    displayName: 'Stream',
     displaySpeed: 75,
     displayHealth: 25,
     displayHandling: 40,

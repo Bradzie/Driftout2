@@ -10,9 +10,116 @@
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 </head>
 <body>
-  <div id="menu" class="overlay">
-    <h1 class="title">DRIFTOUT.APP</h1>
-    <input type="text" id="nameInput" placeholder="Name" maxlength="20" />
+  <!-- Top Toolbar (Hover-Activated) -->
+  <div id="toolbarHoverZone" class="toolbar-hover-zone"></div>
+  <div id="topToolbar" class="top-toolbar">
+    <div class="toolbar-left">
+      <span id="toolbarPlayerName" class="toolbar-player-name"></span>
+    </div>
+    <div class="toolbar-right">
+      <button id="toolbarLogoutBtn" class="toolbar-logout-btn" title="Logout">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+          <polyline points="16,17 21,12 16,7"></polyline>
+          <line x1="21" y1="12" x2="9" y2="12"></line>
+        </svg>
+      </button>
+      <button id="toolbarSettingsBtn" class="toolbar-settings-btn" title="Settings">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M12 1v6m0 8v6M4.22 4.22l4.24 4.24m8.48 8.48l4.24 4.24M1 12h6m8 0h6M4.22 19.78l4.24-4.24m8.48-8.48l4.24-4.24"></path>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Authentication Screen (Pre-Menu) -->
+  <div id="authScreen" class="auth-screen overlay">
+    <div class="auth-container">
+      <h1 class="auth-title">DRIFTZ.IO</h1>
+      
+      <!-- Login/Register Selection -->
+      <div id="authSelection" class="auth-selection">
+        <div class="auth-option">
+          <button id="showLoginBtn" class="auth-option-btn">Login</button>
+        </div>
+        <div class="auth-option">
+          <button id="showRegisterBtn" class="auth-option-btn">Register</button>
+        </div>
+        <div class="auth-option">
+          <button id="showGuestBtn" class="auth-option-btn">Play as Guest</button>
+        </div>
+      </div>
+
+      <!-- Login Form -->
+      <div id="loginForm" class="auth-form hidden">
+        <div class="auth-form-header">
+          <h2 class="auth-form-title">Login</h2>
+          <button id="backFromLoginBtn" class="auth-back-btn">Back</button>
+        </div>
+        <form id="loginFormElement" class="auth-form-content">
+          <div class="auth-input-group">
+            <label class="auth-label">Email</label>
+            <input type="email" id="loginEmail" class="auth-input" required>
+          </div>
+          <div class="auth-input-group">
+            <label class="auth-label">Password</label>
+            <input type="password" id="loginPassword" class="auth-input" required>
+          </div>
+          <div id="loginError" class="auth-error hidden"></div>
+          <button type="submit" class="auth-submit-btn">Login</button>
+        </form>
+      </div>
+
+      <!-- Register Form -->
+      <div id="registerForm" class="auth-form hidden">
+        <div class="auth-form-header">
+          <h2 class="auth-form-title">Register</h2>
+          <button id="backFromRegisterBtn" class="auth-back-btn">Back</button>
+        </div>
+        <form id="registerFormElement" class="auth-form-content">
+          <div class="auth-input-group">
+            <label class="auth-label">Username</label>
+            <input type="text" id="registerUsername" class="auth-input" maxlength="20" required>
+          </div>
+          <div class="auth-input-group">
+            <label class="auth-label">Email</label>
+            <input type="email" id="registerEmail" class="auth-input" required>
+          </div>
+          <div class="auth-input-group">
+            <label class="auth-label">Password</label>
+            <input type="password" id="registerPassword" class="auth-input" required>
+          </div>
+          <div id="registerError" class="auth-error hidden"></div>
+          <button type="submit" class="auth-submit-btn">Register</button>
+        </form>
+      </div>
+
+      <!-- Guest Form -->
+      <div id="guestForm" class="auth-form hidden">
+        <div class="auth-form-header">
+          <h2 class="auth-form-title">Guest</h2>
+          <button id="backFromGuestBtn" class="auth-back-btn">Back</button>
+        </div>
+        <form id="guestFormElement" class="auth-form-content">
+          <div class="auth-input-group">
+            <input type="text" id="guestName" class="auth-input" placeholder="Name" maxlength="20" required>
+          </div>
+          <div id="guestError" class="auth-error hidden"></div>
+          <button type="submit" class="auth-submit-btn">Continue</button>
+        </form>
+      </div>
+
+      <!-- Loading State -->
+      <div id="authLoading" class="auth-loading hidden">
+        <div class="auth-spinner"></div>
+        <div class="auth-loading-text">Please wait...</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="menu" class="overlay hidden">
+    <h1 class="title">DRIFTZ.IO</h1>
     <div id="carSelector" class="car-selector">
       <button id="switchButton" class="nav-button prev-button">🗘</button>
       <div id="carCard" class="single-car-card">
@@ -51,9 +158,6 @@
     
     <!-- Room Browser Button -->
     <button id="roomBrowserButton" class="room-browser-button">Browse Rooms</button>
-    
-    <!-- Settings Button -->
-    <button id="settingsButton" class="settings-button">⚙️</button>
   </div>
 
   <canvas id="spectatorCanvas" class="spectator-canvas"></canvas>

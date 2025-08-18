@@ -1,10 +1,25 @@
 (() => {
-  const socket = io();
+  let socket = io();
   let currentMap = null;
+  let currentUser = null;
+
+  // Authentication elements
+  const authScreen = document.getElementById('authScreen');
+  const authSelection = document.getElementById('authSelection');
+  const loginForm = document.getElementById('loginForm');
+  const registerForm = document.getElementById('registerForm');
+  const guestForm = document.getElementById('guestForm');
+  const authLoading = document.getElementById('authLoading');
+
+  // Toolbar elements
+  const topToolbar = document.getElementById('topToolbar');
+  const toolbarHoverZone = document.getElementById('toolbarHoverZone');
+  const toolbarPlayerName = document.getElementById('toolbarPlayerName');
+  const toolbarLogoutBtn = document.getElementById('toolbarLogoutBtn');
+  const toolbarSettingsBtn = document.getElementById('toolbarSettingsBtn');
 
   const menu = document.getElementById('menu');
   const joinButton = document.getElementById('joinButton');
-  const nameInput = document.getElementById('nameInput');
   const carCard = document.getElementById('carCard');
   const switchButton = document.getElementById('switchButton');
   const gameCanvas = document.getElementById('gameCanvas');
@@ -45,7 +60,6 @@
   const menuDisconnectionWarning = document.getElementById('menuDisconnectionWarning');
   
   // Get settings elements
-  const settingsButton = document.getElementById('settingsButton');
   const settingsModal = document.getElementById('settingsModal');
   const settingsCloseBtn = document.getElementById('settingsCloseBtn');
   const fpsToggle = document.getElementById('fpsToggle');
@@ -80,8 +94,338 @@
   document.getElementById('disconnectRefreshBtn').addEventListener('click', () => location.reload());
   document.getElementById('menuRefreshBtn').addEventListener('click', () => location.reload());
 
+  // Authentication functionality
+  async function checkAuthSession() {
+    try {
+      const response = await fetch('/api/auth/session');
+      const data = await response.json();
+      
+      if (data.authenticated) {
+        // Check if user is a guest - if so, make them re-authenticate
+        if (data.user.isGuest) {
+          console.log('Guest user detected - requiring re-authentication');
+          currentUser = null; // Clear the current user
+          showAuthScreen();
+        } else {
+          // Registered user - auto-login
+          console.log('Registered user detected - auto-login');
+          currentUser = data.user;
+          refreshSocketSession();
+          showMainMenu();
+          updatePlayerInfo();
+        }
+      } else {
+        showAuthScreen();
+      }
+    } catch (error) {
+      console.error('Session check failed:', error);
+      showAuthScreen();
+    }
+  }
+
+  function showAuthScreen() {
+    authScreen.classList.remove('hidden');
+    menu.classList.add('hidden');
+    showAuthSelection();
+  }
+
+  function showMainMenu() {
+    authScreen.classList.add('hidden');
+    menu.classList.remove('hidden');
+  }
+
+  function refreshSocketSession() {
+    console.log('Refreshing socket session after authentication...');
+    // Add a small delay to ensure the HTTP session is properly set
+    setTimeout(() => {
+      socket.emit('refreshSession');
+    }, 100);
+  }
+
+  async function validateCurrentSession() {
+    try {
+      const response = await fetch('/api/auth/session');
+      const data = await response.json();
+      
+      if (data.authenticated) {
+        // Check if current user is a guest - if so, make them re-authenticate
+        if (data.user.isGuest && currentUser) {
+          console.log('Guest user session expired - requiring re-authentication');
+          currentUser = null;
+          showAuthScreen();
+          return false;
+        }
+        return true;
+      } else {
+        currentUser = null;
+        showAuthScreen();
+        return false;
+      }
+    } catch (error) {
+      console.error('Session validation failed:', error);
+      currentUser = null;
+      showAuthScreen();
+      return false;
+    }
+  }
+
+  function showAuthSelection() {
+    authSelection.classList.remove('hidden');
+    loginForm.classList.add('hidden');
+    registerForm.classList.add('hidden');
+    guestForm.classList.add('hidden');
+    authLoading.classList.add('hidden');
+  }
+
+  function showLoginForm() {
+    authSelection.classList.add('hidden');
+    loginForm.classList.remove('hidden');
+    document.getElementById('loginEmail').focus();
+  }
+
+  function showRegisterForm() {
+    authSelection.classList.add('hidden');
+    registerForm.classList.remove('hidden');
+    document.getElementById('registerUsername').focus();
+  }
+
+  function showGuestForm() {
+    authSelection.classList.add('hidden');
+    guestForm.classList.remove('hidden');
+    document.getElementById('guestName').focus();
+  }
+
+  function showAuthLoading() {
+    authSelection.classList.add('hidden');
+    loginForm.classList.add('hidden');
+    registerForm.classList.add('hidden');
+    guestForm.classList.add('hidden');
+    authLoading.classList.remove('hidden');
+  }
+
+  function showError(elementId, message) {
+    const errorElement = document.getElementById(elementId);
+    errorElement.textContent = message;
+    errorElement.classList.remove('hidden');
+  }
+
+  function hideError(elementId) {
+    const errorElement = document.getElementById(elementId);
+    errorElement.classList.add('hidden');
+  }
+
+  function updatePlayerInfo() {
+    if (currentUser) {
+      const displayName = currentUser.username + (currentUser.isGuest ? ' (Guest)' : '');
+      toolbarPlayerName.textContent = displayName;
+    }
+  }
+
+  async function handleLogin(email, password) {
+    try {
+      showAuthLoading();
+      
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        currentUser = data.user;
+        refreshSocketSession();
+        showMainMenu();
+        updatePlayerInfo();
+      } else {
+        showLoginForm();
+        showError('loginError', data.error);
+      }
+    } catch (error) {
+      console.error('Login failed:', error);
+      showLoginForm();
+      showError('loginError', 'Login failed. Please try again.');
+    }
+  }
+
+  async function handleRegister(username, email, password) {
+    try {
+      showAuthLoading();
+      
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, email, password })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        currentUser = data.user;
+        refreshSocketSession();
+        showMainMenu();
+        updatePlayerInfo();
+      } else {
+        showRegisterForm();
+        showError('registerError', data.error);
+      }
+    } catch (error) {
+      console.error('Registration failed:', error);
+      showRegisterForm();
+      showError('registerError', 'Registration failed. Please try again.');
+    }
+  }
+
+  async function handleGuestLogin(name) {
+    try {
+      showAuthLoading();
+      
+      const response = await fetch('/api/auth/guest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        currentUser = data.user;
+        refreshSocketSession();
+        showMainMenu();
+        updatePlayerInfo();
+      } else {
+        showGuestForm();
+        showError('guestError', data.error);
+      }
+    } catch (error) {
+      console.error('Guest login failed:', error);
+      showGuestForm();
+      showError('guestError', 'Guest login failed. Please try again.');
+    }
+  }
+
+  async function handleLogout() {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      currentUser = null;
+      showAuthScreen();
+    } catch (error) {
+      console.error('Logout failed:', error);
+      // Still show auth screen even if logout request failed
+      currentUser = null;
+      showAuthScreen();
+    }
+  }
+
+  // Authentication event listeners
+  document.getElementById('showLoginBtn').addEventListener('click', showLoginForm);
+  document.getElementById('showRegisterBtn').addEventListener('click', showRegisterForm);
+  document.getElementById('showGuestBtn').addEventListener('click', showGuestForm);
+  
+  document.getElementById('backFromLoginBtn').addEventListener('click', showAuthSelection);
+  document.getElementById('backFromRegisterBtn').addEventListener('click', showAuthSelection);
+  document.getElementById('backFromGuestBtn').addEventListener('click', showAuthSelection);
+
+  document.getElementById('loginFormElement').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    hideError('loginError');
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
+    await handleLogin(email, password);
+  });
+
+  document.getElementById('registerFormElement').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    hideError('registerError');
+    const username = document.getElementById('registerUsername').value;
+    const email = document.getElementById('registerEmail').value;
+    const password = document.getElementById('registerPassword').value;
+    await handleRegister(username, email, password);
+  });
+
+  document.getElementById('guestFormElement').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    hideError('guestError');
+    const name = document.getElementById('guestName').value;
+    await handleGuestLogin(name);
+  });
+
+  // Toolbar event listeners
+  toolbarLogoutBtn.addEventListener('click', handleLogout);
+  toolbarSettingsBtn.addEventListener('click', openSettings);
+
+  // Check authentication on page load
+  checkAuthSession();
+
+  // Periodic session validation for guest users (every 5 minutes)
+  setInterval(() => {
+    if (currentUser && currentUser.isGuest) {
+      validateCurrentSession();
+    }
+  }, 5 * 60 * 1000);
+
+  // Toolbar functionality
+  let toolbarVisible = false;
+  let toolbarTimeout = null;
+
+  function showToolbar() {
+    if (!toolbarVisible && currentUser) {
+      toolbarVisible = true;
+      topToolbar.classList.add('visible');
+    }
+    // Clear any existing hide timeout
+    if (toolbarTimeout) {
+      clearTimeout(toolbarTimeout);
+      toolbarTimeout = null;
+    }
+  }
+
+  function hideToolbar() {
+    // Set a delay before hiding to prevent flickering
+    if (toolbarTimeout) {
+      clearTimeout(toolbarTimeout);
+    }
+    toolbarTimeout = setTimeout(() => {
+      if (toolbarVisible) {
+        toolbarVisible = false;
+        topToolbar.classList.remove('visible');
+      }
+    }, 300); // 300ms delay
+  }
+
+  function handleMouseMove(e) {
+    // Only show toolbar if user is authenticated and not on auth screen
+    if (!currentUser || !authScreen.classList.contains('hidden')) {
+      return;
+    }
+    
+    // Show toolbar when cursor is near top of screen (within 80px)
+    if (e.clientY <= 80) {
+      showToolbar();
+    } else if (e.clientY > 120) {
+      // Hide toolbar when cursor moves away from top area
+      hideToolbar();
+    }
+  }
+
+  // Mouse move tracking for toolbar
+  document.addEventListener('mousemove', handleMouseMove);
+  
+  // Keep toolbar visible when hovering over it
+  topToolbar.addEventListener('mouseenter', showToolbar);
+  topToolbar.addEventListener('mouseleave', () => {
+    // Check if cursor is still in top area
+    setTimeout(() => {
+      const rect = topToolbar.getBoundingClientRect();
+      const isInTopArea = window.event && window.event.clientY <= 120;
+      if (!isInTopArea) {
+        hideToolbar();
+      }
+    }, 100);
+  });
+
   // Settings event listeners
-  settingsButton.addEventListener('click', openSettings);
   settingsCloseBtn.addEventListener('click', closeSettings);
   
   // Close settings when clicking outside modal
@@ -845,13 +1189,30 @@
   }
 
   joinButton.addEventListener('click', () => {
+    console.log('Join button clicked', { currentUser, currentRoomId });
+    
+    // Check if user is authenticated
+    if (!currentUser || !currentUser.username) {
+      console.error('Cannot join game: User not authenticated or no username');
+      alert('Please log in or play as guest first');
+      return;
+    }
+    
     const selected = document.querySelector('input[name="car"]:checked');
     const carType = selected ? selected.value : 'Speedster';
-    const name = sanitizeName(nameInput.value); // Apply sanitization
+    const name = currentUser.username;
+    
+    console.log('Emitting joinGame', { carType, name, roomId: currentRoomId });
     socket.emit('joinGame', { carType, name, roomId: currentRoomId });
   });
 
+  socket.on('joinError', (data) => {
+    console.error('Join error:', data);
+    alert('Could not join game: ' + (data.error || 'Unknown error'));
+  });
+
   socket.on('joined', (data) => {
+    console.log('Successfully joined game:', data);
     stopSpectating(); // Stop spectating when joining game
     
     // Track the current room ID for crash handling
@@ -1550,7 +1911,6 @@
 
   function showMenuDisconnectionWarning() {
     // Hide the interactive menu elements
-    nameInput.style.display = 'none';
     carCard.style.display = 'none';
     switchButton.style.display = 'none';
     joinButton.style.display = 'none';
@@ -1561,7 +1921,6 @@
 
   function hideMenuDisconnectionWarning() {
     // Show the interactive menu elements
-    nameInput.style.display = 'block';
     carCard.style.display = 'block';
     switchButton.style.display = 'block';
     joinButton.style.display = 'block';

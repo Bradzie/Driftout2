@@ -6,12 +6,35 @@ const Matter = require('matter-js');
 const decomp = require('poly-decomp');
 Matter.Common.setDecomp(decomp);
 const { v4: uuidv4 } = require('uuid');
+const session = require('express-session');
+const UserDatabase = require('./database');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+// Initialize database
+const userDb = new UserDatabase();
+
+// Configure session middleware
+const sessionMiddleware = session({
+  secret: process.env.SESSION_SECRET || 'driftout-secret-key-change-in-production',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
+});
+
+app.use(express.json());
+app.use(sessionMiddleware);
 app.use(express.static('client'));
+
+// Share session with socket.io
+const wrap = (middleware) => (socket, next) => middleware(socket.request, {}, next);
+io.use(wrap(sessionMiddleware));
 
 // send car types to client
 app.get('/api/carTypes', (req, res) => {
@@ -92,6 +115,142 @@ app.post('/api/rooms/create', express.json(), (req, res) => {
   } catch (error) {
     console.error('Error creating room:', error);
     res.status(500).json({ error: 'Failed to create room' });
+  }
+});
+
+// Authentication API endpoints
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { username, email, password } = req.body;
+    
+    // Basic validation
+    if (!username || !email || !password) {
+      return res.status(400).json({ error: 'Username, email, and password are required' });
+    }
+    
+    if (username.length < 2 || username.length > 20) {
+      return res.status(400).json({ error: 'Username must be between 2 and 20 characters' });
+    }
+    
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+    }
+    
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: 'Please enter a valid email address' });
+    }
+    
+    const result = await userDb.registerUser(username, email, password);
+    
+    if (result.success) {
+      // Log in the user immediately after registration
+      req.session.userId = result.userId;
+      req.session.username = username;
+      req.session.isGuest = false;
+      
+      res.json({ 
+        success: true, 
+        user: { 
+          id: result.userId, 
+          username: username, 
+          email: email,
+          isGuest: false
+        } 
+      });
+    } else {
+      res.status(400).json({ error: result.error });
+    }
+  } catch (error) {
+    console.error('Registration error:', error);
+    res.status(500).json({ error: 'Registration failed' });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+    
+    const result = await userDb.loginUser(email, password);
+    
+    if (result.success) {
+      req.session.userId = result.user.id;
+      req.session.username = result.user.username;
+      req.session.isGuest = false;
+      
+      res.json({ 
+        success: true, 
+        user: { 
+          id: result.user.id, 
+          username: result.user.username, 
+          email: result.user.email,
+          isGuest: false
+        } 
+      });
+    } else {
+      res.status(400).json({ error: result.error });
+    }
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+app.post('/api/auth/guest', (req, res) => {
+  try {
+    const { name } = req.body;
+    
+    if (!name || name.length < 1 || name.length > 20) {
+      return res.status(400).json({ error: 'Guest name must be between 1 and 20 characters' });
+    }
+    
+    // Generate guest session
+    req.session.userId = null;
+    req.session.username = name;
+    req.session.isGuest = true;
+    
+    res.json({ 
+      success: true, 
+      user: { 
+        id: null, 
+        username: name,
+        email: null,
+        isGuest: true
+      } 
+    });
+  } catch (error) {
+    console.error('Guest login error:', error);
+    res.status(500).json({ error: 'Guest login failed' });
+  }
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      console.error('Logout error:', err);
+      return res.status(500).json({ error: 'Logout failed' });
+    }
+    res.json({ success: true });
+  });
+});
+
+app.get('/api/auth/session', (req, res) => {
+  if (req.session.username) {
+    res.json({
+      authenticated: true,
+      user: {
+        id: req.session.userId,
+        username: req.session.username,
+        isGuest: req.session.isGuest || false
+      }
+    });
+  } else {
+    res.json({ authenticated: false });
   }
 });
 
@@ -1162,6 +1321,23 @@ io.on('connection', (socket) => {
   let currentRoom = null;
   let myCar = null;
   
+  // Handle session refresh request
+  socket.on('refreshSession', () => {
+    console.log(`Socket ${socket.id} requested session refresh`);
+    // Force session middleware to run again
+    wrap(sessionMiddleware)(socket, (err) => {
+      if (err) {
+        console.error('Session refresh error:', err);
+      } else {
+        console.log('Session refreshed for socket:', socket.id, {
+          hasSession: !!socket.request.session,
+          username: socket.request.session?.username,
+          isGuest: socket.request.session?.isGuest
+        });
+      }
+    });
+  });
+  
   // Handle spectator requests (with room support)
   socket.on('requestSpectator', (data = {}) => {
     const { roomId } = data;
@@ -1206,6 +1382,26 @@ io.on('connection', (socket) => {
   socket.on('joinGame', ({ carType, name, roomId }) => {
     if (!CAR_TYPES[carType]) return;
     
+    // Debug session information
+    console.log('Join game attempt:', {
+      socketId: socket.id,
+      carType,
+      requestedName: name,
+      roomId,
+      hasSession: !!socket.request.session,
+      sessionUsername: socket.request.session?.username,
+      sessionIsGuest: socket.request.session?.isGuest
+    });
+    
+    // For now, allow client-provided names while we fix session sharing
+    // TODO: Fix session sharing to properly use session-based authentication
+    const playerName = name || 'Anonymous';
+    if (!playerName || playerName === 'Anonymous') {
+      console.log('No valid player name provided for socket', socket.id);
+      socket.emit('joinError', { error: 'Please provide a valid name' });
+      return;
+    }
+    
     // Find target room - either specified room ID or auto-assign
     let targetRoom = null;
     if (roomId) {
@@ -1236,11 +1432,11 @@ io.on('connection', (socket) => {
       // Check if user is already a spectator in this room
       if (targetRoom.canRejoinAsPlayer(socket.id)) {
         // User is spectating, promote them to player
-        myCar = targetRoom.promoteToPlayer(socket, carType, name);
+        myCar = targetRoom.promoteToPlayer(socket, carType, playerName);
       } else {
         // Add user to room as member first, then promote to player
         targetRoom.addMember(socket, Room.USER_STATES.SPECTATING);
-        myCar = targetRoom.promoteToPlayer(socket, carType, name);
+        myCar = targetRoom.promoteToPlayer(socket, carType, playerName);
       }
       
       currentRoom = targetRoom;
