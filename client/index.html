@@ -64,6 +64,14 @@
     <!-- Dynamic kill feed messages will appear here -->
   </div>
 
+  <!-- Mini Leaderboard (Always Visible) -->
+  <div id="miniLeaderboard" class="mini-leaderboard">
+    <div class="mini-leaderboard-header">Leaderboard</div>
+    <div class="mini-leaderboard-content">
+      <!-- Dynamic player entries -->
+    </div>
+  </div>
+
   <!-- Performance Overlays -->
   <div id="performanceOverlay" class="performance-overlay hidden">
     <div id="fpsDisplay" class="fps-display hidden">FPS: --</div>
@@ -205,6 +213,32 @@
           </div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Detailed Leaderboard Modal -->
+  <div id="detailedLeaderboard" class="detailed-leaderboard-modal hidden">
+    <div class="detailed-leaderboard-content">
+      <div class="detailed-leaderboard-header">
+        <h2 class="leaderboard-title">Race Statistics</h2>
+        <div class="leaderboard-hint">Press TAB or ESC to close</div>
+      </div>
+      <table class="leaderboard-table">
+        <thead>
+          <tr>
+            <th>Rank</th>
+            <th>Player</th>
+            <th>Laps</th>
+            <th>Kills</th>
+            <th>Deaths</th>
+            <th>K/D</th>
+            <th>Best Lap</th>
+          </tr>
+        </thead>
+        <tbody id="leaderboardTableBody">
+          <!-- Dynamic rows -->
+        </tbody>
+      </table>
     </div>
   </div>
 

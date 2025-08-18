@@ -157,6 +157,48 @@ module.exports = {
       },
     ]
   },
+  circle: {
+    displayName: 'Circle',
+    start: {
+      type: 'polygon',
+      vertices: [
+        { x: 1000, y: -10 },
+        { x: 1250, y: -10 },
+        { x: 1250, y: 10 },
+        { x: 1000, y: 10 }
+      ]
+    },
+    shapes: [
+      {
+        vertices: circleToPolygon(1250, 50, { x: 0, y: 0 }),
+        fillColor: [100, 100, 100],
+        borderColors: ['#ff4d4d', '#ffffff'],
+        borderWidth: 20
+      },
+      {
+        vertices: circleToPolygon(1000, 40, { x: 0, y: 0 }),
+        borderColors: ['#ff4d4d', '#ffffff'],
+        borderWidth: 20
+      },
+    ],
+    checkpoints: [
+      {
+        type: 'line',
+        vertices: [{ x: 0, y: -1000 }, { x: 0, y: -1250 }],
+        id: 'checkpoint-1'
+      },
+      {
+        type: 'line',
+        vertices: [{ x: -1000, y: 0 }, { x: -1250, y: 0 }],
+        id: 'checkpoint-2'
+      },
+      {
+        type: 'line',
+        vertices: [{ x: 0, y: 1000 }, { x: 0, y: 1250 }],
+        id: 'checkpoint-3'
+      },
+    ]
+  },
 };
 
 function circleToPolygon(radius, segments = 24, center = { x: 0, y: 0 }) {

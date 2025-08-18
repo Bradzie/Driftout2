@@ -29,6 +29,12 @@
   // Get kill feed element
   const killFeed = document.getElementById('killFeed');
   
+  // Get leaderboard elements
+  const miniLeaderboard = document.getElementById('miniLeaderboard');
+  const miniLeaderboardContent = document.getElementById('miniLeaderboard').querySelector('.mini-leaderboard-content');
+  const detailedLeaderboard = document.getElementById('detailedLeaderboard');
+  const leaderboardTableBody = document.getElementById('leaderboardTableBody');
+  
   // Get spectator canvas
   const spectatorCanvas = document.getElementById('spectatorCanvas');
   const spectatorCtx = spectatorCanvas.getContext('2d');
@@ -291,6 +297,99 @@
     const ms = milliseconds % 1000;
     
     return `${minutes}:${seconds.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
+  }
+
+  // ============ LEADERBOARD FUNCTIONS ============
+  
+  function updateMiniLeaderboard(players) {
+    if (!players || players.length === 0) {
+      miniLeaderboardContent.innerHTML = '<div style="text-align: center; color: rgba(255,255,255,0.5); font-size: 10px;">No players</div>';
+      return;
+    }
+
+    // Sort players by laps (descending), then by best lap time (ascending)
+    const sortedPlayers = [...players].sort((a, b) => {
+      if (a.laps !== b.laps) return b.laps - a.laps;
+      if (a.bestLapTime && b.bestLapTime) return a.bestLapTime - b.bestLapTime;
+      if (a.bestLapTime && !b.bestLapTime) return -1;
+      if (!a.bestLapTime && b.bestLapTime) return 1;
+      return 0;
+    });
+
+    // Limit to top 8 players for mini leaderboard
+    const topPlayers = sortedPlayers.slice(0, 8);
+    
+    miniLeaderboardContent.innerHTML = topPlayers.map(player => `
+      <div class="mini-leaderboard-entry">
+        <div class="mini-leaderboard-player">
+          <div class="mini-leaderboard-color" style="background-color: ${player.color}"></div>
+          <div class="mini-leaderboard-name">${player.name || 'Unnamed'}</div>
+        </div>
+        <div class="mini-leaderboard-laps">${player.laps}/${player.maxLaps || 3}</div>
+      </div>
+    `).join('');
+  }
+
+  function updateDetailedLeaderboard(players) {
+    if (!players || players.length === 0) {
+      leaderboardTableBody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: rgba(255,255,255,0.5);">No players in game</td></tr>';
+      return;
+    }
+
+    // Sort players by laps (descending), then by best lap time (ascending)
+    const sortedPlayers = [...players].sort((a, b) => {
+      if (a.laps !== b.laps) return b.laps - a.laps;
+      if (a.bestLapTime && b.bestLapTime) return a.bestLapTime - b.bestLapTime;
+      if (a.bestLapTime && !b.bestLapTime) return -1;
+      if (!a.bestLapTime && b.bestLapTime) return 1;
+      return 0;
+    });
+
+    leaderboardTableBody.innerHTML = sortedPlayers.map((player, index) => {
+      const rank = index + 1;
+      const kdr = player.kdr;
+      let kdrText = '--';
+      let kdrClass = '';
+      
+      if (player.deaths === 0 && player.kills > 0) {
+        kdrText = '∞';
+        kdrClass = 'stat-kdr-perfect';
+      } else if (player.deaths === 0) {
+        kdrText = '0.00';
+      } else {
+        kdrText = kdr.toFixed(2);
+        if (kdr >= 2.0) kdrClass = 'stat-kdr-high';
+      }
+
+      const bestLapText = player.bestLapTime ? formatTime(player.bestLapTime) : '--';
+      const rankClass = rank === 1 ? 'rank-1' : rank === 2 ? 'rank-2' : rank === 3 ? 'rank-3' : '';
+
+      return `
+        <tr>
+          <td class="${rankClass}">#${rank}</td>
+          <td>
+            <div class="leaderboard-player-cell">
+              <div class="leaderboard-player-color" style="background-color: ${player.color}"></div>
+              <div class="leaderboard-player-name">${player.name || 'Unnamed'}</div>
+            </div>
+          </td>
+          <td>${player.laps}/${player.maxLaps || 3}</td>
+          <td class="stat-kills">${player.kills || 0}</td>
+          <td class="stat-deaths">${player.deaths || 0}</td>
+          <td class="${kdrClass}">${kdrText}</td>
+          <td class="stat-best-lap">${bestLapText}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  function toggleDetailedLeaderboard() {
+    const isHidden = detailedLeaderboard.classList.contains('hidden');
+    if (isHidden) {
+      detailedLeaderboard.classList.remove('hidden');
+    } else {
+      detailedLeaderboard.classList.add('hidden');
+    }
   }
 
   // Settings system functions
@@ -841,6 +940,10 @@
 
     // Update current map immediately (doesn't need interpolation)
     currentMap = data.map || currentMap;
+    
+    // Update leaderboards with latest player data
+    updateMiniLeaderboard(data.players);
+    updateDetailedLeaderboard(data.players);
   });
 
   // Handle delta updates for better performance
@@ -902,6 +1005,10 @@
     // Keep only last 1 second of states
     const now = Date.now();
     gameStates = gameStates.filter(state => (now - state.timestamp) < 1000);
+    
+    // Update leaderboards with latest player data
+    updateMiniLeaderboard(newPlayers);
+    updateDetailedLeaderboard(newPlayers);
   });
 
   // Handle heartbeat (no data changed)
@@ -927,6 +1034,10 @@
   // Handle spectator state
   socket.on('spectatorState', (data) => {
     spectatorState = data;
+    
+    // Update leaderboards with spectator data
+    updateMiniLeaderboard(data.players);
+    updateDetailedLeaderboard(data.players);
   });
 
   socket.on('returnToMenu', ({ winner, crashed }) => {
@@ -994,6 +1105,21 @@
 
   // Ability and upgrade input handling
   document.addEventListener('keydown', (e) => {
+    // Handle TAB key for leaderboard toggle
+    if (e.code === 'Tab') {
+      e.preventDefault();
+      toggleDetailedLeaderboard();
+      return;
+    }
+    
+    // Handle ESC key to close detailed leaderboard
+    if (e.code === 'Escape') {
+      if (!detailedLeaderboard.classList.contains('hidden')) {
+        detailedLeaderboard.classList.add('hidden');
+        return;
+      }
+    }
+    
     if (e.code === 'Space' && !e.repeat) {
       e.preventDefault();
       

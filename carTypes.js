@@ -49,7 +49,7 @@ const CAR_TYPES = {
     displayHealth: 80,
     displayHandling: 70,
     maxHealth: 20,
-    acceleration: 0.12,
+    acceleration: 0.07,
     boost: 40,
     regen: 0.05,
     color: { fill: [157, 230, 160], stroke: [99, 145, 101], strokeWidth: 4 },
@@ -59,7 +59,7 @@ const CAR_TYPES = {
     bodyOptions: {
       friction: 0.6,
       restitution: 0.9,
-      frictionAir: 0.025,
+      frictionAir: 0.020,
       density: 0.6
     },
     upgrades: {

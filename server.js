@@ -98,7 +98,7 @@ app.post('/api/rooms/create', express.json(), (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 // Debug mode - toggle this to enable/disable admin panel
-const DEBUG_MODE = true;
+const DEBUG_MODE = false;
 
 const HELPERS = require('./helpers');
 const { abilityRegistry, SpikeTrapAbility } = require('./abilities');
@@ -139,167 +139,13 @@ const CAR_TYPES = require('./carTypes');
 
 // Global collision detection removed - now handled per room
 
-// Smart collision damage system with overflow mechanics and collision kill rewards
-function applyMutualCollisionDamage(carA, carB, impulse, relativeSpeed) {
-  if (!carA || !carB || carA.godMode || carB.godMode || carA.isGhost || carB.isGhost) return;
-  
-  // Store initial health states
-  const carAInitialHealth = carA.currentHealth;
-  const carBInitialHealth = carB.currentHealth;
-  
-  // Calculate potential damage for both cars using existing physics formulas
-  const damageA = calculateCollisionDamage(carA, carB.body, impulse, relativeSpeed);
-  const damageB = calculateCollisionDamage(carB, carA.body, impulse, relativeSpeed);
-  
-  // Determine which car has less remaining health
-  const carAHealthRemaining = carA.currentHealth;
-  const carBHealthRemaining = carB.currentHealth;
-  
-  // Apply overflow damage logic
-  let finalDamageA = damageA;
-  let finalDamageB = damageB;
-  
-  // If damageB would exceed carB's remaining health, cap damageA to overflow amount
-  if (damageB > carBHealthRemaining) {
-    const overflow = damageB - carBHealthRemaining;
-    finalDamageA = Math.min(finalDamageA, overflow);
-  }
-  
-  // If damageA would exceed carA's remaining health, cap damageB to overflow amount
-  if (damageA > carAHealthRemaining) {
-    const overflow = damageA - carAHealthRemaining;
-    finalDamageB = Math.min(finalDamageB, overflow);
-  }
-  
-  // Apply the calculated damage
-  carA.currentHealth -= finalDamageA;
-  carB.currentHealth -= finalDamageB;
-  
-  // Check for crashes and award upgrade points for collision kills
-  const carACrashed = carA.currentHealth <= 0;
-  const carBCrashed = carB.currentHealth <= 0;
-  
-  if (carACrashed) {
-    carA.justCrashed = true;
-    carA.crashedByPlayer = true; // Mark as player collision crash
-  }
-  if (carBCrashed) {
-    carB.justCrashed = true;
-    carB.crashedByPlayer = true; // Mark as player collision crash
-  }
-  
-  // Award upgrade points for successful collision kills and broadcast crash events
-  if (carACrashed && !carBCrashed) {
-    // carB killed carA - reward carB
-    carB.upgradePoints += 1;
-    
-    // Broadcast kill feed message
-    const room = rooms[0]; // Assuming single room for now
-    if (room) {
-      for (const [socketId, car] of room.players.entries()) {
-        const socket = io.sockets.sockets.get(socketId);
-        if (socket) {
-          socket.emit('killFeedMessage', {
-            text: `${carB.name} crashed ${carA.name}!`,
-            type: 'crash'
-          });
-        }
-      }
-    }
-  } else if (carBCrashed && !carACrashed) {
-    // carA killed carB - reward carA  
-    carA.upgradePoints += 1;
-    
-    // Broadcast kill feed message
-    const room = rooms[0]; // Assuming single room for now
-    if (room) {
-      for (const [socketId, car] of room.players.entries()) {
-        const socket = io.sockets.sockets.get(socketId);
-        if (socket) {
-          socket.emit('killFeedMessage', {
-            text: `${carA.name} crashed ${carB.name}!`,
-            type: 'crash'
-          });
-        }
-      }
-    }
-  } else if (carACrashed && carBCrashed) {
-    // Both crashed - mutual destruction
-    const room = rooms[0]; // Assuming single room for now
-    if (room) {
-      for (const [socketId, car] of room.players.entries()) {
-        const socket = io.sockets.sockets.get(socketId);
-        if (socket) {
-          socket.emit('killFeedMessage', {
-            text: `${carA.name} and ${carB.name} crashed!`,
-            type: 'crash'
-          });
-        }
-      }
-    }
-  }
-  // If both crash (mutual destruction), no points awarded
-}
+// Velocity-based collision damage constants
+const BASE_VELOCITY_DAMAGE_SCALE = 0.5;  // Main damage tuning knob
+const WALL_VELOCITY_DAMAGE_SCALE = 0.08;  // For static wall collisions
+const MIN_DAMAGE_VELOCITY = 0;  // Ignore very slow collisions
+const MAX_DAMAGE_MULTIPLIER = 5.0;  // Cap damage to prevent one-hit kills
+const MIN_DAMAGE_MULTIPLIER = 0.5;  // Minimum damage scaling
 
-// Calculate collision damage for a single car (extracted from applyCollisionDamage)
-function calculateCollisionDamage(car, otherBody, impulse, relativeSpeed) {
-  // Physics-based damage calculation using density ratios
-  const otherDensity = otherBody.density || 0.001;
-  const thisDensity = car.body.density || 0.3;
-  
-  // Calculate density ratio (heavier objects deal more damage to lighter ones)
-  const densityRatio = otherDensity / thisDensity;
-  
-  // Add velocity factor for more realistic collision damage
-  const velocityFactor = Math.sqrt(Math.abs(relativeSpeed)) / 10 || 1;
-  
-  // Cap the damage multiplier to prevent one-hit kills
-  const MAX_DAMAGE_MULTIPLIER = 3.0;
-  const MIN_DAMAGE_MULTIPLIER = 0.5;
-  const damageMultiplier = Math.max(MIN_DAMAGE_MULTIPLIER, Math.min(MAX_DAMAGE_MULTIPLIER, densityRatio * velocityFactor));
-  
-  const BASE_DAMAGE_SCALE = 0.05; // Increased from 0.03 for more intense collisions
-  const damage = impulse * damageMultiplier * BASE_DAMAGE_SCALE;
-  
-  return damage;
-}
-
-// Handle damage to dynamic objects (like brown box)
-function applyDynamicObjectDamage(dynamicBody, otherBody, impulse, relativeSpeed) {
-  if (!dynamicBody.dynamicObject) return
-  
-  // Only apply damage if the object has maxHealth defined
-  if (typeof dynamicBody.dynamicObject.maxHealth === 'undefined') {
-    // No health system for this object - it's indestructible
-    return
-  }
-  
-  // Initialize health if not set
-  if (typeof dynamicBody.health === 'undefined') {
-    dynamicBody.health = dynamicBody.dynamicObject.maxHealth
-  }
-  
-  // Calculate damage using density ratios (similar to cars)
-  const otherDensity = otherBody.density || 0.3
-  const thisDensity = dynamicBody.density || 0.01
-  const densityRatio = otherDensity / thisDensity
-  const velocityFactor = Math.sqrt(Math.abs(relativeSpeed)) / 10 || 1
-  
-  // Dynamic objects are more fragile than cars
-  const DYNAMIC_DAMAGE_SCALE = 0.1
-  const damageMultiplier = Math.min(20.0, densityRatio * velocityFactor) // Higher cap for fragile objects
-  const damage = impulse * damageMultiplier * DYNAMIC_DAMAGE_SCALE
-  
-  dynamicBody.health -= damage
-  
-  // Visual feedback for damage (could reduce opacity, change color, etc.)
-  if (dynamicBody.health <= 0) {
-    // Mark as destroyed (could remove from world or change appearance)
-    dynamicBody.isDestroyed = true
-    // For now, just make it very light so it's easily pushed around
-    Matter.Body.setDensity(dynamicBody, 0.001)
-  }
-}
 
 // Legacy setTrackBodies function removed - now handled per room in Room constructor
 
@@ -321,6 +167,12 @@ class Car {
     this.maxLaps = 3; // Default number of laps to complete
     this.upgradePoints = 0;
     this.upgradeUsage = {}; // Track how many times each upgrade has been used
+    
+    // Player statistics for leaderboard
+    this.kills = 0;
+    this.deaths = 0;
+    this.bestLapTime = null;
+    this.currentLapStartTime = 0;
     this.prevFinishCheck = null; // used for lap crossing on square track
     this.cursor = { x: 0, y: 0 }; // direction and intensity from client
     this.justCrashed = false;
@@ -543,6 +395,10 @@ class Car {
     this.prevFinishCheck = null;
     this.upgradeUsage = {};
     
+    // Reset lap timing (keep kill/death stats across respawns)
+    this.bestLapTime = null;
+    this.currentLapStartTime = 0;
+    
     // Restore boost on new life
     this.currentBoost = this.maxBoost;
     this.boostActive = false;
@@ -556,39 +412,35 @@ class Car {
     Matter.Body.setAngularVelocity(this.body, 0);
     Matter.Body.setAngle(this.body, 0);
   }
-  applyCollisionDamage(otherBody, impulse, relativeVelocity = 0, damageScale = 1.0) {
+  applyCollisionDamage(otherBody, relativeSpeed, damageScale = 1.0) {
     // Don't take damage if god mode is enabled
     if (this.godMode) return;
     
-    // Don't take damage if other body is static (walls, barriers)
+    // Ignore very slow collisions
+    if (relativeSpeed < MIN_DAMAGE_VELOCITY) return;
+    
+    // Calculate density ratio (heavier objects deal more damage to lighter ones)
+    const otherDensity = otherBody.density || 0.001;
+    const thisDensity = this.body.density || 0.3;
+    const densityRatio = otherDensity / thisDensity;
+    
+    // Cap the damage multiplier to prevent one-hit kills
+    const damageMultiplier = Math.max(MIN_DAMAGE_MULTIPLIER, Math.min(MAX_DAMAGE_MULTIPLIER, densityRatio));
+    
+    // Pure velocity-based damage calculation
+    let damage;
     if (otherBody.isStatic) {
-      const WALL_DAMAGE_SCALE = 0.02
-      const damage = impulse * WALL_DAMAGE_SCALE * damageScale
-      this.currentHealth -= damage
+      // Static wall collisions use different scale
+      damage = relativeSpeed * WALL_VELOCITY_DAMAGE_SCALE * damageMultiplier * damageScale;
     } else {
-      // Physics-based damage calculation using density ratios
-      const otherDensity = otherBody.density || 0.001
-      const thisDensity = this.body.density || 0.3
-      
-      // Calculate density ratio (heavier objects deal more damage to lighter ones)
-      const densityRatio = otherDensity / thisDensity
-      
-      // Add velocity factor for more realistic collision damage
-      const velocityFactor = Math.sqrt(Math.abs(relativeVelocity)) / 10 || 1
-      
-      // Cap the damage multiplier to prevent one-hit kills
-      const MAX_DAMAGE_MULTIPLIER = 3.0
-      const MIN_DAMAGE_MULTIPLIER = 0.5
-      const damageMultiplier = Math.max(MIN_DAMAGE_MULTIPLIER, Math.min(MAX_DAMAGE_MULTIPLIER, densityRatio * velocityFactor))
-      
-      const BASE_DAMAGE_SCALE = 0.05 // Increased for more intense collisions
-      const damage = impulse * damageMultiplier * BASE_DAMAGE_SCALE * damageScale
-      
-      this.currentHealth -= damage
+      // Dynamic body collisions (car vs car, car vs dynamic object)
+      damage = relativeSpeed * BASE_VELOCITY_DAMAGE_SCALE * damageMultiplier * damageScale;
     }
+    
+    this.currentHealth -= damage;
 
     if (this.currentHealth <= 0) {
-      this.justCrashed = true
+      this.justCrashed = true;
     }
   }
   
@@ -705,41 +557,39 @@ class Room {
     
         // Handle collisions (only if not ghost and not spike traps)
         if (!isSpikeA && !isSpikeB) {
-          const impulse = pair.collision.depth * 100 // crude impulse estimation
-          
-          // Calculate relative velocity for more accurate damage
-          const relativeVelocityX = bodyA.velocity.x - bodyB.velocity.x
-          const relativeVelocityY = bodyA.velocity.y - bodyB.velocity.y
-          const relativeSpeed = Math.sqrt(relativeVelocityX * relativeVelocityX + relativeVelocityY * relativeVelocityY)
+          // Calculate relative velocity for velocity-based damage
+          const relativeVelocityX = bodyA.velocity.x - bodyB.velocity.x;
+          const relativeVelocityY = bodyA.velocity.y - bodyB.velocity.y;
+          const relativeSpeed = Math.sqrt(relativeVelocityX * relativeVelocityX + relativeVelocityY * relativeVelocityY);
           
           // Apply mutual collision damage with overflow mechanics
           if (carA && carB && !carA.isGhost && !carB.isGhost) {
-            this.applyMutualCollisionDamage(carA, carB, impulse, relativeSpeed)
+            this.applyMutualCollisionDamage(carA, carB, relativeSpeed);
           } else {
-            // Handle single car collisions (with walls, etc.) using original system
+            // Handle single car collisions (with walls, etc.)
             if (carA && !carA.isGhost) {
               // Check if bodyB is a dynamic object with damageScale
               const damageScale = (bodyB.dynamicObject && typeof bodyB.dynamicObject.damageScale === 'number') 
                 ? bodyB.dynamicObject.damageScale : 1.0;
-              carA.applyCollisionDamage(bodyB, impulse, relativeSpeed, damageScale);
+              carA.applyCollisionDamage(bodyB, relativeSpeed, damageScale);
             }
             if (carB && !carB.isGhost) {
               // Check if bodyA is a dynamic object with damageScale
               const damageScale = (bodyA.dynamicObject && typeof bodyA.dynamicObject.damageScale === 'number') 
                 ? bodyA.dynamicObject.damageScale : 1.0;
-              carB.applyCollisionDamage(bodyA, impulse, relativeSpeed, damageScale);
+              carB.applyCollisionDamage(bodyA, relativeSpeed, damageScale);
             }
           }
           
           // Handle dynamic object damage (can be damaged by cars)
-          const isDynamicA = bodyA.label && bodyA.label.startsWith('dynamic-')
-          const isDynamicB = bodyB.label && bodyB.label.startsWith('dynamic-')
+          const isDynamicA = bodyA.label && bodyA.label.startsWith('dynamic-');
+          const isDynamicB = bodyB.label && bodyB.label.startsWith('dynamic-');
           
           if (isDynamicA && carB) {
-            this.applyDynamicObjectDamage(bodyA, bodyB, impulse, relativeSpeed)
+            this.applyDynamicObjectDamage(bodyA, bodyB, relativeSpeed);
           }
           if (isDynamicB && carA) {
-            this.applyDynamicObjectDamage(bodyB, bodyA, impulse, relativeSpeed)
+            this.applyDynamicObjectDamage(bodyB, bodyA, relativeSpeed);
           }
         }
       }
@@ -747,16 +597,19 @@ class Room {
   }
   
   // Move collision damage methods from global scope to Room scope
-  applyMutualCollisionDamage(carA, carB, impulse, relativeSpeed) {
+  applyMutualCollisionDamage(carA, carB, relativeSpeed) {
     if (!carA || !carB || carA.godMode || carB.godMode || carA.isGhost || carB.isGhost) return;
+    
+    // Ignore very slow collisions
+    if (relativeSpeed < MIN_DAMAGE_VELOCITY) return;
     
     // Store initial health states
     const carAInitialHealth = carA.currentHealth;
     const carBInitialHealth = carB.currentHealth;
     
-    // Calculate potential damage for both cars using existing physics formulas
-    const damageA = this.calculateCollisionDamage(carA, carB.body, impulse, relativeSpeed);
-    const damageB = this.calculateCollisionDamage(carB, carA.body, impulse, relativeSpeed);
+    // Calculate potential damage for both cars using velocity-based formulas
+    const damageA = this.calculateCollisionDamage(carA, carB.body, relativeSpeed);
+    const damageB = this.calculateCollisionDamage(carB, carA.body, relativeSpeed);
     
     // Determine which car has less remaining health
     const carAHealthRemaining = carA.currentHealth;
@@ -799,61 +652,85 @@ class Room {
     if (carACrashed && !carBCrashed) {
       // carB killed carA - reward carB
       carB.upgradePoints += 1;
+      carB.kills += 1; // Track kill
+      carA.deaths += 1; // Track death
       
       // Broadcast kill feed message to this room
       this.broadcastKillFeedMessage(`${carB.name} crashed ${carA.name}!`, 'crash');
     } else if (carBCrashed && !carACrashed) {
       // carA killed carB - reward carA  
       carA.upgradePoints += 1;
+      carA.kills += 1; // Track kill
+      carB.deaths += 1; // Track death
       
       // Broadcast kill feed message to this room
       this.broadcastKillFeedMessage(`${carA.name} crashed ${carB.name}!`, 'crash');
     } else if (carACrashed && carBCrashed) {
-      // Both crashed - mutual destruction
+      // Both crashed - mutual destruction (both get a death, no kills)
+      carA.deaths += 1;
+      carB.deaths += 1;
       this.broadcastKillFeedMessage(`${carA.name} and ${carB.name} crashed!`, 'crash');
     }
   }
   
-  calculateCollisionDamage(car, otherBody, impulse, relativeVelocity, damageScale = 1.0) {
-    // Don't take damage if other body is static (walls, barriers)
+  calculateCollisionDamage(car, otherBody, relativeSpeed, damageScale = 1.0) {
+    // Ignore very slow collisions
+    if (relativeSpeed < MIN_DAMAGE_VELOCITY) return 0;
+    
+    // Calculate density ratio (heavier objects deal more damage to lighter ones)
+    const otherDensity = otherBody.density || 0.001;
+    const thisDensity = car.body.density || 0.3;
+    const densityRatio = otherDensity / thisDensity;
+    
+    // Cap the damage multiplier to prevent one-hit kills
+    const damageMultiplier = Math.max(MIN_DAMAGE_MULTIPLIER, Math.min(MAX_DAMAGE_MULTIPLIER, densityRatio));
+    
+    // Pure velocity-based damage calculation
     if (otherBody.isStatic) {
-      const WALL_DAMAGE_SCALE = 0.02
-      return impulse * WALL_DAMAGE_SCALE * damageScale
+      // Static wall collisions use different scale
+      return relativeSpeed * WALL_VELOCITY_DAMAGE_SCALE * damageMultiplier * damageScale;
     } else {
-      // Physics-based damage calculation using density ratios
-      const otherDensity = otherBody.density || 0.001
-      const thisDensity = car.body.density || 0.3
-      
-      // Calculate density ratio (heavier objects deal more damage to lighter ones)
-      const densityRatio = otherDensity / thisDensity
-      
-      // Add velocity factor for more realistic collision damage
-      const velocityFactor = Math.sqrt(Math.abs(relativeVelocity)) / 10 || 1
-      
-      // Cap the damage multiplier to prevent one-hit kills
-      const MAX_DAMAGE_MULTIPLIER = 3.0
-      const MIN_DAMAGE_MULTIPLIER = 0.5
-      const damageMultiplier = Math.max(MIN_DAMAGE_MULTIPLIER, Math.min(MAX_DAMAGE_MULTIPLIER, densityRatio * velocityFactor))
-      
-      const BASE_DAMAGE_SCALE = 0.05 // Increased for more intense collisions
-      return impulse * damageMultiplier * BASE_DAMAGE_SCALE * damageScale
+      // Dynamic body collisions (car vs car, car vs dynamic object)
+      return relativeSpeed * BASE_VELOCITY_DAMAGE_SCALE * damageMultiplier * damageScale;
     }
   }
   
-  applyDynamicObjectDamage(dynamicBody, carBody, impulse, relativeSpeed) {
-    // Implementation for dynamic object damage
-    if (dynamicBody.dynamicObject && dynamicBody.dynamicObject.health !== undefined) {
-      const damage = impulse * 0.1; // Adjust damage scale as needed
-      dynamicBody.dynamicObject.health -= damage;
-      
-      if (dynamicBody.dynamicObject.health <= 0) {
-        // Remove the dynamic object
-        Matter.World.remove(this.world, dynamicBody);
-        const index = this.currentDynamicBodies.indexOf(dynamicBody);
-        if (index > -1) {
-          this.currentDynamicBodies.splice(index, 1);
-        }
-      }
+  applyDynamicObjectDamage(dynamicBody, carBody, relativeSpeed) {
+    // Implementation for dynamic object damage using velocity-based system
+    if (!dynamicBody.dynamicObject) return;
+    
+    // Only apply damage if the object has maxHealth defined
+    if (typeof dynamicBody.dynamicObject.maxHealth === 'undefined') {
+      // No health system for this object - it's indestructible
+      return;
+    }
+    
+    // Initialize health if not set
+    if (typeof dynamicBody.health === 'undefined') {
+      dynamicBody.health = dynamicBody.dynamicObject.maxHealth;
+    }
+    
+    // Ignore very slow collisions
+    if (relativeSpeed < MIN_DAMAGE_VELOCITY) return;
+    
+    // Calculate damage using density ratios (similar to cars)
+    const otherDensity = carBody.density || 0.3;
+    const thisDensity = dynamicBody.density || 0.01;
+    const densityRatio = otherDensity / thisDensity;
+    
+    // Dynamic objects are more fragile than cars
+    const DYNAMIC_VELOCITY_DAMAGE_SCALE = 0.2;
+    const damageMultiplier = Math.min(20.0, densityRatio); // Higher cap for fragile objects
+    const damage = relativeSpeed * DYNAMIC_VELOCITY_DAMAGE_SCALE * damageMultiplier;
+    
+    dynamicBody.health -= damage;
+    
+    // Visual feedback for damage (could reduce opacity, change color, etc.)
+    if (dynamicBody.health <= 0) {
+      // Mark as destroyed (could remove from world or change appearance)
+      dynamicBody.isDestroyed = true;
+      // For now, just make it very light so it's easily pushed around
+      Matter.Body.setDensity(dynamicBody, 0.001);
     }
   }
   
@@ -1108,7 +985,12 @@ class Room {
         crashed: car.justCrashed || false,
         crashedAt: car.crashedAt || null,
         currentBoost: car.currentBoost,
-        maxBoost: car.maxBoost
+        maxBoost: car.maxBoost,
+        // Leaderboard statistics
+        kills: car.kills,
+        deaths: car.deaths,
+        bestLapTime: car.bestLapTime,
+        kdr: car.deaths === 0 ? (car.kills > 0 ? 999 : 0) : car.kills / car.deaths
       });
     }
     return cars;
@@ -1124,12 +1006,20 @@ class Room {
 // Initialize with a default room
 const rooms = [];
 
+// Helper function to get a random map key
+function getRandomMapKey() {
+  const mapKeys = Object.keys(MAP_TYPES);
+  return mapKeys[Math.floor(Math.random() * mapKeys.length)];
+}
+
 // Create initial room
 function initializeRooms() {
   if (rooms.length === 0) {
     console.log('Creating initial default room');
-    const defaultRoom = new Room(uuidv4());
+    const randomMapKey = getRandomMapKey();
+    const defaultRoom = new Room(uuidv4(), randomMapKey);
     defaultRoom.name = 'Official Room';
+    console.log(`Initial room created with random map: ${MAP_TYPES[randomMapKey]?.name || randomMapKey}`);
     rooms.push(defaultRoom);
   }
 }
@@ -1218,8 +1108,10 @@ function assignRoom() {
   }
   
   // If no room available, create a new one
-  const newRoom = new Room(uuidv4());
+  const randomMapKey = getRandomMapKey();
+  const newRoom = new Room(uuidv4(), randomMapKey);
   newRoom.name = `Room ${rooms.length + 1}`;
+  console.log(`Auto-assigned room created with random map: ${MAP_TYPES[randomMapKey]?.name || randomMapKey}`);
   rooms.push(newRoom);
   return newRoom;
 }
@@ -1235,8 +1127,10 @@ function ensureDefaultRoom() {
   
   if (joinableRooms.length === 0) {
     console.log('Creating default room - no joinable rooms available');
-    const defaultRoom = new Room(uuidv4());
+    const randomMapKey = getRandomMapKey();
+    const defaultRoom = new Room(uuidv4(), randomMapKey);
     defaultRoom.name = 'Main Room';
+    console.log(`Default room created with random map: ${MAP_TYPES[randomMapKey]?.name || randomMapKey}`);
     rooms.push(defaultRoom);
     
     // Room created successfully - now using room-specific worlds
@@ -1646,6 +1540,9 @@ function gameLoop() {
           if (sock) {
             // Check if this was a solo crash (not from player collision) and message hasn't been sent yet
             if (!car.crashedByPlayer && !car.killFeedSent) {
+              // Track death for solo crash
+              car.deaths += 1;
+              
               // Broadcast solo crash message to kill feed (send once to each player)
               for (const [socketId, otherCar] of room.players.entries()) {
                 const socket = io.sockets.sockets.get(socketId);
