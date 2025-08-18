@@ -121,6 +121,7 @@
   let players = [];
   let mySocketId = null;
   let abilityObjects = [];
+  let currentRoomId = null;
   
   // Interpolation state
   let gameStates = []; // Buffer of recent game states
@@ -498,21 +499,20 @@
   }
   
   function joinSpecificRoom(roomId) {
-    const selected = document.querySelector('input[name="car"]:checked');
-    const carType = selected ? selected.value : 'Speedster';
-    const name = sanitizeName(nameInput.value);
-    
     closeRoomBrowser();
-    //socket.emit('joinGame', { carType, name, roomId });
+    
+    // Track the room we're joining for crash handling
+    currentRoomId = roomId;
+    
+    // Start spectating the specific room
+    socket.emit('requestSpectator', { roomId });
   }
   
   function handleQuickJoin() {
-    const selected = document.querySelector('input[name="car"]:checked');
-    const carType = selected ? selected.value : 'Speedster';
-    const name = sanitizeName(nameInput.value);
-    
     closeRoomBrowser();
-    //socket.emit('joinGame', { carType, name }); // No roomId = auto-assign
+    
+    // Start spectating with auto-assign room
+    socket.emit('requestSpectator', {});
   }
   
   async function handleCreateRoom() {
@@ -647,12 +647,14 @@
   }
   
   // Spectator functions
-  function startSpectating() {
+  function startSpectating(roomId) {
     if (!isSpectating) {
       isSpectating = true;
-      socket.emit('requestSpectator');
+      // Use provided roomId or currentRoomId, or no roomId for default room
+      const spectatorData = roomId || currentRoomId ? { roomId: roomId || currentRoomId } : {};
+      socket.emit('requestSpectator', spectatorData);
       resizeSpectatorCanvas();
-      console.log('Started spectating mode');
+      console.log('Started spectating mode', roomId || currentRoomId ? `in room ${roomId || currentRoomId}` : '');
     }
   }
   
@@ -747,11 +749,14 @@
     const selected = document.querySelector('input[name="car"]:checked');
     const carType = selected ? selected.value : 'Speedster';
     const name = sanitizeName(nameInput.value); // Apply sanitization
-    socket.emit('joinGame', { carType, name });
+    socket.emit('joinGame', { carType, name, roomId: currentRoomId });
   });
 
   socket.on('joined', (data) => {
     stopSpectating(); // Stop spectating when joining game
+    
+    // Track the current room ID for crash handling
+    currentRoomId = data.roomId;
     
     // Reset crash state immediately when joining new game
     crashedCars.clear();

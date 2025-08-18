@@ -1129,7 +1129,7 @@ function initializeRooms() {
   if (rooms.length === 0) {
     console.log('Creating initial default room');
     const defaultRoom = new Room(uuidv4());
-    defaultRoom.name = 'Main Room';
+    defaultRoom.name = 'Official Room';
     rooms.push(defaultRoom);
   }
 }
@@ -1312,14 +1312,6 @@ io.on('connection', (socket) => {
   socket.on('joinGame', ({ carType, name, roomId }) => {
     if (!CAR_TYPES[carType]) return;
     
-    // Clean up any existing memberships across all rooms
-    for (const room of rooms) {
-      if (room.hasMember(socket.id)) {
-        console.log(`Removing user ${socket.id} from room ${room.name} before joining new game`);
-        room.removeMember(socket.id);
-      }
-    }
-    
     // Find target room - either specified room ID or auto-assign
     let targetRoom = null;
     if (roomId) {
@@ -1336,6 +1328,14 @@ io.on('connection', (socket) => {
     } else {
       // Auto-assign room (backwards compatibility)
       targetRoom = assignRoom();
+    }
+    
+    // Clean up memberships from OTHER rooms (not the target room)
+    for (const room of rooms) {
+      if (room !== targetRoom && room.hasMember(socket.id)) {
+        console.log(`Removing user ${socket.id} from room ${room.name} before joining new game`);
+        room.removeMember(socket.id);
+      }
     }
     
     try {
