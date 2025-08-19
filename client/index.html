@@ -230,6 +230,19 @@
     <span id="boostText" class="boost-text">100/100</span>
   </div>
 
+  <!-- Chat System -->
+  <div id="chatContainer" class="chat-container">
+    <!-- Messages Area (Always Visible) -->
+    <div id="chatMessages" class="chat-messages">
+      <!-- Dynamic chat messages will appear here -->
+    </div>
+    <!-- Input Area (Hidden by Default) -->
+    <div id="chatInputArea" class="chat-input-area hidden">
+      <input type="text" id="chatInput" class="chat-input" placeholder="Type a message..." maxlength="200" />
+      <div class="chat-hint">Press Enter to send, Escape to close</div>
+    </div>
+  </div>
+
   <!-- Loading Screen Template -->
   <div id="loadingScreen" class="overlay loading-overlay hidden">
     <div class="loading-content">

@@ -1406,6 +1406,16 @@ function cleanupEmptyRooms() {
 }
 
 io.on('connection', (socket) => {
+  console.log(`User connected: ${socket.id}`);
+  
+  // Debug session info on connection
+  console.log('Session on connect:', {
+    hasSession: !!socket.request.session,
+    sessionID: socket.request.sessionID,
+    username: socket.request.session?.username,
+    isGuest: socket.request.session?.isGuest
+  });
+  
   let currentRoom = null;
   let myCar = null;
   let clientSupportsBinary = false;
@@ -1413,8 +1423,8 @@ io.on('connection', (socket) => {
   // Handle session refresh request
   socket.on('refreshSession', () => {
     console.log(`Socket ${socket.id} requested session refresh`);
-    // Reload session data from store
-    if (socket.request.sessionID) {
+    // Only reload if session exists and has been initialized
+    if (socket.request.session && socket.request.sessionID && socket.request.session.username) {
       socket.request.session.reload((err) => {
         if (err) {
           console.error('Session refresh error:', err);
@@ -1427,7 +1437,11 @@ io.on('connection', (socket) => {
         }
       });
     } else {
-      console.log('No session ID found for socket:', socket.id);
+      console.log('No valid session to refresh for socket:', socket.id, {
+        hasSession: !!socket.request.session,
+        hasSessionID: !!socket.request.sessionID,
+        hasUsername: !!socket.request.session?.username
+      });
     }
   });
   
@@ -1475,16 +1489,41 @@ io.on('connection', (socket) => {
   socket.on('joinGame', ({ carType, name, roomId }) => {
     if (!CAR_TYPES[carType]) return;
     
-    // Debug session information
-    console.log('Join game attempt:', {
-      socketId: socket.id,
-      carType,
-      requestedName: name,
-      roomId,
-      hasSession: !!socket.request.session,
-      sessionUsername: socket.request.session?.username,
-      sessionIsGuest: socket.request.session?.isGuest
-    });
+    // Try to reload session first to get latest data
+    if (socket.request.session && socket.request.sessionID) {
+      socket.request.session.reload((err) => {
+        if (err) {
+          console.error('Session reload error during join:', err);
+        }
+        
+        // Debug session information after reload
+        console.log('Join game attempt (after session reload):', {
+          socketId: socket.id,
+          carType,
+          requestedName: name,
+          roomId,
+          hasSession: !!socket.request.session,
+          sessionUsername: socket.request.session?.username,
+          sessionIsGuest: socket.request.session?.isGuest
+        });
+        
+        processJoinRequest();
+      });
+    } else {
+      console.log('Join game attempt (no session to reload):', {
+        socketId: socket.id,
+        carType,
+        requestedName: name,
+        roomId,
+        hasSession: !!socket.request.session,
+        sessionUsername: socket.request.session?.username,
+        sessionIsGuest: socket.request.session?.isGuest
+      });
+      
+      processJoinRequest();
+    }
+    
+    function processJoinRequest() {
     
     // For now, allow client-provided names while we fix session sharing
     // TODO: Fix session sharing to properly use session-based authentication
@@ -1544,6 +1583,8 @@ io.on('connection', (socket) => {
       console.error(`Error joining game for socket ${socket.id}:`, error);
       socket.emit('joinError', { error: error.message });
     }
+    
+    } // End processJoinRequest function
   });
   
   // Binary input decoder function
@@ -1878,6 +1919,45 @@ io.on('connection', (socket) => {
       socket.emit('abilityResult', result);
     });
   }
+  
+  // Chat message handler
+  socket.on('chatMessage', (data) => {
+    if (!currentRoom || !myCar) return;
+    
+    // Validate message
+    if (!data.message || typeof data.message !== 'string') return;
+    const message = data.message.trim();
+    if (!message || message.length > 200) return;
+    
+    // Validate player has a name
+    const playerName = myCar.name || 'Anonymous';
+    if (!playerName || playerName === 'Anonymous') {
+      socket.emit('chatError', { error: 'Must have a valid name to chat' });
+      return;
+    }
+    
+    // Basic message sanitization
+    const sanitizedMessage = message.replace(/[<>]/g, '');
+    
+    console.log(`Chat message from ${playerName}: ${sanitizedMessage}`);
+    
+    // Broadcast to all room members (players and spectators)
+    const roomMembers = [
+      ...Array.from(currentRoom.players.keys()),
+      ...Array.from(currentRoom.spectators.keys())
+    ];
+    
+    for (const socketId of roomMembers) {
+      const targetSocket = io.sockets.sockets.get(socketId);
+      if (targetSocket) {
+        targetSocket.emit('chatMessageReceived', {
+          playerName: playerName,
+          message: sanitizedMessage,
+          timestamp: Date.now()
+        });
+      }
+    }
+  });
 
   socket.on('disconnect', () => {
     // Clean up from all rooms using new membership system

@@ -1365,6 +1365,19 @@
       useBinaryEncoding = false;
     }
     
+    // Set player name for chat (we'll get it from the first state update)
+    setTimeout(() => {
+      const mySocketId = socket.id;
+      const latestState = gameStates[gameStates.length - 1];
+      if (latestState && latestState.players) {
+        const myPlayer = latestState.players.find(p => p.socketId === mySocketId);
+        if (myPlayer && myPlayer.name) {
+          playerName = myPlayer.name;
+          console.log('Player name set for chat:', playerName);
+        }
+      }
+    }, 100);
+    
     // Reset crash state immediately when joining new game
     crashedCars.clear();
     lastKnownPlayers = [];
@@ -1466,6 +1479,16 @@
     // Update leaderboards with latest player data
     updateMiniLeaderboard(data.players);
     updateDetailedLeaderboard(data.players);
+    
+    // Update player name for chat if not already set
+    if (!playerName && data.players) {
+      const mySocketId = socket.id;
+      const myPlayer = data.players.find(p => p.socketId === mySocketId);
+      if (myPlayer && myPlayer.name) {
+        playerName = myPlayer.name;
+        console.log('Player name updated from state:', playerName);
+      }
+    }
   });
   
   // Handle binary state updates
@@ -1678,21 +1701,134 @@
     inputState.boostActive = false;
   });
 
+  // Chat functionality
+  let isChatFocused = false;
+  let playerName = '';
+  const chatInputArea = document.getElementById('chatInputArea');
+  const chatInput = document.getElementById('chatInput');
+  const chatMessages = document.getElementById('chatMessages');
+
+  function toggleChatInput() {
+    isChatFocused = !isChatFocused;
+    if (isChatFocused) {
+      chatInputArea.classList.remove('hidden');
+      chatInput.focus();
+    } else {
+      chatInputArea.classList.add('hidden');
+      chatInput.blur();
+      chatInput.value = '';
+    }
+  }
+
+  function sendChatMessage() {
+    const message = chatInput.value.trim();
+    console.log('Attempting to send chat message:', { message, playerName, hasMessage: !!message, hasPlayerName: !!playerName });
+    
+    if (!message) {
+      console.log('Chat message blocked: empty message');
+      return;
+    }
+    
+    if (!playerName) {
+      console.log('Chat message blocked: no player name set');
+      // Try to get player name from current game state
+      const mySocketId = socket.id;
+      const latestState = gameStates[gameStates.length - 1];
+      if (latestState && latestState.players) {
+        const myPlayer = latestState.players.find(p => p.socketId === mySocketId);
+        if (myPlayer && myPlayer.name) {
+          playerName = myPlayer.name;
+          console.log('Retrieved player name from game state:', playerName);
+        }
+      }
+      
+      // Still no name? Block the message
+      if (!playerName) {
+        console.log('Still no player name available, blocking message');
+        return;
+      }
+    }
+    
+    console.log('Sending chat message:', { playerName, message });
+    socket.emit('chatMessage', { message: message });
+    chatInput.value = '';
+    toggleChatInput();
+  }
+
+  function addChatMessage(playerName, message) {
+    const messageElement = document.createElement('div');
+    messageElement.className = 'chat-message';
+    messageElement.innerHTML = `<span class="chat-player-name">${playerName}:</span><span class="chat-message-text">${message}</span>`;
+    
+    chatMessages.appendChild(messageElement);
+    
+    // Auto-scroll to bottom
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    // Remove old messages if too many (keep last 50)
+    while (chatMessages.children.length > 50) {
+      chatMessages.removeChild(chatMessages.firstChild);
+    }
+  }
+
+  // Socket event for receiving chat messages
+  socket.on('chatMessageReceived', (data) => {
+    addChatMessage(data.playerName, data.message);
+  });
+
+  // Socket event for chat errors
+  socket.on('chatError', (data) => {
+    console.error('Chat error:', data.error);
+  });
+
+  // Chat input specific event handlers
+  chatInput.addEventListener('keydown', (e) => {
+    if (e.code === 'Enter') {
+      e.preventDefault();
+      sendChatMessage();
+    } else if (e.code === 'Escape') {
+      e.preventDefault();
+      toggleChatInput();
+    }
+  });
+
   // Ability and upgrade input handling
   document.addEventListener('keydown', (e) => {
+    // Handle ENTER key for chat
+    if (e.code === 'Enter') {
+      e.preventDefault();
+      
+      // If chat input is focused, let its event handler deal with it
+      if (e.target === chatInput) {
+        return; // Let the chatInput event handler handle this
+      }
+      
+      // Otherwise, toggle chat if not focused
+      if (!isChatFocused) {
+        toggleChatInput();
+      }
+      return;
+    }
+
+    // Handle ESC key for chat and leaderboard
+    if (e.code === 'Escape') {
+      if (isChatFocused) {
+        toggleChatInput();
+        return;
+      } else if (!detailedLeaderboard.classList.contains('hidden')) {
+        detailedLeaderboard.classList.add('hidden');
+        return;
+      }
+    }
+
+    // Don't process game inputs when chat is focused
+    if (isChatFocused) return;
+
     // Handle TAB key for leaderboard toggle
     if (e.code === 'Tab') {
       e.preventDefault();
       toggleDetailedLeaderboard();
       return;
-    }
-    
-    // Handle ESC key to close detailed leaderboard
-    if (e.code === 'Escape') {
-      if (!detailedLeaderboard.classList.contains('hidden')) {
-        detailedLeaderboard.classList.add('hidden');
-        return;
-      }
     }
     
     if (e.code === 'Space' && !e.repeat) {
@@ -2810,7 +2946,7 @@
 
     // Update HUD elements (only in player mode)
     if (showHUD && centerPlayer && mode === 'player') {
-      lapsSpan.textContent = `Lap ${centerPlayer.laps} of ${centerPlayer.maxLaps}`;
+      lapsSpan.textContent = `Lap ${centerPlayer.laps + 1} of ${centerPlayer.maxLaps}`;
       
       // Update upgrade points counter beside cards
       const upgradePointsCounter = document.getElementById('upgradePointsCounter');
