@@ -2946,7 +2946,7 @@
 
     // Update HUD elements (only in player mode)
     if (showHUD && centerPlayer && mode === 'player') {
-      lapsSpan.textContent = `Lap ${centerPlayer.laps + 1} of ${centerPlayer.maxLaps}`;
+      lapsSpan.textContent = `Lap ${centerPlayer.laps + 1} / ${centerPlayer.maxLaps}`;
       
       // Update upgrade points counter beside cards
       const upgradePointsCounter = document.getElementById('upgradePointsCounter');
@@ -3011,20 +3011,8 @@
         const boostPercentage = (currentBoost / maxBoost) * 100;
         
         // Update boost text
-        boostText.textContent = `${currentBoost}/${maxBoost}`;
+        boostText.textContent = `${currentBoost}`;
         
-        // Update boost bar width
-        boostBar.style.width = `${boostPercentage}%`;
-        
-        // Update boost bar color based on percentage
-        boostBar.className = 'boost-bar';
-        if (boostPercentage <= 25) {
-          boostBar.classList.add('low');
-        } else if (boostPercentage <= 60) {
-          boostBar.classList.add('medium');
-        } else {
-          boostBar.classList.add('high');
-        }
       }
       
       if (shouldShowUpgrades) {

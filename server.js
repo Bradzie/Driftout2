@@ -598,10 +598,9 @@ class Car {
     ) {
       this.laps += 1
       this.upgradePoints += 1
+      this.currentHealth = this.stats.maxHealth;
       this.checkpointsVisited.clear()
       this.hasLeftStartSinceLap = false
-      
-      // Restore boost on lap completion
       this.currentBoost = this.maxBoost
     }
 
