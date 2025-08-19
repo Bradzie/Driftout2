@@ -158,6 +158,9 @@
     
     <!-- Room Browser Button -->
     <button id="roomBrowserButton" class="room-browser-button">Browse Rooms</button>
+
+    <!-- Map Editor Button -->
+    <button id="mapEditorButton" class="map-editor-button">Map Editor</button>
   </div>
 
   <canvas id="spectatorCanvas" class="spectator-canvas"></canvas>
@@ -491,9 +494,21 @@
         </div>
       </div>
 
+  </div>
+  </div>
+
+  <!-- Map Editor Overlay -->
+  <div id="mapEditorContainer" class="map-editor-container hidden">
+    <div class="map-editor-sidebar">
+      <select id="mapSelect"></select>
+      <button id="applyMapData">Apply JSON</button>
+      <button id="downloadMapData">Download JSON</button>
+      <textarea id="mapDataInput" class="map-editor-text"></textarea>
     </div>
+    <canvas id="mapEditorCanvas" class="map-editor-canvas"></canvas>
   </div>
 
   <script src="client.js"></script>
+  <script src="mapEditor.js"></script>
 </body>
 </html>

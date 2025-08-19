@@ -51,6 +51,17 @@ app.get('/api/maps', (req, res) => {
   res.json(mapList);
 });
 
+// send full map data to client for editor
+app.get('/api/maps/:key', (req, res) => {
+  const key = req.params.key;
+  const map = MAP_TYPES[key];
+  if (map) {
+    res.json(map);
+  } else {
+    res.status(404).json({ error: 'Map not found' });
+  }
+});
+
 // send debug mode status to client
 app.get('/api/debug', (req, res) => {
   res.json({ debugMode: DEBUG_MODE });
