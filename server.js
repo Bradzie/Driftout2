@@ -1331,22 +1331,27 @@ function cleanupEmptyRooms() {
 io.on('connection', (socket) => {
   let currentRoom = null;
   let myCar = null;
+  let clientSupportsBinary = false;
   
   // Handle session refresh request
   socket.on('refreshSession', () => {
     console.log(`Socket ${socket.id} requested session refresh`);
-    // Force session middleware to run again
-    wrap(sessionMiddleware)(socket, (err) => {
-      if (err) {
-        console.error('Session refresh error:', err);
-      } else {
-        console.log('Session refreshed for socket:', socket.id, {
-          hasSession: !!socket.request.session,
-          username: socket.request.session?.username,
-          isGuest: socket.request.session?.isGuest
-        });
-      }
-    });
+    // Reload session data from store
+    if (socket.request.sessionID) {
+      socket.request.session.reload((err) => {
+        if (err) {
+          console.error('Session refresh error:', err);
+        } else {
+          console.log('Session refreshed for socket:', socket.id, {
+            hasSession: !!socket.request.session,
+            username: socket.request.session?.username,
+            isGuest: socket.request.session?.isGuest
+          });
+        }
+      });
+    } else {
+      console.log('No session ID found for socket:', socket.id);
+    }
   });
   
   // Handle spectator requests (with room support)
@@ -1455,13 +1460,157 @@ io.on('connection', (socket) => {
         roomId: currentRoom.id, 
         carId: myCar.id,
         roomName: currentRoom.name,
-        currentMap: currentRoom.currentMapKey
+        currentMap: currentRoom.currentMapKey,
+        binarySupport: true // Signal that server supports binary encoding
       });
     } catch (error) {
       console.error(`Error joining game for socket ${socket.id}:`, error);
       socket.emit('joinError', { error: error.message });
     }
   });
+  
+  // Binary input decoder function
+  function decodeBinaryInput(buffer) {
+    const view = new DataView(buffer);
+    let offset = 0;
+    
+    // Decode cursor position (8 bytes)
+    const cursorX = view.getFloat32(offset, true); offset += 4;
+    const cursorY = view.getFloat32(offset, true); offset += 4;
+    
+    // Decode boost state (1 byte)
+    const boostActive = view.getUint8(offset) === 1; offset += 1;
+    
+    // Decode timestamp (8 bytes)
+    const timestamp = Number(view.getBigUint64(offset, true)); offset += 8;
+    
+    // Decode sequence number (4 bytes)
+    const sequence = view.getUint32(offset, true); offset += 4;
+    
+    return {
+      cursor: { x: cursorX, y: cursorY },
+      boostActive: boostActive,
+      timestamp: timestamp,
+      sequence: sequence
+    };
+  }
+  
+  // Binary state encoder function
+  function encodeBinaryState(players, timestamp) {
+    // Calculate buffer size needed
+    let bufferSize = 8 + 1; // timestamp (8) + player count (1)
+    
+    for (const player of players) {
+      bufferSize += 4 + 4 + 1; // socketId (4) + id (4) + type (1)
+      bufferSize += 4 + 4 + 4; // x (4) + y (4) + angle (4)
+      bufferSize += 2 + 2; // health (2) + maxHealth (2)
+      bufferSize += 1 + 1; // laps (1) + maxLaps (1)
+      bufferSize += 2 + 2; // currentBoost (2) + maxBoost (2)
+      bufferSize += 1 + 1; // upgradePoints (1) + flags (1)
+      if (player.crashed || player.crashedAt) {
+        bufferSize += 8; // crashedAt timestamp (8)
+      }
+      bufferSize += 2 + 2; // kills (2) + deaths (2)
+    }
+    
+    const buffer = new ArrayBuffer(bufferSize);
+    const view = new DataView(buffer);
+    let offset = 0;
+    
+    // Encode timestamp (8 bytes)
+    view.setBigUint64(offset, BigInt(timestamp), true); offset += 8;
+    
+    // Encode player count (1 byte)
+    view.setUint8(offset, players.length); offset += 1;
+    
+    // Map car types to numbers for compact encoding
+    const typeMap = { 'Stream': 0, 'Tank': 1, 'Bullet': 2, 'Prankster': 3 };
+    
+    for (const player of players) {
+      // Encode basic player data
+      view.setUint32(offset, parseInt(player.socketId) || 0, true); offset += 4; // Use hash of socketId
+      view.setUint32(offset, player.id, true); offset += 4;
+      view.setUint8(offset, typeMap[player.type] || 0); offset += 1;
+      
+      // Position and rotation (12 bytes)
+      view.setFloat32(offset, player.x, true); offset += 4;
+      view.setFloat32(offset, player.y, true); offset += 4;
+      view.setFloat32(offset, player.angle, true); offset += 4;
+      
+      // Health data (4 bytes) - ensure we use 'health' property
+      view.setUint16(offset, Math.round(player.health || 0), true); offset += 2;
+      view.setUint16(offset, Math.round(player.maxHealth || 0), true); offset += 2;
+      
+      // Lap data (2 bytes)
+      view.setUint8(offset, player.laps || 0); offset += 1;
+      view.setUint8(offset, player.maxLaps || 0); offset += 1;
+      
+      // Boost data (4 bytes) - ensure we use 'currentBoost' property
+      view.setUint16(offset, Math.round(player.currentBoost || 0), true); offset += 2;
+      view.setUint16(offset, Math.round(player.maxBoost || 0), true); offset += 2;
+      
+      // Game state data
+      view.setUint8(offset, player.upgradePoints || 0); offset += 1;
+      
+      // Flags byte: bit 0 = crashed
+      let flags = 0;
+      const crashed = player.crashed || player.crashedAt;
+      if (crashed) flags |= 1;
+      view.setUint8(offset, flags); offset += 1;
+      
+      // Crash timestamp (8 bytes) - only if crashed
+      if (crashed) {
+        view.setBigUint64(offset, BigInt(player.crashedAt || Date.now()), true); offset += 8;
+      }
+      
+      // Stats (4 bytes)
+      view.setUint16(offset, player.kills || 0, true); offset += 2;
+      view.setUint16(offset, player.deaths || 0, true); offset += 2;
+    }
+    
+    return buffer;
+  }
+  
+  // Binary input handler
+  socket.on('binaryInput', (buffer) => {
+    if (!myCar) return;
+    
+    // Ignore input from crashed cars
+    if (myCar.crashedAt) return;
+    
+    try {
+      // Ensure we have an ArrayBuffer
+      let arrayBuffer;
+      if (buffer instanceof ArrayBuffer) {
+        arrayBuffer = buffer;
+      } else if (buffer && buffer.buffer instanceof ArrayBuffer) {
+        // Handle Uint8Array or other typed arrays
+        arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+      } else {
+        console.error('Invalid binary input data type:', typeof buffer, buffer);
+        return;
+      }
+      
+      // Decode binary input data
+      const data = decodeBinaryInput(arrayBuffer);
+      
+      if (data.cursor) {
+        myCar.cursor.x = data.cursor.x;
+        myCar.cursor.y = data.cursor.y;
+        // Store timestamp for potential lag compensation
+        myCar.lastInputTime = data.timestamp || Date.now();
+        myCar.inputSequence = data.sequence || 0;
+      }
+      
+      // Handle boost input
+      if (typeof data.boostActive === 'boolean') {
+        myCar.boostActive = data.boostActive && myCar.currentBoost > 0;
+      }
+    } catch (error) {
+      console.error('Error decoding binary input:', error);
+    }
+  });
+  
   socket.on('input', (data) => {
     if (!myCar) return;
     
@@ -1872,7 +2021,14 @@ setInterval(() => {
         
         // Send full state occasionally to prevent drift
         if (Math.random() < 0.1) { // 10% chance = roughly every second at 30Hz
-          socket.emit('state', fullState);
+          if (socket.clientSupportsBinary) {
+            // Send binary encoded state
+            const binaryState = encodeBinaryState(state, Date.now());
+            socket.emit('binaryState', binaryState);
+          } else {
+            // Send JSON state for compatibility
+            socket.emit('state', fullState);
+          }
         }
       }
     }

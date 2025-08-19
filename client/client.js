@@ -72,7 +72,6 @@
   const roomBrowserButton = document.getElementById('roomBrowserButton');
   const roomBrowserModal = document.getElementById('roomBrowserModal');
   const roomBrowserCloseBtn = document.getElementById('roomBrowserCloseBtn');
-  const quickJoinButton = document.getElementById('quickJoinButton');
   const refreshRoomsButton = document.getElementById('refreshRoomsButton');
   const roomsList = document.getElementById('roomsList');
   const createRoomName = document.getElementById('createRoomName');
@@ -130,12 +129,14 @@
   function showAuthScreen() {
     authScreen.classList.remove('hidden');
     menu.classList.add('hidden');
+    miniLeaderboard.classList.add('hidden');
     showAuthSelection();
   }
 
   function showMainMenu() {
     authScreen.classList.add('hidden');
     menu.classList.remove('hidden');
+    miniLeaderboard.classList.remove('hidden');
   }
 
   function refreshSocketSession() {
@@ -455,7 +456,6 @@
   // Room browser event listeners
   roomBrowserButton.addEventListener('click', openRoomBrowser);
   roomBrowserCloseBtn.addEventListener('click', closeRoomBrowser);
-  quickJoinButton.addEventListener('click', handleQuickJoin);
   refreshRoomsButton.addEventListener('click', loadRooms);
   createRoomButton.addEventListener('click', handleCreateRoom);
 
@@ -496,6 +496,136 @@
   let inputState = { cursor: { x: 0, y: 0 }, boostActive: false };
   let sendInputInterval = null;
   let hasReceivedFirstState = false; // Flag to prevent rendering before first server data
+  
+  // Binary encoding support
+  let useBinaryEncoding = false;
+  let inputSequenceNumber = 0;
+  
+  // Binary input encoding function
+  function encodeBinaryInput(inputData) {
+    // Create a compact binary format for input data
+    // Structure: [cursorX(4)] [cursorY(4)] [boost(1)] [timestamp(8)] [sequence(4)]
+    const buffer = new ArrayBuffer(21);
+    const view = new DataView(buffer);
+    let offset = 0;
+    
+    // Cursor position (8 bytes)
+    view.setFloat32(offset, inputData.cursor.x, true); offset += 4;
+    view.setFloat32(offset, inputData.cursor.y, true); offset += 4;
+    
+    // Boost state (1 byte)
+    view.setUint8(offset, inputData.boostActive ? 1 : 0); offset += 1;
+    
+    // Timestamp (8 bytes)
+    view.setBigUint64(offset, BigInt(inputData.timestamp), true); offset += 8;
+    
+    // Sequence number (4 bytes)
+    view.setUint32(offset, inputData.sequence, true); offset += 4;
+    
+    return buffer;
+  }
+  
+  // Binary state decoder for server-to-client game state
+  function decodeBinaryState(buffer) {
+    const view = new DataView(buffer);
+    let offset = 0;
+    
+    try {
+      // Decode timestamp (8 bytes)
+      const timestamp = Number(view.getBigUint64(offset, true)); offset += 8;
+      
+      // Decode player count (1 byte)
+      const playerCount = view.getUint8(offset); offset += 1;
+      
+      const players = [];
+      for (let i = 0; i < playerCount; i++) {
+        // Decode basic player data
+        const socketId = view.getUint32(offset, true); offset += 4;
+        const id = view.getUint32(offset, true); offset += 4;
+        const type = view.getUint8(offset); offset += 1; // Car type as number
+        
+        // Position and rotation (12 bytes)
+        const x = view.getFloat32(offset, true); offset += 4;
+        const y = view.getFloat32(offset, true); offset += 4;
+        const angle = view.getFloat32(offset, true); offset += 4;
+        
+        // Health data (4 bytes)
+        const health = view.getUint16(offset, true); offset += 2;
+        const maxHealth = view.getUint16(offset, true); offset += 2;
+        
+        // Lap data (2 bytes)
+        const laps = view.getUint8(offset); offset += 1;
+        const maxLaps = view.getUint8(offset); offset += 1;
+        
+        // Boost data (4 bytes)
+        const currentBoost = view.getUint16(offset, true); offset += 2;
+        const maxBoost = view.getUint16(offset, true); offset += 2;
+        
+        // Game state flags (1 byte)
+        const upgradePoints = view.getUint8(offset); offset += 1;
+        const flags = view.getUint8(offset); offset += 1;
+        const crashed = (flags & 1) === 1;
+        
+        // Crash timestamp (8 bytes) - only if crashed
+        let crashedAt = null;
+        if (crashed) {
+          crashedAt = Number(view.getBigUint64(offset, true)); offset += 8;
+        }
+        
+        // Stats (4 bytes)
+        const kills = view.getUint16(offset, true); offset += 2;
+        const deaths = view.getUint16(offset, true); offset += 2;
+        
+        // Convert type number to type string (assuming 0=Stream, 1=Tank, 2=Bullet, 3=Prankster)
+        const typeNames = ['Stream', 'Tank', 'Bullet', 'Prankster'];
+        const typeName = typeNames[type] || 'Stream';
+        
+        // Reconstruct full player object with proper property names
+        const player = {
+          socketId: socketId,
+          id: id,
+          type: typeName,
+          x: x,
+          y: y,
+          angle: angle,
+          health: health, // Ensure this matches client expectations
+          maxHealth: maxHealth,
+          laps: laps,
+          maxLaps: maxLaps,
+          currentBoost: currentBoost, // Ensure this matches client expectations
+          maxBoost: maxBoost,
+          upgradePoints: upgradePoints,
+          crashed: crashed,
+          crashedAt: crashedAt, // Critical for client crash detection
+          kills: kills,
+          deaths: deaths,
+          // Add default values for properties that client expects
+          color: CAR_TYPES[typeName] ? CAR_TYPES[typeName].color : { fill: [100, 100, 100], stroke: [50, 50, 50], strokeWidth: 2 },
+          shape: CAR_TYPES[typeName] ? CAR_TYPES[typeName].shape : null,
+          vertices: [], // Will be calculated client-side if needed
+          checkpointsVisited: [], // Default value
+          upgradeUsage: {}, // Default value
+          abilityCooldownReduction: 0, // Default value
+          name: `Player ${id}` // Default name, will be overridden by server
+        };
+        
+        players.push(player);
+      }
+      
+      // For now, return simplified state structure
+      return {
+        players: players,
+        timestamp: timestamp,
+        abilityObjects: [], // Will decode later
+        dynamicObjects: [], // Will decode later
+        mySocketId: null // Will be set by caller
+      };
+      
+    } catch (error) {
+      console.error('Failed to decode binary state:', error);
+      return null;
+    }
+  }
   
   // Connection monitoring
   let connectionLostTimeout = null;
@@ -967,13 +1097,6 @@
     socket.emit('requestSpectator', { roomId });
   }
   
-  function handleQuickJoin() {
-    closeRoomBrowser();
-    
-    // Start spectating with auto-assign room
-    socket.emit('requestSpectator', {});
-  }
-  
   async function handleCreateRoom() {
     const roomName = createRoomName.value.trim();
     const mapKey = createRoomMap.value;
@@ -1234,6 +1357,14 @@
     // Track the current room ID for crash handling
     currentRoomId = data.roomId;
     
+    // Enable binary encoding if server supports it
+    if (data.binarySupport) {
+      useBinaryEncoding = true;
+      console.log('Binary input encoding enabled');
+    } else {
+      useBinaryEncoding = false;
+    }
+    
     // Reset crash state immediately when joining new game
     crashedCars.clear();
     lastKnownPlayers = [];
@@ -1271,12 +1402,26 @@
     }
     
     sendInputInterval = setInterval(() => {
+      inputSequenceNumber++;
       const timestampedInput = {
         ...inputState,
         timestamp: Date.now(),
-        sequence: (sendInputInterval._sequence = (sendInputInterval._sequence || 0) + 1)
+        sequence: inputSequenceNumber
       };
-      socket.emit('input', timestampedInput);
+      
+      if (useBinaryEncoding) {
+        try {
+          // Use compact binary encoding
+          const binaryData = encodeBinaryInput(timestampedInput);
+          socket.emit('binaryInput', binaryData);
+        } catch (error) {
+          console.warn('Binary encoding failed, falling back to JSON:', error);
+          socket.emit('input', timestampedInput);
+        }
+      } else {
+        // Fallback to JSON encoding
+        socket.emit('input', timestampedInput);
+      }
     }, 1000 / 60);
   });
 
@@ -1321,6 +1466,59 @@
     // Update leaderboards with latest player data
     updateMiniLeaderboard(data.players);
     updateDetailedLeaderboard(data.players);
+  });
+  
+  // Handle binary state updates
+  socket.on('binaryState', (buffer, mySocketId) => {
+    // Update last message timestamp for connection monitoring
+    lastServerMessage = Date.now();
+    
+    try {
+      // Decode binary state data
+      const data = decodeBinaryState(buffer);
+      if (!data) return; // Failed to decode
+      
+      // Set the socket ID for this client
+      data.mySocketId = mySocketId;
+      
+      // Detect crashed cars for fade effect
+      detectCrashedCars(data.players || []);
+      
+      // Buffer the state with timestamp for interpolation
+      gameStates.push({
+        players: data.players,
+        abilityObjects: data.abilityObjects || [],
+        dynamicObjects: data.dynamicObjects || [],
+        timestamp: data.timestamp,
+        mySocketId: mySocketId,
+        map: currentMap // Use existing map data
+      });
+      
+      // Update myAbility cooldown if player data is available
+      const me = data.players.find(p => p.socketId === mySocketId);
+      if (me && myAbility) {
+        const carDef = CAR_TYPES[me.type];
+        const baseCooldown = carDef.abilityCooldown || 0;
+        myAbility.cooldown = Math.max(0, baseCooldown - (me.abilityCooldownReduction || 0));
+      }
+
+      // Mark that we've received our first state - safe to start rendering
+      hasReceivedFirstState = true;
+      
+      // Hide loading screen now that we have game data
+      loadingScreen.classList.add('hidden');
+
+      // Keep only last 1 second of states
+      const now = Date.now();
+      gameStates = gameStates.filter(state => (now - state.timestamp) < 1000);
+      
+      // Update leaderboards with latest player data
+      updateMiniLeaderboard(data.players);
+      updateDetailedLeaderboard(data.players);
+      
+    } catch (error) {
+      console.error('Error handling binary state:', error);
+    }
   });
 
   // Handle delta updates for better performance
