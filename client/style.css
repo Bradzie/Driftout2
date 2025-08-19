@@ -1773,15 +1773,13 @@ input[type="number"]:focus {
   position: fixed;
   top: 20px;
   right: 20px;
-  background: rgba(20, 20, 20, 0.9);
-  border: 2px solid #ff5f5f;
-  border-radius: 8px;
+  background: rgba(20, 20, 20, 0.5);
   padding: 10px;
   min-width: 200px;
   max-width: 300px;
   backdrop-filter: blur(10px);
   z-index: 100;
-  font-family: 'Arial', sans-serif;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   font-size: 12px;
   color: #ffffff;
 }
@@ -1791,8 +1789,9 @@ input[type="number"]:focus {
   font-weight: bold;
   text-align: center;
   margin-bottom: 8px;
-  font-size: 13px;
+  font-size: 1rem;
   text-transform: uppercase;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   letter-spacing: 1px;
 }
 
@@ -1829,7 +1828,8 @@ input[type="number"]:focus {
 }
 
 .mini-leaderboard-name {
-  font-size: 11px;
+  font-size: 1rem;
+  font-weight: bold;;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1837,7 +1837,7 @@ input[type="number"]:focus {
 }
 
 .mini-leaderboard-laps {
-  font-size: 10px;
+  font-size: 1rem;
   color: #ff5f5f;
   font-weight: bold;
   white-space: nowrap;

@@ -815,7 +815,7 @@
           <div class="mini-leaderboard-color" style="background-color: ${player.color}"></div>
           <div class="mini-leaderboard-name">${player.name || 'Unnamed'}</div>
         </div>
-        <div class="mini-leaderboard-laps">${player.laps}/${player.maxLaps || 3}</div>
+        <div class="mini-leaderboard-laps">${player.laps}</div>
       </div>
     `).join('');
   }
