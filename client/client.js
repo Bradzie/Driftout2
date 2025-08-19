@@ -2505,6 +2505,36 @@
       }
     }
 
+    // Area effects
+    if (mapToUse && Array.isArray(mapToUse.areaEffects)) {
+      for (const areaEffect of mapToUse.areaEffects) {
+        if (Array.isArray(areaEffect.vertices)) {
+          ctx.beginPath();
+          
+          // Set fill color with transparency
+          const fillColor = Array.isArray(areaEffect.fillColor) 
+            ? `rgba(${areaEffect.fillColor[0]}, ${areaEffect.fillColor[1]}, ${areaEffect.fillColor[2]}, 0.3)`
+            : 'rgba(173, 216, 230, 0.3)'; // Default light blue with transparency
+          ctx.fillStyle = fillColor;
+          
+          // Draw area effect shape
+          const screenVerts = areaEffect.vertices.map(v => ({
+            x: centerX + (v.x - focusX) * scale,
+            y: centerY - (v.y - focusY) * scale
+          }));
+          
+          if (screenVerts.length > 0) {
+            ctx.moveTo(screenVerts[0].x, screenVerts[0].y);
+            for (let i = 1; i < screenVerts.length; i++) {
+              ctx.lineTo(screenVerts[i].x, screenVerts[i].y);
+            }
+            ctx.closePath();
+            ctx.fill();
+          }
+        }
+      }
+    }
+
     // Dynamic objects
     dynamicObjects.forEach((obj) => {
       if (obj.vertices && obj.vertices.length) {

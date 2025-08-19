@@ -159,6 +159,21 @@ module.exports = {
         vertices: [{ x: 0, y: 400 }, { x: 0, y: 770 }],
         id: 'checkpoint-3'
       },
+    ],
+    areaEffects: [
+      {
+        vertices: [
+          { x: -400, y: -200 },
+          { x: -200, y: -200 },
+          { x: -200, y: -400 },
+          { x: -100, y: -400 },
+          { x: -100, y: -100 },
+          { x: -400, y: -100 }
+        ],
+        effect: 'ice',
+        strength: 0.95, // Reduces friction by 30%
+        fillColor: [173, 216, 230] // Light blue for ice
+      }
     ]
   },
   circle: {

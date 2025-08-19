@@ -297,6 +297,83 @@ function pointInPolygon(x, y, vertices) {
   }
   return inside;
 }
+
+function applyAreaEffects(room) {
+  const map = MAP_TYPES[room.currentMapKey];
+  if (!map || !map.areaEffects) return;
+
+  for (const [sid, car] of room.players.entries()) {
+    if (car.crashedAt) continue; // Skip crashed cars
+    
+    const carX = car.body.position.x;
+    const carY = car.body.position.y;
+    
+    // Initialize area effects tracking if needed
+    if (!car._areaEffectsInit) {
+      initAreaEffectsForCar(car);
+    }
+
+    // Check what effects the car should currently have
+    let currentEffects = [];
+    
+    for (const areaEffect of map.areaEffects) {
+      if (!areaEffect.vertices || !Array.isArray(areaEffect.vertices)) continue;
+      
+      const isInside = pointInPolygon(carX, carY, areaEffect.vertices);
+      
+      if (isInside) {
+        currentEffects.push(areaEffect);
+      }
+    }
+
+    // Apply current effects
+    applyCurrentEffects(car, currentEffects);
+  }
+}
+
+function initAreaEffectsForCar(car) {
+  if (car._areaEffectsInit) return;
+  
+  const carType = CAR_TYPES[car.type];
+  car._originalBodyProps = {
+    frictionAir: carType && carType.bodyOptions ? carType.bodyOptions.frictionAir : 0.004 // fallback default
+  };
+  car._activeAreaEffects = new Set();
+  car._areaEffectsInit = true;
+}
+
+function applyCurrentEffects(car, currentEffects) {
+  const originalFriction = car._originalBodyProps.frictionAir;
+  if (typeof originalFriction !== 'number') return;
+
+  if (currentEffects.length === 0) {
+    // No effects - restore original values
+    car.body.frictionAir = originalFriction;
+    car._activeAreaEffects.clear();
+    return;
+  }
+
+  // Calculate combined effect (for now, we'll just use the strongest ice effect)
+  let maxIceStrength = 0;
+  
+  for (const effect of currentEffects) {
+    if (effect.effect === 'ice' && effect.strength > maxIceStrength) {
+      maxIceStrength = effect.strength;
+    }
+  }
+
+  // Apply effects
+  if (maxIceStrength > 0) {
+    const newFriction = originalFriction * (1 - maxIceStrength);
+    console.log(`Applying ice effect: original=${originalFriction}, strength=${maxIceStrength}, new=${newFriction}`);
+    car.body.frictionAir = newFriction;
+    car._activeAreaEffects.add(`ice_${maxIceStrength}`);
+  } else {
+    // No ice effects - restore original
+    car.body.frictionAir = originalFriction;
+    car._activeAreaEffects.clear();
+  }
+}
 const CAR_TYPES = require('./carTypes');
 
 // Global physics engine removed - now each room has its own
@@ -1941,6 +2018,9 @@ function gameLoop() {
           }
         }
       }
+      
+      // Apply area effects to cars
+      applyAreaEffects(room);
       
       // Update physics engine for this room
       Matter.Engine.update(room.engine, timeStep * 1000);
