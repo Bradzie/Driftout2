@@ -78,6 +78,10 @@
   const createRoomName = document.getElementById('createRoomName');
   const createRoomMap = document.getElementById('createRoomMap');
   const createRoomMaxPlayers = document.getElementById('createRoomMaxPlayers');
+
+  // Map editor elements
+  const mapEditorButton = document.getElementById('mapEditorButton');
+  const mapEditorContainer = document.getElementById('mapEditorContainer');
   const maxPlayersValue = document.getElementById('maxPlayersValue');
   const createRoomPrivate = document.getElementById('createRoomPrivate');
   const createRoomButton = document.getElementById('createRoomButton');
@@ -454,6 +458,18 @@
   quickJoinButton.addEventListener('click', handleQuickJoin);
   refreshRoomsButton.addEventListener('click', loadRooms);
   createRoomButton.addEventListener('click', handleCreateRoom);
+
+  // Map editor button
+  mapEditorButton.addEventListener('click', () => {
+    if (socket && socket.connected) {
+      socket.disconnect();
+    }
+    menu.classList.add('hidden');
+    mapEditorContainer.classList.remove('hidden');
+    if (typeof initMapEditor === 'function') {
+      initMapEditor();
+    }
+  });
   
   // Close room browser when clicking outside modal
   roomBrowserModal.addEventListener('click', (e) => {
