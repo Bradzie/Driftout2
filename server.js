@@ -387,14 +387,11 @@ const CAR_TYPES = require('./carTypes');
 // Global collision detection removed - now handled per room
 
 // Velocity-based collision damage constants
-const BASE_VELOCITY_DAMAGE_SCALE = 0.5;  // Main damage tuning knob
-const WALL_VELOCITY_DAMAGE_SCALE = 0.08;  // For static wall collisions
+const BASE_VELOCITY_DAMAGE_SCALE = 2.0;  // Main damage tuning knob
+const WALL_VELOCITY_DAMAGE_SCALE = 0.05;  // For static wall collisions
 const MIN_DAMAGE_VELOCITY = 0;  // Ignore very slow collisions
 const MAX_DAMAGE_MULTIPLIER = 5.0;  // Cap damage to prevent one-hit kills
-const MIN_DAMAGE_MULTIPLIER = 0.5;  // Minimum damage scaling
-
-
-// Legacy setTrackBodies function removed - now handled per room in Room constructor
+const MIN_DAMAGE_MULTIPLIER = 1.0;  // Minimum damage scaling
 
 class Car {
   constructor(id, type, roomId, socketId, name, room = null) {
@@ -667,7 +664,7 @@ class Car {
     
     // Calculate density ratio (heavier objects deal more damage to lighter ones)
     const otherDensity = otherBody.density || 0.001;
-    const thisDensity = this.body.density || 0.3;
+    const thisDensity = this.body.density || 0.001;
     const densityRatio = otherDensity / thisDensity;
     
     // Cap the damage multiplier to prevent one-hit kills
@@ -677,11 +674,13 @@ class Car {
     let damage;
     if (otherBody.isStatic) {
       // Static wall collisions use different scale
-      damage = relativeSpeed * WALL_VELOCITY_DAMAGE_SCALE * damageMultiplier * damageScale;
+      damage = (relativeSpeed * 1.5) * WALL_VELOCITY_DAMAGE_SCALE * damageMultiplier * damageScale;
     } else {
       // Dynamic body collisions (car vs car, car vs dynamic object)
-      damage = relativeSpeed * BASE_VELOCITY_DAMAGE_SCALE * damageMultiplier * damageScale;
+      damage = (relativeSpeed * 1.5) * BASE_VELOCITY_DAMAGE_SCALE * damageMultiplier * damageScale;
     }
+
+    console.log(`Collision damage: ${damage.toFixed(2)} (relativeSpeed=${relativeSpeed.toFixed(2)}, densityRatio=${densityRatio.toFixed(2)}, damageScale=${damageScale})`);
     
     this.currentHealth -= damage;
 
