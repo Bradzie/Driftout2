@@ -3,6 +3,10 @@
 module.exports = {
   square: {
     displayName: 'Square',
+    scale: {
+      player: 0.002,
+      spectator: 0.0005,
+    },
     start: {
       type: 'polygon',
       vertices: [
@@ -159,6 +163,10 @@ module.exports = {
   },
   circle: {
     displayName: 'Circle',
+    scale: {
+      player: 0.002,
+      spectator: 0.0003
+    },
     start: {
       type: 'polygon',
       vertices: [

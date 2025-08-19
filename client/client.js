@@ -2121,7 +2121,13 @@
     return { minX, maxX, minY, maxY };
   }
   
-  function calculateScale(canvas, mapBounds, mode = 'player') {
+  function calculateScale(canvas, mapBounds, mode = 'player', mapData = null) {
+    // If mapData has predefined scale, use it
+    if (mapData && mapData.scale && mapData.scale[mode]) {
+      return mapData.scale[mode] * Math.min(canvas.width, canvas.height);
+    }
+    
+    // Fallback to dynamic calculation if no predefined scale
     const { minX, maxX, minY, maxY } = mapBounds;
     const sizeX = maxX - minX;
     const sizeY = maxY - minY;
@@ -2137,7 +2143,7 @@
   }
   
   function getCameraTransform(options) {
-    const { canvas, mapBounds, mode, centerPlayer } = options;
+    const { canvas, mapBounds, mode, centerPlayer, mapData } = options;
     
     let centerX = canvas.width / 2;
     let centerY = canvas.height / 2;
@@ -2154,7 +2160,7 @@
       focusY = (mapBounds.minY + mapBounds.maxY) / 2;
     }
     
-    const scale = calculateScale(canvas, mapBounds, mode);
+    const scale = calculateScale(canvas, mapBounds, mode, mapData);
     
     return { centerX, centerY, focusX, focusY, scale };
   }
@@ -2189,7 +2195,8 @@
       canvas,
       mapBounds,
       mode,
-      centerPlayer
+      centerPlayer,
+      mapData: mapToUse
     });
     
     // Extract game objects
