@@ -10,9 +10,104 @@
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 </head>
 <body>
-  <div id="menu" class="overlay">
-    <h1 class="title">DRIFTOUT.APP</h1>
-    <input type="text" id="nameInput" placeholder="Name" maxlength="20" />
+  <!-- Top Toolbar (Hover-Activated) -->
+  <div id="toolbarHoverZone" class="toolbar-hover-zone"></div>
+  <div id="topToolbar" class="top-toolbar">
+    <div class="toolbar-left">
+      <span id="toolbarPlayerName" class="toolbar-player-name"></span>
+    </div>
+    <div class="toolbar-right">
+      <button id="toolbarLogoutBtn" class="toolbar-logout-btn" title="Logout">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+          <polyline points="16,17 21,12 16,7"></polyline>
+          <line x1="21" y1="12" x2="9" y2="12"></line>
+        </svg>
+      </button>
+      <button id="toolbarSettingsBtn" class="toolbar-settings-btn" title="Settings">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M12 1v6m0 8v6M4.22 4.22l4.24 4.24m8.48 8.48l4.24 4.24M1 12h6m8 0h6M4.22 19.78l4.24-4.24m8.48-8.48l4.24-4.24"></path>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Authentication Screen (Pre-Menu) -->
+  <div id="authScreen" class="auth-screen overlay">
+    <div class="auth-container">
+      <h1 class="auth-title">DRIFTZ.IO</h1>
+      
+      <!-- Quick Play Form -->
+      <div id="authSelection" class="auth-selection">
+        <div class="auth-options-footer">
+          <button id="showLoginBtn" class="auth-link-btn">Login</button>
+          <button id="showRegisterBtn" class="auth-link-btn">Register</button>
+        </div>
+        <form id="quickPlayForm" class="auth-form-content">
+          <div class="auth-input-group">
+            <input type="text" id="quickPlayName" class="auth-input" placeholder="Enter your name" maxlength="20" required>
+          </div>
+          <div id="quickPlayError" class="auth-error hidden"></div>
+          <button type="submit" class="auth-submit-btn play-btn">Play as Guest</button>
+        </form>
+      </div>
+
+      <!-- Login Form -->
+      <div id="loginForm" class="auth-form hidden">
+        <div class="auth-form-header">
+          <h2 class="auth-form-title">Login</h2>
+          <button id="backFromLoginBtn" class="auth-back-btn">Back</button>
+        </div>
+        <form id="loginFormElement" class="auth-form-content">
+          <div class="auth-input-group">
+            <label class="auth-label">Email</label>
+            <input type="email" id="loginEmail" class="auth-input" required>
+          </div>
+          <div class="auth-input-group">
+            <label class="auth-label">Password</label>
+            <input type="password" id="loginPassword" class="auth-input" required>
+          </div>
+          <div id="loginError" class="auth-error hidden"></div>
+          <button type="submit" class="auth-submit-btn">Login</button>
+        </form>
+      </div>
+
+      <!-- Register Form -->
+      <div id="registerForm" class="auth-form hidden">
+        <div class="auth-form-header">
+          <h2 class="auth-form-title">Register</h2>
+          <button id="backFromRegisterBtn" class="auth-back-btn">Back</button>
+        </div>
+        <form id="registerFormElement" class="auth-form-content">
+          <div class="auth-input-group">
+            <label class="auth-label">Username</label>
+            <input type="text" id="registerUsername" class="auth-input" maxlength="20" required>
+          </div>
+          <div class="auth-input-group">
+            <label class="auth-label">Email</label>
+            <input type="email" id="registerEmail" class="auth-input" required>
+          </div>
+          <div class="auth-input-group">
+            <label class="auth-label">Password</label>
+            <input type="password" id="registerPassword" class="auth-input" required>
+          </div>
+          <div id="registerError" class="auth-error hidden"></div>
+          <button type="submit" class="auth-submit-btn">Register</button>
+        </form>
+      </div>
+
+
+      <!-- Loading State -->
+      <div id="authLoading" class="auth-loading hidden">
+        <div class="auth-spinner"></div>
+        <div class="auth-loading-text">Please wait...</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="menu" class="overlay hidden">
+    <h1 class="title">DRIFTZ.IO</h1>
     <div id="carSelector" class="car-selector">
       <button id="switchButton" class="nav-button prev-button">🗘</button>
       <div id="carCard" class="single-car-card">
@@ -51,9 +146,9 @@
     
     <!-- Room Browser Button -->
     <button id="roomBrowserButton" class="room-browser-button">Browse Rooms</button>
-    
-    <!-- Settings Button -->
-    <button id="settingsButton" class="settings-button">⚙️</button>
+
+    <!-- Map Editor Button -->
+    <button id="mapEditorButton" class="map-editor-button">Map Editor</button>
   </div>
 
   <canvas id="spectatorCanvas" class="spectator-canvas"></canvas>
@@ -64,10 +159,18 @@
     <!-- Dynamic kill feed messages will appear here -->
   </div>
 
+  <!-- Mini Leaderboard (Always Visible) -->
+  <div id="miniLeaderboard" class="mini-leaderboard">
+    <div class="mini-leaderboard-header">Laps</div>
+    <div class="mini-leaderboard-content">
+      <!-- Dynamic player entries -->
+    </div>
+  </div>
+
   <!-- Performance Overlays -->
   <div id="performanceOverlay" class="performance-overlay hidden">
-    <div id="fpsDisplay" class="fps-display hidden">FPS: --</div>
-    <div id="pingDisplay" class="ping-display hidden">Ping: --ms</div>
+    <div id="fpsDisplay" class="fps-display hidden">FPS --</div>
+    <div id="pingDisplay" class="ping-display hidden">Ping --ms</div>
   </div>
 
   <!-- HUD -->
@@ -109,10 +212,24 @@
   <!-- Boost Display -->
   <div id="boostDisplay" class="boost-display hidden">
     <span class="boost-label">Boost</span>
-    <div class="boost-bar-container">
-      <div id="boostBar" class="boost-bar"></div>
+    <span id="boostText" class="boost-text">0</span>
+  </div>
+
+  <!-- Chat System -->
+  <div id="chatContainer" class="chat-container hidden">
+    <!-- Messages Area (Always Visible) -->
+    <div id="chatMessages" class="chat-messages">
+      <!-- Dynamic chat messages will appear here -->
     </div>
-    <span id="boostText" class="boost-text">100/100</span>
+    <!-- Chat Prompt (Visible when input is closed) -->
+    <div id="chatPrompt" class="chat-prompt">
+      <div class="chat-prompt-text">Press Enter to chat</div>
+    </div>
+    <!-- Input Area (Hidden by Default) -->
+    <div id="chatInputArea" class="chat-input-area hidden">
+      <input type="text" id="chatInput" class="chat-input" placeholder="Type a message..." maxlength="200" />
+      <div class="chat-hint">Press Enter to send, Escape to close</div>
+    </div>
   </div>
 
   <!-- Loading Screen Template -->
@@ -208,6 +325,32 @@
     </div>
   </div>
 
+  <!-- Detailed Leaderboard Modal -->
+  <div id="detailedLeaderboard" class="detailed-leaderboard-modal hidden">
+    <div class="detailed-leaderboard-content">
+      <div class="detailed-leaderboard-header">
+        <h2 class="leaderboard-title">Race Statistics</h2>
+        <div class="leaderboard-hint">Press TAB or ESC to close</div>
+      </div>
+      <table class="leaderboard-table">
+        <thead>
+          <tr>
+            <th>Rank</th>
+            <th>Player</th>
+            <th>Laps</th>
+            <th>Kills</th>
+            <th>Deaths</th>
+            <th>K/D</th>
+            <th>Best Lap</th>
+          </tr>
+        </thead>
+        <tbody id="leaderboardTableBody">
+          <!-- Dynamic rows -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- Room Browser Modal -->
   <div id="roomBrowserModal" class="room-browser-modal hidden">
     <div class="room-browser-content">
@@ -216,52 +359,60 @@
         <button id="roomBrowserCloseBtn" class="room-browser-close-btn">×</button>
       </div>
       
-      <div class="room-browser-body">
-        <!-- Quick Join Section -->
-        <div class="room-browser-section">
-          <div class="quick-join-section">
-            <button id="quickJoinButton" class="quick-join-button">Quick Join (Auto-assign)</button>
-          </div>
-        </div>
-        
+      <div class="room-browser-body">       
         <!-- Room List Section -->
         <div class="room-browser-section">
           <div class="section-header">
-            <h3 class="section-title">Available Rooms</h3>
-            <button id="refreshRoomsButton" class="refresh-button">🔄</button>
+            <h3 class="section-title">Rooms</h3>
+            <button id="refreshRoomsButton" class="refresh-button">Refresh</button>
           </div>
           <div id="roomsList" class="rooms-list">
             <div class="loading-message">Loading rooms...</div>
           </div>
         </div>
         
-        <!-- Create Room Section -->
+        <!-- Create Room Action -->
         <div class="room-browser-section">
-          <h3 class="section-title">Create New Room</h3>
-          <div class="create-room-form">
-            <div class="form-row">
-              <label class="form-label">Room Name</label>
-              <input type="text" id="createRoomName" class="form-input" placeholder="My Awesome Room" maxlength="50">
-            </div>
-            <div class="form-row">
-              <label class="form-label">Map</label>
-              <select id="createRoomMap" class="form-select">
-                <option value="">Loading maps...</option>
-              </select>
-            </div>
-            <div class="form-row">
-              <label class="form-label">Max Players: <span id="maxPlayersValue">8</span></label>
-              <input type="range" id="createRoomMaxPlayers" class="form-slider" min="2" max="16" value="8">
-            </div>
-            <div class="form-row">
-              <label class="form-checkbox-label">
-                <input type="checkbox" id="createRoomPrivate" class="form-checkbox">
-                <span class="form-checkbox-text">Private Room</span>
-              </label>
-            </div>
-            <div class="form-row">
-              <button id="createRoomButton" class="create-room-button">Create Room</button>
-            </div>
+          <div class="create-room-action">
+            <button id="openCreateRoomButton" class="create-room-open-button">Create</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Room Modal -->
+  <div id="createRoomModal" class="create-room-modal hidden">
+    <div class="create-room-content">
+      <div class="create-room-header">
+        <h2 class="create-room-title">Create New Room</h2>
+        <button id="createRoomCloseBtn" class="create-room-close-btn">×</button>
+      </div>
+      
+      <div class="create-room-body">
+        <div class="create-room-form">
+          <div class="form-row">
+            <label class="form-label">Room Name</label>
+            <input type="text" id="createRoomName" class="form-input" placeholder="Name" maxlength="50">
+          </div>
+          <div class="form-row">
+            <label class="form-label">Map</label>
+            <select id="createRoomMap" class="form-select">
+              <option value="">Loading maps...</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label class="form-label">Max Players: <span id="maxPlayersValue">8</span></label>
+            <input type="range" id="createRoomMaxPlayers" class="form-slider" min="2" max="16" value="8">
+          </div>
+          <div class="form-row">
+            <label class="form-checkbox-label">
+              <input type="checkbox" id="createRoomPrivate" class="form-checkbox">
+              <span class="form-checkbox-text">Private Room</span>
+            </label>
+          </div>
+          <div class="form-row">
+            <button id="createRoomButton" class="create-room-button">Create Room</button>
           </div>
         </div>
       </div>
@@ -336,6 +487,18 @@
         <button id="debugSetStats" class="debug-btn full-width">Apply Stats</button>
       </div>
 
+      <!-- Network Simulation -->
+      <div class="debug-section">
+        <h4>Network Simulation</h4>
+        <div class="debug-row">
+          <button id="debugToggleFakePing" class="debug-btn" data-active="false">Fake Ping: OFF</button>
+        </div>
+        <div class="debug-row">
+          <label>Latency: <span id="debugFakePingValue">100</span>ms</label>
+          <input type="range" id="debugFakePingSlider" min="0" max="500" step="10" value="100" class="debug-slider" disabled>
+        </div>
+      </div>
+
       <!-- Quick Actions -->
       <div class="debug-section">
         <h4>Quick Actions</h4>
@@ -353,9 +516,82 @@
         </div>
       </div>
 
+  </div>
+  </div>
+
+  <!-- Map Editor Overlay -->
+  <div id="mapEditorContainer" class="map-editor-container hidden">
+    <div class="map-editor-sidebar">
+      <!-- Map Selection -->
+      <div class="editor-section">
+        <label>Map:</label>
+        <select id="mapSelect"></select>
+      </div>
+      
+      <!-- Tools Panel -->
+      <div class="editor-section">
+        <h3>Tools</h3>
+        <div class="tool-buttons">
+          <button id="selectTool" class="tool-btn active" data-tool="select">Select</button>
+          <button id="createShapeTool" class="tool-btn" data-tool="createShape">Shape</button>
+          <button id="addCheckpointTool" class="tool-btn" data-tool="checkpoint">Checkpoint</button>
+          <button id="addDynamicTool" class="tool-btn" data-tool="dynamic">Dynamic</button>
+          <button id="addAreaEffectTool" class="tool-btn" data-tool="areaEffect">Area Effect</button>
+        </div>
+      </div>
+      
+      <!-- Grid Settings -->
+      <div class="editor-section">
+        <h3>Grid</h3>
+        <label><input type="checkbox" id="showGrid" checked> Show Grid</label>
+        <label><input type="checkbox" id="snapToGrid" checked> Snap to Grid</label>
+        <label>Grid Size: 
+          <select id="gridSize">
+            <option value="10">10px</option>
+            <option value="25" selected>25px</option>
+            <option value="50">50px</option>
+            <option value="100">100px</option>
+          </select>
+        </label>
+      </div>
+      
+      <!-- Properties Panel -->
+      <div class="editor-section">
+        <h3>Properties</h3>
+        <div id="propertiesPanel">
+          <p>Select an object to edit properties</p>
+        </div>
+      </div>
+      
+      <!-- Layers Panel -->
+      <div class="editor-section">
+        <h3>Objects</h3>
+        <div id="layersPanel">
+          <!-- Dynamic object list -->
+        </div>
+      </div>
+      
+      <!-- File Operations -->
+      <div class="editor-section">
+        <h3>File</h3>
+        <div class="map-editor-buttons">
+          <button id="applyMapData">Apply JSON</button>
+          <button id="downloadMapData">Download</button>
+          <button id="saveMapButton">Save</button>
+          <button id="uploadMapButton">Upload</button>
+        </div>
+      </div>
+      
+      <!-- JSON Editor -->
+      <div class="editor-section">
+        <h3>JSON</h3>
+        <textarea id="mapDataInput" class="map-editor-text"></textarea>
+      </div>
     </div>
+    <canvas id="mapEditorCanvas" class="map-editor-canvas"></canvas>
   </div>
 
   <script src="client.js"></script>
+  <script src="mapEditor.js"></script>
 </body>
 </html>

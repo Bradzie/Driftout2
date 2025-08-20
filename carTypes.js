@@ -1,10 +1,10 @@
 const CAR_TYPES = {
-  Slipstream: {
-    displayName: 'Slipstream',
+  Stream: {
+    displayName: 'Stream',
     displaySpeed: 75,
     displayHealth: 25,
     displayHandling: 40,
-    maxHealth: 8,
+    maxHealth: 6,
     acceleration: 0.015,
     boost: 100,
     regen: 0.05,
@@ -48,8 +48,8 @@ const CAR_TYPES = {
     displaySpeed: 30,
     displayHealth: 80,
     displayHandling: 70,
-    maxHealth: 20,
-    acceleration: 0.12,
+    maxHealth: 16,
+    acceleration: 0.07,
     boost: 40,
     regen: 0.05,
     color: { fill: [157, 230, 160], stroke: [99, 145, 101], strokeWidth: 4 },
@@ -59,7 +59,7 @@ const CAR_TYPES = {
     bodyOptions: {
       friction: 0.6,
       restitution: 0.9,
-      frictionAir: 0.025,
+      frictionAir: 0.020,
       density: 0.6
     },
     upgrades: {
@@ -88,7 +88,7 @@ const CAR_TYPES = {
     displaySpeed: 85,
     displayHealth: 50,
     displayHandling: 20,
-    maxHealth: 16,
+    maxHealth: 12,
     acceleration: 0.01,
     boost: 75,
     regen: 0.1,
@@ -138,7 +138,7 @@ const CAR_TYPES = {
     displaySpeed: 45,
     displayHealth: 35,
     displayHandling: 60,
-    maxHealth: 12,
+    maxHealth: 8,
     acceleration: 0.04,
     boost: 50,
     regen: 0.1,

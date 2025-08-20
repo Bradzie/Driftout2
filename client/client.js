@@ -1,10 +1,77 @@
 (() => {
-  const socket = io();
+  let socket = io();
   let currentMap = null;
+  let currentUser = null;
+  
+  // Fake ping functionality
+  let fakePingEnabled = false;
+  let fakePingLatency = 100; // Default 100ms
+  const originalSocketEmit = socket.emit.bind(socket);
+  
+  // Settings system
+  let settings = {
+    showFPS: false,
+    showPing: false
+  };
+  
+  // Performance tracking
+  let fpsCounter = 0;
+  let lastFpsUpdate = 0;
+  let frameCount = 0;
+  let currentFPS = 0;
+  let pingValue = 0;
+  let lastPingTime = 0;
+  
+  // Wrap socket.emit to add artificial delay when fake ping is enabled
+  socket.emit = function(...args) {
+    if (fakePingEnabled && fakePingLatency > 0) {
+      setTimeout(() => {
+        originalSocketEmit(...args);
+      }, fakePingLatency / 2); // Half the latency for one-way delay
+    } else {
+      originalSocketEmit(...args);
+    }
+  };
+  
+  // Store original socket.on to wrap incoming messages with delay
+  const originalSocketOn = socket.on.bind(socket);
+  const wrappedHandlers = new Map();
+  
+  socket.on = function(event, handler) {
+    if (wrappedHandlers.has(handler)) {
+      return originalSocketOn(event, wrappedHandlers.get(handler));
+    }
+    
+    const wrappedHandler = function(...args) {
+      if (fakePingEnabled && fakePingLatency > 0 && event !== 'ping') {
+        setTimeout(() => {
+          handler(...args);
+        }, fakePingLatency / 2); // Half the latency for incoming messages
+      } else {
+        handler(...args);
+      }
+    };
+    
+    wrappedHandlers.set(handler, wrappedHandler);
+    return originalSocketOn(event, wrappedHandler);
+  };
+
+  // Authentication elements
+  const authScreen = document.getElementById('authScreen');
+  const authSelection = document.getElementById('authSelection');
+  const loginForm = document.getElementById('loginForm');
+  const registerForm = document.getElementById('registerForm');
+  const authLoading = document.getElementById('authLoading');
+
+  // Toolbar elements
+  const topToolbar = document.getElementById('topToolbar');
+  const toolbarHoverZone = document.getElementById('toolbarHoverZone');
+  const toolbarPlayerName = document.getElementById('toolbarPlayerName');
+  const toolbarLogoutBtn = document.getElementById('toolbarLogoutBtn');
+  const toolbarSettingsBtn = document.getElementById('toolbarSettingsBtn');
 
   const menu = document.getElementById('menu');
   const joinButton = document.getElementById('joinButton');
-  const nameInput = document.getElementById('nameInput');
   const carCard = document.getElementById('carCard');
   const switchButton = document.getElementById('switchButton');
   const gameCanvas = document.getElementById('gameCanvas');
@@ -29,6 +96,12 @@
   // Get kill feed element
   const killFeed = document.getElementById('killFeed');
   
+  // Get leaderboard elements
+  const miniLeaderboard = document.getElementById('miniLeaderboard');
+  const miniLeaderboardContent = document.getElementById('miniLeaderboard').querySelector('.mini-leaderboard-content');
+  const detailedLeaderboard = document.getElementById('detailedLeaderboard');
+  const leaderboardTableBody = document.getElementById('leaderboardTableBody');
+  
   // Get spectator canvas
   const spectatorCanvas = document.getElementById('spectatorCanvas');
   const spectatorCtx = spectatorCanvas.getContext('2d');
@@ -39,7 +112,6 @@
   const menuDisconnectionWarning = document.getElementById('menuDisconnectionWarning');
   
   // Get settings elements
-  const settingsButton = document.getElementById('settingsButton');
   const settingsModal = document.getElementById('settingsModal');
   const settingsCloseBtn = document.getElementById('settingsCloseBtn');
   const fpsToggle = document.getElementById('fpsToggle');
@@ -52,12 +124,20 @@
   const roomBrowserButton = document.getElementById('roomBrowserButton');
   const roomBrowserModal = document.getElementById('roomBrowserModal');
   const roomBrowserCloseBtn = document.getElementById('roomBrowserCloseBtn');
-  const quickJoinButton = document.getElementById('quickJoinButton');
   const refreshRoomsButton = document.getElementById('refreshRoomsButton');
   const roomsList = document.getElementById('roomsList');
+  const openCreateRoomButton = document.getElementById('openCreateRoomButton');
+  
+  // Get create room modal elements
+  const createRoomModal = document.getElementById('createRoomModal');
+  const createRoomCloseBtn = document.getElementById('createRoomCloseBtn');
   const createRoomName = document.getElementById('createRoomName');
   const createRoomMap = document.getElementById('createRoomMap');
   const createRoomMaxPlayers = document.getElementById('createRoomMaxPlayers');
+
+  // Map editor elements
+  const mapEditorButton = document.getElementById('mapEditorButton');
+  const mapEditorContainer = document.getElementById('mapEditorContainer');
   const maxPlayersValue = document.getElementById('maxPlayersValue');
   const createRoomPrivate = document.getElementById('createRoomPrivate');
   const createRoomButton = document.getElementById('createRoomButton');
@@ -74,8 +154,379 @@
   document.getElementById('disconnectRefreshBtn').addEventListener('click', () => location.reload());
   document.getElementById('menuRefreshBtn').addEventListener('click', () => location.reload());
 
+  // Authentication functionality
+  async function checkAuthSession() {
+    try {
+      const response = await fetch('/api/auth/session');
+      const data = await response.json();
+      
+      if (data.authenticated) {
+        // Check if user is a guest - if so, make them re-authenticate
+        if (data.user.isGuest) {
+          console.log('Guest user detected - requiring re-authentication');
+          currentUser = null; // Clear the current user
+          showAuthScreen();
+        } else {
+          // Registered user - auto-login
+          console.log('Registered user detected - auto-login');
+          currentUser = data.user;
+          refreshSocketSession();
+          showMainMenu();
+          updatePlayerInfo();
+        }
+      } else {
+        showAuthScreen();
+      }
+    } catch (error) {
+      console.error('Session check failed:', error);
+      showAuthScreen();
+    }
+  }
+
+  function showAuthScreen() {
+    authScreen.classList.remove('hidden');
+    menu.classList.add('hidden');
+    miniLeaderboard.classList.add('hidden');
+    showAuthSelection();
+  }
+
+  function showMainMenu() {
+    authScreen.classList.add('hidden');
+    menu.classList.remove('hidden');
+    miniLeaderboard.classList.remove('hidden');
+    loadCarTypes();
+  }
+  
+  
+  async function loadCarTypes() {
+    try {
+      const response = await fetch('/api/cars');
+      if (response.ok) {
+        const carTypes = await response.json();
+        if (carTypes && carTypes.length > 0) {
+          // Load the first car type as default
+          updateCarCard(carTypes[0]);
+        }
+      }
+      
+      // Initialize settings system when the main menu is shown
+      loadSettings();
+    } catch (error) {
+      console.error('Failed to load car types:', error);
+    }
+  }
+  
+  function updateCarCard(carType) {
+    if (carType) {
+      carName.textContent = carType.name || 'Unknown Car';
+      // Update other car display elements as needed
+    }
+  }
+
+  function refreshSocketSession() {
+    console.log('Refreshing socket session after authentication...');
+    // Update player info immediately after authentication
+    updatePlayerInfo();
+    // Add a small delay to ensure the HTTP session is properly set
+    setTimeout(() => {
+      socket.emit('refreshSession');
+    }, 100);
+  }
+
+  async function validateCurrentSession() {
+    try {
+      const response = await fetch('/api/auth/session');
+      const data = await response.json();
+      
+      if (data.authenticated) {
+        // Check if current user is a guest - if so, make them re-authenticate
+        if (data.user.isGuest && currentUser) {
+          console.log('Guest user session expired - requiring re-authentication');
+          currentUser = null;
+          showAuthScreen();
+          return false;
+        }
+        return true;
+      } else {
+        currentUser = null;
+        showAuthScreen();
+        return false;
+      }
+    } catch (error) {
+      console.error('Session validation failed:', error);
+      currentUser = null;
+      showAuthScreen();
+      return false;
+    }
+  }
+
+  function showAuthSelection() {
+    authSelection.classList.remove('hidden');
+    loginForm.classList.add('hidden');
+    registerForm.classList.add('hidden');
+    authLoading.classList.add('hidden');
+    document.getElementById('quickPlayName').focus();
+  }
+
+  function showLoginForm() {
+    authSelection.classList.add('hidden');
+    loginForm.classList.remove('hidden');
+    document.getElementById('loginEmail').focus();
+  }
+
+  function showRegisterForm() {
+    authSelection.classList.add('hidden');
+    registerForm.classList.remove('hidden');
+    document.getElementById('registerUsername').focus();
+  }
+
+
+  function showAuthLoading() {
+    authSelection.classList.add('hidden');
+    loginForm.classList.add('hidden');
+    registerForm.classList.add('hidden');
+    authLoading.classList.remove('hidden');
+  }
+
+  function showError(elementId, message) {
+    const errorElement = document.getElementById(elementId);
+    errorElement.textContent = message;
+    errorElement.classList.remove('hidden');
+  }
+
+  function hideError(elementId) {
+    const errorElement = document.getElementById(elementId);
+    errorElement.classList.add('hidden');
+  }
+
+  function updatePlayerInfo() {
+    if (currentUser) {
+      const displayName = currentUser.username + (currentUser.isGuest ? ' (Guest)' : '');
+      toolbarPlayerName.textContent = displayName;
+      
+      // Also set the player name for chat
+      playerName = currentUser.username;
+      console.log('Player name set from currentUser:', playerName);
+      
+      // Show chat when authenticated
+      chatContainer.classList.remove('hidden');
+    } else {
+      // Hide chat when not authenticated
+      chatContainer.classList.add('hidden');
+    }
+  }
+
+  async function handleLogin(email, password) {
+    try {
+      showAuthLoading();
+      
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        currentUser = data.user;
+        refreshSocketSession();
+        showMainMenu();
+        updatePlayerInfo();
+      } else {
+        showLoginForm();
+        showError('loginError', data.error);
+      }
+    } catch (error) {
+      console.error('Login failed:', error);
+      showLoginForm();
+      showError('loginError', 'Login failed. Please try again.');
+    }
+  }
+
+  async function handleRegister(username, email, password) {
+    try {
+      showAuthLoading();
+      
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, email, password })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        currentUser = data.user;
+        refreshSocketSession();
+        showMainMenu();
+        updatePlayerInfo();
+      } else {
+        showRegisterForm();
+        showError('registerError', data.error);
+      }
+    } catch (error) {
+      console.error('Registration failed:', error);
+      showRegisterForm();
+      showError('registerError', 'Registration failed. Please try again.');
+    }
+  }
+
+  async function handleQuickPlay(name) {
+    try {
+      showAuthLoading();
+      
+      const response = await fetch('/api/auth/guest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        currentUser = data.user;
+        refreshSocketSession();
+        showMainMenu();
+        updatePlayerInfo();
+      } else {
+        showAuthSelection();
+        showError('quickPlayError', data.error);
+      }
+    } catch (error) {
+      console.error('Quick play failed:', error);
+      showAuthSelection();
+      showError('quickPlayError', 'Quick play failed. Please try again.');
+    }
+  }
+
+  async function handleLogout() {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      currentUser = null;
+      showAuthScreen();
+    } catch (error) {
+      console.error('Logout failed:', error);
+      // Still show auth screen even if logout request failed
+      currentUser = null;
+      showAuthScreen();
+    }
+  }
+
+  // Authentication event listeners
+  document.getElementById('showLoginBtn').addEventListener('click', showLoginForm);
+  document.getElementById('showRegisterBtn').addEventListener('click', showRegisterForm);
+  
+  document.getElementById('backFromLoginBtn').addEventListener('click', showAuthSelection);
+  document.getElementById('backFromRegisterBtn').addEventListener('click', showAuthSelection);
+  
+  // Quick play form handler
+  document.getElementById('quickPlayForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    hideError('quickPlayError');
+    const name = document.getElementById('quickPlayName').value;
+    await handleQuickPlay(name);
+  });
+
+  document.getElementById('loginFormElement').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    hideError('loginError');
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
+    await handleLogin(email, password);
+  });
+
+  document.getElementById('registerFormElement').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    hideError('registerError');
+    const username = document.getElementById('registerUsername').value;
+    const email = document.getElementById('registerEmail').value;
+    const password = document.getElementById('registerPassword').value;
+    await handleRegister(username, email, password);
+  });
+
+
+  // Toolbar event listeners
+  toolbarLogoutBtn.addEventListener('click', handleLogout);
+  toolbarSettingsBtn.addEventListener('click', openSettings);
+
+  // Check authentication on page load
+  checkAuthSession();
+  
+  // Initialize settings system
+  loadSettings();
+  
+  // Update kill feed position on window resize
+  window.addEventListener('resize', updateKillFeedPosition);
+
+  // Periodic session validation for guest users (every 5 minutes)
+  setInterval(() => {
+    if (currentUser && currentUser.isGuest) {
+      validateCurrentSession();
+    }
+  }, 5 * 60 * 1000);
+
+  // Toolbar functionality
+  let toolbarVisible = false;
+  let toolbarTimeout = null;
+
+  function showToolbar() {
+    if (!toolbarVisible && currentUser) {
+      toolbarVisible = true;
+      topToolbar.classList.add('visible');
+    }
+    // Clear any existing hide timeout
+    if (toolbarTimeout) {
+      clearTimeout(toolbarTimeout);
+      toolbarTimeout = null;
+    }
+  }
+
+  function hideToolbar() {
+    // Set a delay before hiding to prevent flickering
+    if (toolbarTimeout) {
+      clearTimeout(toolbarTimeout);
+    }
+    toolbarTimeout = setTimeout(() => {
+      if (toolbarVisible) {
+        toolbarVisible = false;
+        topToolbar.classList.remove('visible');
+      }
+    }, 300); // 300ms delay
+  }
+
+  function handleMouseMove(e) {
+    // Only show toolbar if user is authenticated and not on auth screen
+    if (!currentUser || !authScreen.classList.contains('hidden')) {
+      return;
+    }
+    
+    // Show toolbar when cursor is near top of screen (within 80px)
+    if (e.clientY <= 80) {
+      showToolbar();
+    } else if (e.clientY > 120) {
+      // Hide toolbar when cursor moves away from top area
+      hideToolbar();
+    }
+  }
+
+  // Mouse move tracking for toolbar
+  document.addEventListener('mousemove', handleMouseMove);
+  
+  // Keep toolbar visible when hovering over it
+  topToolbar.addEventListener('mouseenter', showToolbar);
+  topToolbar.addEventListener('mouseleave', () => {
+    // Check if cursor is still in top area
+    setTimeout(() => {
+      const rect = topToolbar.getBoundingClientRect();
+      const isInTopArea = window.event && window.event.clientY <= 120;
+      if (!isInTopArea) {
+        hideToolbar();
+      }
+    }, 100);
+  });
+
   // Settings event listeners
-  settingsButton.addEventListener('click', openSettings);
   settingsCloseBtn.addEventListener('click', closeSettings);
   
   // Close settings when clicking outside modal
@@ -86,29 +537,82 @@
   });
   
   // Settings toggle handlers
-  fpsToggle.addEventListener('change', (e) => {
-    settings.showFPS = e.target.checked;
-    saveSettings();
-    updatePerformanceOverlay();
-  });
+  function handleToggleChange(toggleElement, settingKey) {
+    return (e) => {
+      settings[settingKey] = e.target.checked;
+      saveSettings();
+      updatePerformanceOverlay();
+    };
+  }
   
-  pingToggle.addEventListener('change', (e) => {
-    settings.showPing = e.target.checked;
-    saveSettings();
-    updatePerformanceOverlay();
-  });
+  function handleSliderClick(toggleElement, settingKey) {
+    return (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleElement.checked = !toggleElement.checked;
+      
+      // Trigger change event manually
+      toggleElement.dispatchEvent(new Event('change'));
+    };
+  }
+  
+  // Setup FPS toggle
+  if (fpsToggle) {
+    fpsToggle.addEventListener('change', handleToggleChange(fpsToggle, 'showFPS'));
+    
+    const fpsSlider = fpsToggle.parentElement?.querySelector('.toggle-slider');
+    if (fpsSlider) {
+      fpsSlider.addEventListener('click', handleSliderClick(fpsToggle, 'showFPS'));
+    }
+  } else {
+    console.error('fpsToggle element not found!');
+  }
+  
+  // Setup Ping toggle  
+  if (pingToggle) {
+    pingToggle.addEventListener('change', handleToggleChange(pingToggle, 'showPing'));
+    
+    const pingSlider = pingToggle.parentElement?.querySelector('.toggle-slider');
+    if (pingSlider) {
+      pingSlider.addEventListener('click', handleSliderClick(pingToggle, 'showPing'));
+    }
+  } else {
+    console.error('pingToggle element not found!');
+  }
   
   // Room browser event listeners
   roomBrowserButton.addEventListener('click', openRoomBrowser);
   roomBrowserCloseBtn.addEventListener('click', closeRoomBrowser);
-  quickJoinButton.addEventListener('click', handleQuickJoin);
   refreshRoomsButton.addEventListener('click', loadRooms);
+  openCreateRoomButton.addEventListener('click', openCreateRoomModal);
+  
+  // Create room modal event listeners
+  createRoomCloseBtn.addEventListener('click', closeCreateRoomModal);
   createRoomButton.addEventListener('click', handleCreateRoom);
+
+  // Map editor button
+  mapEditorButton.addEventListener('click', () => {
+    if (socket && socket.connected) {
+      socket.disconnect();
+    }
+    menu.classList.add('hidden');
+    mapEditorContainer.classList.remove('hidden');
+    if (typeof initMapEditor === 'function') {
+      initMapEditor();
+    }
+  });
   
   // Close room browser when clicking outside modal
   roomBrowserModal.addEventListener('click', (e) => {
     if (e.target === roomBrowserModal) {
       closeRoomBrowser();
+    }
+  });
+  
+  // Close create room modal when clicking outside modal
+  createRoomModal.addEventListener('click', (e) => {
+    if (e.target === createRoomModal) {
+      closeCreateRoomModal();
     }
   });
   
@@ -121,6 +625,7 @@
   let players = [];
   let mySocketId = null;
   let abilityObjects = [];
+  let currentRoomId = null;
   
   // Interpolation state
   let gameStates = []; // Buffer of recent game states
@@ -129,6 +634,136 @@
   let inputState = { cursor: { x: 0, y: 0 }, boostActive: false };
   let sendInputInterval = null;
   let hasReceivedFirstState = false; // Flag to prevent rendering before first server data
+  
+  // Binary encoding support
+  let useBinaryEncoding = false;
+  let inputSequenceNumber = 0;
+  
+  // Binary input encoding function
+  function encodeBinaryInput(inputData) {
+    // Create a compact binary format for input data
+    // Structure: [cursorX(4)] [cursorY(4)] [boost(1)] [timestamp(8)] [sequence(4)]
+    const buffer = new ArrayBuffer(21);
+    const view = new DataView(buffer);
+    let offset = 0;
+    
+    // Cursor position (8 bytes)
+    view.setFloat32(offset, inputData.cursor.x, true); offset += 4;
+    view.setFloat32(offset, inputData.cursor.y, true); offset += 4;
+    
+    // Boost state (1 byte)
+    view.setUint8(offset, inputData.boostActive ? 1 : 0); offset += 1;
+    
+    // Timestamp (8 bytes)
+    view.setBigUint64(offset, BigInt(inputData.timestamp), true); offset += 8;
+    
+    // Sequence number (4 bytes)
+    view.setUint32(offset, inputData.sequence, true); offset += 4;
+    
+    return buffer;
+  }
+  
+  // Binary state decoder for server-to-client game state
+  function decodeBinaryState(buffer) {
+    const view = new DataView(buffer);
+    let offset = 0;
+    
+    try {
+      // Decode timestamp (8 bytes)
+      const timestamp = Number(view.getBigUint64(offset, true)); offset += 8;
+      
+      // Decode player count (1 byte)
+      const playerCount = view.getUint8(offset); offset += 1;
+      
+      const players = [];
+      for (let i = 0; i < playerCount; i++) {
+        // Decode basic player data
+        const socketId = view.getUint32(offset, true); offset += 4;
+        const id = view.getUint32(offset, true); offset += 4;
+        const type = view.getUint8(offset); offset += 1; // Car type as number
+        
+        // Position and rotation (12 bytes)
+        const x = view.getFloat32(offset, true); offset += 4;
+        const y = view.getFloat32(offset, true); offset += 4;
+        const angle = view.getFloat32(offset, true); offset += 4;
+        
+        // Health data (4 bytes)
+        const health = view.getUint16(offset, true); offset += 2;
+        const maxHealth = view.getUint16(offset, true); offset += 2;
+        
+        // Lap data (2 bytes)
+        const laps = view.getUint8(offset); offset += 1;
+        const maxLaps = view.getUint8(offset); offset += 1;
+        
+        // Boost data (4 bytes)
+        const currentBoost = view.getUint16(offset, true); offset += 2;
+        const maxBoost = view.getUint16(offset, true); offset += 2;
+        
+        // Game state flags (1 byte)
+        const upgradePoints = view.getUint8(offset); offset += 1;
+        const flags = view.getUint8(offset); offset += 1;
+        const crashed = (flags & 1) === 1;
+        
+        // Crash timestamp (8 bytes) - only if crashed
+        let crashedAt = null;
+        if (crashed) {
+          crashedAt = Number(view.getBigUint64(offset, true)); offset += 8;
+        }
+        
+        // Stats (4 bytes)
+        const kills = view.getUint16(offset, true); offset += 2;
+        const deaths = view.getUint16(offset, true); offset += 2;
+        
+        // Convert type number to type string (assuming 0=Stream, 1=Tank, 2=Bullet, 3=Prankster)
+        const typeNames = ['Stream', 'Tank', 'Bullet', 'Prankster'];
+        const typeName = typeNames[type] || 'Stream';
+        
+        // Reconstruct full player object with proper property names
+        const player = {
+          socketId: socketId,
+          id: id,
+          type: typeName,
+          x: x,
+          y: y,
+          angle: angle,
+          health: health, // Ensure this matches client expectations
+          maxHealth: maxHealth,
+          laps: laps,
+          maxLaps: maxLaps,
+          currentBoost: currentBoost, // Ensure this matches client expectations
+          maxBoost: maxBoost,
+          upgradePoints: upgradePoints,
+          crashed: crashed,
+          crashedAt: crashedAt, // Critical for client crash detection
+          kills: kills,
+          deaths: deaths,
+          // Add default values for properties that client expects
+          color: CAR_TYPES[typeName] ? CAR_TYPES[typeName].color : { fill: [100, 100, 100], stroke: [50, 50, 50], strokeWidth: 2 },
+          shape: CAR_TYPES[typeName] ? CAR_TYPES[typeName].shape : null,
+          vertices: [], // Will be calculated client-side if needed
+          checkpointsVisited: [], // Default value
+          upgradeUsage: {}, // Default value
+          abilityCooldownReduction: 0, // Default value
+          name: `Player ${id}` // Default name, will be overridden by server
+        };
+        
+        players.push(player);
+      }
+      
+      // For now, return simplified state structure
+      return {
+        players: players,
+        timestamp: timestamp,
+        abilityObjects: [], // Will decode later
+        dynamicObjects: [], // Will decode later
+        mySocketId: null // Will be set by caller
+      };
+      
+    } catch (error) {
+      console.error('Failed to decode binary state:', error);
+      return null;
+    }
+  }
   
   // Connection monitoring
   let connectionLostTimeout = null;
@@ -267,20 +902,6 @@
     returnToMenu();
   }
 
-  // Settings system
-  let settings = {
-    showFPS: false,
-    showPing: false
-  };
-  
-  // Performance tracking
-  let fpsCounter = 0;
-  let lastFpsUpdate = 0;
-  let frameCount = 0;
-  let currentFPS = 0;
-  let pingValue = 0;
-  let lastPingTime = 0;
-
   function formatTime(milliseconds) {
     if (!milliseconds || milliseconds <= 0) return '0:00.000';
     
@@ -290,6 +911,99 @@
     const ms = milliseconds % 1000;
     
     return `${minutes}:${seconds.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
+  }
+
+  // ============ LEADERBOARD FUNCTIONS ============
+  
+  function updateMiniLeaderboard(players) {
+    if (!players || players.length === 0) {
+      miniLeaderboardContent.innerHTML = '<div style="text-align: center; color: rgba(255,255,255,0.5); font-size: 10px;">No players</div>';
+      return;
+    }
+
+    // Sort players by laps (descending), then by best lap time (ascending)
+    const sortedPlayers = [...players].sort((a, b) => {
+      if (a.laps !== b.laps) return b.laps - a.laps;
+      if (a.bestLapTime && b.bestLapTime) return a.bestLapTime - b.bestLapTime;
+      if (a.bestLapTime && !b.bestLapTime) return -1;
+      if (!a.bestLapTime && b.bestLapTime) return 1;
+      return 0;
+    });
+
+    // Limit to top 8 players for mini leaderboard
+    const topPlayers = sortedPlayers.slice(0, 8);
+    
+    miniLeaderboardContent.innerHTML = topPlayers.map(player => `
+      <div class="mini-leaderboard-entry">
+        <div class="mini-leaderboard-player">
+          <div class="mini-leaderboard-color" style="background-color: ${player.color}"></div>
+          <div class="mini-leaderboard-name">${player.name || 'Unnamed'}</div>
+        </div>
+        <div class="mini-leaderboard-laps">${player.laps}</div>
+      </div>
+    `).join('');
+  }
+
+  function updateDetailedLeaderboard(players) {
+    if (!players || players.length === 0) {
+      leaderboardTableBody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: rgba(255,255,255,0.5);">No players in game</td></tr>';
+      return;
+    }
+
+    // Sort players by laps (descending), then by best lap time (ascending)
+    const sortedPlayers = [...players].sort((a, b) => {
+      if (a.laps !== b.laps) return b.laps - a.laps;
+      if (a.bestLapTime && b.bestLapTime) return a.bestLapTime - b.bestLapTime;
+      if (a.bestLapTime && !b.bestLapTime) return -1;
+      if (!a.bestLapTime && b.bestLapTime) return 1;
+      return 0;
+    });
+
+    leaderboardTableBody.innerHTML = sortedPlayers.map((player, index) => {
+      const rank = index + 1;
+      const kdr = player.kdr;
+      let kdrText = '--';
+      let kdrClass = '';
+      
+      if (player.deaths === 0 && player.kills > 0) {
+        kdrText = '∞';
+        kdrClass = 'stat-kdr-perfect';
+      } else if (player.deaths === 0) {
+        kdrText = '0.00';
+      } else {
+        kdrText = kdr.toFixed(2);
+        if (kdr >= 2.0) kdrClass = 'stat-kdr-high';
+      }
+
+      const bestLapText = player.bestLapTime ? formatTime(player.bestLapTime) : '--';
+      const rankClass = rank === 1 ? 'rank-1' : rank === 2 ? 'rank-2' : rank === 3 ? 'rank-3' : '';
+
+      return `
+        <tr>
+          <td class="${rankClass}">#${rank}</td>
+          <td>
+            <div class="leaderboard-player-cell">
+              <div class="leaderboard-player-color" style="background-color: ${player.color}"></div>
+              <div class="leaderboard-player-name">${player.name || 'Unnamed'}</div>
+            </div>
+          </td>
+          <td>${player.laps}/${player.maxLaps || 3}</td>
+          <td class="stat-kills">${player.kills || 0}</td>
+          <td class="stat-deaths">${player.deaths || 0}</td>
+          <td class="${kdrClass}">${kdrText}</td>
+          <td class="stat-best-lap">${bestLapText}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  function toggleDetailedLeaderboard() {
+    const isHidden = detailedLeaderboard.classList.contains('hidden');
+    if (isHidden) {
+      detailedLeaderboard.classList.remove('hidden');
+    } else {
+      detailedLeaderboard.classList.add('hidden');
+    }
   }
 
   // Settings system functions
@@ -337,6 +1051,28 @@
     } else {
       pingDisplay.classList.add('hidden');
     }
+    
+    // Update kill feed position based on performance overlay
+    updateKillFeedPosition();
+  }
+  
+  function updateKillFeedPosition() {
+    // Wait for DOM to update, then calculate position
+    requestAnimationFrame(() => {
+      if (!killFeed) return; // Safety check
+      
+      const hasOverlay = settings.showFPS || settings.showPing;
+      
+      if (hasOverlay && performanceOverlay && !performanceOverlay.classList.contains('hidden')) {
+        const overlayRect = performanceOverlay.getBoundingClientRect();
+        const overlayBottom = overlayRect.bottom;
+        const killFeedTop = overlayBottom + 10; // 10px gap
+        killFeed.style.top = `${killFeedTop}px`;
+      } else {
+        // Reset to original position when no overlay
+        killFeed.style.top = '20px';
+      }
+    });
   }
   
   function updateFPS() {
@@ -349,11 +1085,12 @@
       lastFpsUpdate = now;
       
       if (settings.showFPS) {
-        fpsDisplay.textContent = `FPS: ${currentFPS}`;
+        fpsDisplay.textContent = `FPS ${currentFPS}`;
+        updateKillFeedPosition(); // Update position when FPS display changes
       }
     }
   }
-  
+
   function updatePing() {
     const now = Date.now();
     if (now - lastPingTime >= 2000 && socket.connected) { // Send ping every 2 seconds
@@ -361,9 +1098,12 @@
       const startTime = now;
       
       socket.emit('ping', startTime, (responseTime) => {
-        pingValue = Date.now() - startTime;
+        const realPing = Date.now() - startTime;
+        pingValue = fakePingEnabled ? fakePingLatency : realPing;
         if (settings.showPing) {
-          pingDisplay.textContent = `Ping: ${pingValue}ms`;
+          const pingText = fakePingEnabled ? `Ping ${pingValue}ms (FAKE)` : `Ping ${pingValue}ms`;
+          pingDisplay.textContent = pingText;
+          updateKillFeedPosition(); // Update position when ping display changes
         }
       });
     }
@@ -403,6 +1143,17 @@
       clearInterval(roomsRefreshInterval);
       roomsRefreshInterval = null;
     }
+  }
+  
+  // Create room modal functions
+  function openCreateRoomModal() {
+    createRoomModal.classList.remove('hidden');
+    loadMaps(); // Load maps when opening create room modal
+    document.getElementById('createRoomName').focus();
+  }
+  
+  function closeCreateRoomModal() {
+    createRoomModal.classList.add('hidden');
   }
   
   async function loadMaps() {
@@ -498,21 +1249,13 @@
   }
   
   function joinSpecificRoom(roomId) {
-    const selected = document.querySelector('input[name="car"]:checked');
-    const carType = selected ? selected.value : 'Speedster';
-    const name = sanitizeName(nameInput.value);
-    
     closeRoomBrowser();
-    //socket.emit('joinGame', { carType, name, roomId });
-  }
-  
-  function handleQuickJoin() {
-    const selected = document.querySelector('input[name="car"]:checked');
-    const carType = selected ? selected.value : 'Speedster';
-    const name = sanitizeName(nameInput.value);
     
-    closeRoomBrowser();
-    //socket.emit('joinGame', { carType, name }); // No roomId = auto-assign
+    // Track the room we're joining for crash handling
+    currentRoomId = roomId;
+    
+    // Start spectating the specific room
+    socket.emit('requestSpectator', { roomId });
   }
   
   async function handleCreateRoom() {
@@ -568,7 +1311,10 @@
       maxPlayersValue.textContent = '8';
       createRoomPrivate.checked = false;
       
-      // Refresh rooms list
+      // Close create room modal
+      closeCreateRoomModal();
+      
+      // Refresh rooms list if room browser is still open
       await loadRooms();
       
       // Auto-join the created room
@@ -647,12 +1393,14 @@
   }
   
   // Spectator functions
-  function startSpectating() {
+  function startSpectating(roomId) {
     if (!isSpectating) {
       isSpectating = true;
-      socket.emit('requestSpectator');
+      // Use provided roomId or currentRoomId, or no roomId for default room
+      const spectatorData = roomId || currentRoomId ? { roomId: roomId || currentRoomId } : {};
+      socket.emit('requestSpectator', spectatorData);
       resizeSpectatorCanvas();
-      console.log('Started spectating mode');
+      console.log('Started spectating mode', roomId || currentRoomId ? `in room ${roomId || currentRoomId}` : '');
     }
   }
   
@@ -744,14 +1492,55 @@
   }
 
   joinButton.addEventListener('click', () => {
+    console.log('Join button clicked', { currentUser, currentRoomId });
+    
+    // Check if user is authenticated
+    if (!currentUser || !currentUser.username) {
+      console.error('Cannot join game: User not authenticated or no username');
+      alert('Please log in or play as guest first');
+      return;
+    }
+    
     const selected = document.querySelector('input[name="car"]:checked');
     const carType = selected ? selected.value : 'Speedster';
-    const name = sanitizeName(nameInput.value); // Apply sanitization
-    socket.emit('joinGame', { carType, name });
+    const name = currentUser.username;
+    
+    console.log('Emitting joinGame', { carType, name, roomId: currentRoomId });
+    socket.emit('joinGame', { carType, name, roomId: currentRoomId });
+  });
+
+  socket.on('joinError', (data) => {
+    console.error('Join error:', data);
+    alert('Could not join game: ' + (data.error || 'Unknown error'));
   });
 
   socket.on('joined', (data) => {
+    console.log('Successfully joined game:', data);
     stopSpectating(); // Stop spectating when joining game
+    
+    // Track the current room ID for crash handling
+    currentRoomId = data.roomId;
+    
+    // Enable binary encoding if server supports it
+    if (data.binarySupport) {
+      useBinaryEncoding = true;
+      console.log('Binary input encoding enabled');
+    } else {
+      useBinaryEncoding = false;
+    }
+    
+    // Set player name for chat (we'll get it from the first state update)
+    setTimeout(() => {
+      const mySocketId = socket.id;
+      const latestState = gameStates[gameStates.length - 1];
+      if (latestState && latestState.players) {
+        const myPlayer = latestState.players.find(p => p.socketId === mySocketId);
+        if (myPlayer && myPlayer.name) {
+          playerName = myPlayer.name;
+          console.log('Player name set for chat:', playerName);
+        }
+      }
+    }, 100);
     
     // Reset crash state immediately when joining new game
     crashedCars.clear();
@@ -790,12 +1579,26 @@
     }
     
     sendInputInterval = setInterval(() => {
+      inputSequenceNumber++;
       const timestampedInput = {
         ...inputState,
         timestamp: Date.now(),
-        sequence: (sendInputInterval._sequence = (sendInputInterval._sequence || 0) + 1)
+        sequence: inputSequenceNumber
       };
-      socket.emit('input', timestampedInput);
+      
+      if (useBinaryEncoding) {
+        try {
+          // Use compact binary encoding
+          const binaryData = encodeBinaryInput(timestampedInput);
+          socket.emit('binaryInput', binaryData);
+        } catch (error) {
+          console.warn('Binary encoding failed, falling back to JSON:', error);
+          socket.emit('input', timestampedInput);
+        }
+      } else {
+        // Fallback to JSON encoding
+        socket.emit('input', timestampedInput);
+      }
     }, 1000 / 60);
   });
 
@@ -836,6 +1639,73 @@
 
     // Update current map immediately (doesn't need interpolation)
     currentMap = data.map || currentMap;
+    
+    // Update leaderboards with latest player data
+    updateMiniLeaderboard(data.players);
+    updateDetailedLeaderboard(data.players);
+    
+    // Update player name for chat if not already set
+    if (!playerName && data.players) {
+      const mySocketId = socket.id;
+      const myPlayer = data.players.find(p => p.socketId === mySocketId);
+      if (myPlayer && myPlayer.name) {
+        playerName = myPlayer.name;
+        console.log('Player name updated from state:', playerName);
+      }
+    }
+  });
+  
+  // Handle binary state updates
+  socket.on('binaryState', (buffer, mySocketId) => {
+    // Update last message timestamp for connection monitoring
+    lastServerMessage = Date.now();
+    
+    try {
+      // Decode binary state data
+      const data = decodeBinaryState(buffer);
+      if (!data) return; // Failed to decode
+      
+      // Set the socket ID for this client
+      data.mySocketId = mySocketId;
+      
+      // Detect crashed cars for fade effect
+      detectCrashedCars(data.players || []);
+      
+      // Buffer the state with timestamp for interpolation
+      gameStates.push({
+        players: data.players,
+        abilityObjects: data.abilityObjects || [],
+        dynamicObjects: data.dynamicObjects || [],
+        timestamp: data.timestamp,
+        mySocketId: mySocketId,
+        map: currentMap // Use existing map data
+      });
+      
+      // Update myAbility cooldown if player data is available
+      const me = data.players.find(p => p.socketId === mySocketId);
+      if (me && myAbility) {
+        const carDef = CAR_TYPES[me.type];
+        const baseCooldown = carDef.abilityCooldown || 0;
+        myAbility.cooldown = Math.max(0, baseCooldown - (me.abilityCooldownReduction || 0));
+      }
+
+      // Mark that we've received our first state - safe to start rendering
+      hasReceivedFirstState = true;
+      
+      // Hide loading screen now that we have game data
+      loadingScreen.classList.add('hidden');
+
+      // Keep only last 1 second of states
+      const now = Date.now();
+      gameStates = gameStates.filter(state => (now - state.timestamp) < 1000);
+      
+      // Update leaderboards with latest player data
+      updateMiniLeaderboard(data.players);
+      updateDetailedLeaderboard(data.players);
+      
+    } catch (error) {
+      console.error('Error handling binary state:', error);
+    }
   });
 
   // Handle delta updates for better performance
@@ -897,6 +1767,10 @@
     // Keep only last 1 second of states
     const now = Date.now();
     gameStates = gameStates.filter(state => (now - state.timestamp) < 1000);
+    
+    // Update leaderboards with latest player data
+    updateMiniLeaderboard(newPlayers);
+    updateDetailedLeaderboard(newPlayers);
   });
 
   // Handle heartbeat (no data changed)
@@ -922,6 +1796,10 @@
   // Handle spectator state
   socket.on('spectatorState', (data) => {
     spectatorState = data;
+    
+    // Update leaderboards with spectator data
+    updateMiniLeaderboard(data.players);
+    updateDetailedLeaderboard(data.players);
   });
 
   socket.on('returnToMenu', ({ winner, crashed }) => {
@@ -987,8 +1865,166 @@
     inputState.boostActive = false;
   });
 
+  // Chat functionality
+  let isChatFocused = false;
+  let playerName = '';
+  const chatInputArea = document.getElementById('chatInputArea');
+  const chatInput = document.getElementById('chatInput');
+  const chatMessages = document.getElementById('chatMessages');
+  const chatPrompt = document.getElementById('chatPrompt');
+
+  function toggleChatInput() {
+    isChatFocused = !isChatFocused;
+    if (isChatFocused) {
+      chatInputArea.classList.remove('hidden');
+      chatPrompt.classList.add('hidden');
+      chatInput.focus();
+    } else {
+      chatInputArea.classList.add('hidden');
+      chatPrompt.classList.remove('hidden');
+      chatInput.blur();
+      chatInput.value = '';
+    }
+  }
+
+  function sendChatMessage() {
+    const message = chatInput.value.trim();
+    console.log('Attempting to send chat message:', { message, playerName, hasMessage: !!message, hasPlayerName: !!playerName });
+    
+    if (!message) {
+      console.log('Chat message blocked: empty message');
+      return;
+    }
+    
+    if (!playerName) {
+      console.log('Chat message blocked: no player name set');
+      
+      // Try to get player name from currentUser first
+      if (currentUser) {
+        playerName = currentUser.name || currentUser.username || 'Player';
+        console.log('Retrieved player name from currentUser:', playerName);
+      }
+      
+      // If still no name, try to get from game state
+      if (!playerName) {
+        const mySocketId = socket.id;
+        const latestState = gameStates[gameStates.length - 1];
+        if (latestState && latestState.players) {
+          const myPlayer = latestState.players.find(p => p.socketId === mySocketId);
+          if (myPlayer && myPlayer.name) {
+            playerName = myPlayer.name;
+            console.log('Retrieved player name from game state:', playerName);
+          }
+        }
+      }
+      
+      // Still no name? Block the message
+      if (!playerName) {
+        console.log('Still no player name available, blocking message');
+        return;
+      }
+    }
+    
+    console.log('Sending chat message:', { playerName, message });
+    socket.emit('chatMessage', { message: message });
+    chatInput.value = '';
+    toggleChatInput();
+  }
+
+  function addChatMessage(playerName, message) {
+    const messageElement = document.createElement('div');
+    messageElement.className = 'chat-message';
+    messageElement.innerHTML = `<span class="chat-player-name">${playerName}:</span><span class="chat-message-text">${message}</span>`;
+    
+    chatMessages.appendChild(messageElement);
+    
+    // Auto-scroll to bottom
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    // Remove old messages if too many (keep last 50)
+    while (chatMessages.children.length > 50) {
+      chatMessages.removeChild(chatMessages.firstChild);
+    }
+  }
+
+  // Socket event for receiving chat messages
+  socket.on('chatMessageReceived', (data) => {
+    addChatMessage(data.playerName, data.message);
+  });
+
+  // Socket event for chat errors
+  socket.on('chatError', (data) => {
+    console.error('Chat error:', data.error);
+  });
+
+  // Chat input specific event handlers
+  chatInput.addEventListener('keydown', (e) => {
+    if (e.code === 'Enter') {
+      e.preventDefault();
+      sendChatMessage();
+    } else if (e.code === 'Escape') {
+      e.preventDefault();
+      toggleChatInput();
+    }
+  });
+
+  // Add click listener to chat prompt
+  chatPrompt.addEventListener('click', () => {
+    if (!isChatFocused) {
+      toggleChatInput();
+    }
+  });
+
+  // Initialize chat prompt visibility
+  function initializeChatState() {
+    if (!isChatFocused) {
+      chatPrompt.classList.remove('hidden');
+      chatInputArea.classList.add('hidden');
+    }
+  }
+
+  // Initialize chat state when page loads
+  initializeChatState();
+
   // Ability and upgrade input handling
   document.addEventListener('keydown', (e) => {
+    // Handle ENTER key for chat
+    if (e.code === 'Enter') {
+      e.preventDefault();
+      
+      // If chat input is focused, let its event handler deal with it
+      if (e.target === chatInput) {
+        return; // Let the chatInput event handler handle this
+      }
+      
+      // Otherwise, toggle chat if not focused
+      if (!isChatFocused) {
+        toggleChatInput();
+      }
+      return;
+    }
+
+    // Handle ESC key for chat and leaderboard
+    if (e.code === 'Escape') {
+      if (isChatFocused) {
+        toggleChatInput();
+        return;
+      } else if (!detailedLeaderboard.classList.contains('hidden')) {
+        detailedLeaderboard.classList.add('hidden');
+        return;
+      }
+    }
+
+    // Don't process game inputs when chat is focused
+    if (isChatFocused) return;
+
+    // Handle TAB key for leaderboard toggle
+    if (e.code === 'Tab') {
+      e.preventDefault();
+      toggleDetailedLeaderboard();
+      return;
+    }
+    
     if (e.code === 'Space' && !e.repeat) {
       e.preventDefault();
       
@@ -1248,6 +2284,8 @@
     const speedValue = document.getElementById('debugSpeedValue');
     const regenSlider = document.getElementById('debugRegen');
     const regenValue = document.getElementById('debugRegenValue');
+    const fakePingSlider = document.getElementById('debugFakePingSlider');
+    const fakePingValue = document.getElementById('debugFakePingValue');
     
     // Buttons
     const givePointsBtn = document.getElementById('debugGivePoints');
@@ -1260,6 +2298,7 @@
     const setStatsBtn = document.getElementById('debugSetStats');
     const resetUpgradesBtn = document.getElementById('debugResetUpgrades');
     const getPlayerDataBtn = document.getElementById('debugGetPlayerData');
+    const toggleFakePingBtn = document.getElementById('debugToggleFakePing');
     
     // Collapse/expand functionality
     debugToggle.addEventListener('click', () => {
@@ -1279,6 +2318,10 @@
     });
     regenSlider.addEventListener('input', () => {
       regenValue.textContent = parseFloat(regenSlider.value).toFixed(2);
+    });
+    fakePingSlider.addEventListener('input', () => {
+      fakePingValue.textContent = fakePingSlider.value;
+      fakePingLatency = parseInt(fakePingSlider.value);
     });
 
     // Button event listeners
@@ -1326,6 +2369,13 @@
 
     getPlayerDataBtn.addEventListener('click', () => {
       socket.emit('debug:getPlayerData');
+    });
+
+    toggleFakePingBtn.addEventListener('click', () => {
+      fakePingEnabled = !fakePingEnabled;
+      toggleFakePingBtn.textContent = fakePingEnabled ? 'Fake Ping: ON' : 'Fake Ping: OFF';
+      toggleFakePingBtn.setAttribute('data-active', fakePingEnabled.toString());
+      fakePingSlider.disabled = !fakePingEnabled;
     });
 
     // F12 toggle shortcut
@@ -1419,7 +2469,6 @@
 
   function showMenuDisconnectionWarning() {
     // Hide the interactive menu elements
-    nameInput.style.display = 'none';
     carCard.style.display = 'none';
     switchButton.style.display = 'none';
     joinButton.style.display = 'none';
@@ -1430,7 +2479,6 @@
 
   function hideMenuDisconnectionWarning() {
     // Show the interactive menu elements
-    nameInput.style.display = 'block';
     carCard.style.display = 'block';
     switchButton.style.display = 'block';
     joinButton.style.display = 'block';
@@ -1615,7 +2663,13 @@
     return { minX, maxX, minY, maxY };
   }
   
-  function calculateScale(canvas, mapBounds, mode = 'player') {
+  function calculateScale(canvas, mapBounds, mode = 'player', mapData = null) {
+    // If mapData has predefined scale, use it
+    if (mapData && mapData.scale && mapData.scale[mode]) {
+      return mapData.scale[mode] * Math.min(canvas.width, canvas.height);
+    }
+    
+    // Fallback to dynamic calculation if no predefined scale
     const { minX, maxX, minY, maxY } = mapBounds;
     const sizeX = maxX - minX;
     const sizeY = maxY - minY;
@@ -1631,7 +2685,7 @@
   }
   
   function getCameraTransform(options) {
-    const { canvas, mapBounds, mode, centerPlayer } = options;
+    const { canvas, mapBounds, mode, centerPlayer, mapData } = options;
     
     let centerX = canvas.width / 2;
     let centerY = canvas.height / 2;
@@ -1648,7 +2702,7 @@
       focusY = (mapBounds.minY + mapBounds.maxY) / 2;
     }
     
-    const scale = calculateScale(canvas, mapBounds, mode);
+    const scale = calculateScale(canvas, mapBounds, mode, mapData);
     
     return { centerX, centerY, focusX, focusY, scale };
   }
@@ -1683,7 +2737,8 @@
       canvas,
       mapBounds,
       mode,
-      centerPlayer
+      centerPlayer,
+      mapData: mapToUse
     });
     
     // Extract game objects
@@ -1790,6 +2845,36 @@
           ctx.strokeStyle = isVisited ? '#00ff00' : '#ffff00'; // Green if visited, yellow if not
           ctx.lineWidth = 2;
           ctx.stroke();
+        }
+      }
+    }
+
+    // Area effects
+    if (mapToUse && Array.isArray(mapToUse.areaEffects)) {
+      for (const areaEffect of mapToUse.areaEffects) {
+        if (Array.isArray(areaEffect.vertices)) {
+          ctx.beginPath();
+          
+          // Set fill color with transparency
+          const fillColor = Array.isArray(areaEffect.fillColor) 
+            ? `rgba(${areaEffect.fillColor[0]}, ${areaEffect.fillColor[1]}, ${areaEffect.fillColor[2]}, 0.3)`
+            : 'rgba(173, 216, 230, 0.3)'; // Default light blue with transparency
+          ctx.fillStyle = fillColor;
+          
+          // Draw area effect shape
+          const screenVerts = areaEffect.vertices.map(v => ({
+            x: centerX + (v.x - focusX) * scale,
+            y: centerY - (v.y - focusY) * scale
+          }));
+          
+          if (screenVerts.length > 0) {
+            ctx.moveTo(screenVerts[0].x, screenVerts[0].y);
+            for (let i = 1; i < screenVerts.length; i++) {
+              ctx.lineTo(screenVerts[i].x, screenVerts[i].y);
+            }
+            ctx.closePath();
+            ctx.fill();
+          }
         }
       }
     }
@@ -2069,7 +3154,7 @@
 
     // Update HUD elements (only in player mode)
     if (showHUD && centerPlayer && mode === 'player') {
-      lapsSpan.textContent = `Lap ${centerPlayer.laps} of ${centerPlayer.maxLaps}`;
+      lapsSpan.textContent = `Lap ${centerPlayer.laps + 1} / ${centerPlayer.maxLaps}`;
       
       // Update upgrade points counter beside cards
       const upgradePointsCounter = document.getElementById('upgradePointsCounter');
@@ -2134,20 +3219,8 @@
         const boostPercentage = (currentBoost / maxBoost) * 100;
         
         // Update boost text
-        boostText.textContent = `${currentBoost}/${maxBoost}`;
+        boostText.textContent = `${currentBoost}`;
         
-        // Update boost bar width
-        boostBar.style.width = `${boostPercentage}%`;
-        
-        // Update boost bar color based on percentage
-        boostBar.className = 'boost-bar';
-        if (boostPercentage <= 25) {
-          boostBar.classList.add('low');
-        } else if (boostPercentage <= 60) {
-          boostBar.classList.add('medium');
-        } else {
-          boostBar.classList.add('high');
-        }
       }
       
       if (shouldShowUpgrades) {

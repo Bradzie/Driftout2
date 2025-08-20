@@ -3,6 +3,10 @@
 module.exports = {
   square: {
     displayName: 'Square',
+    scale: {
+      player: 0.002,
+      spectator: 0.0005,
+    },
     start: {
       type: 'polygon',
       vertices: [
@@ -153,6 +157,67 @@ module.exports = {
       {
         type: 'line',
         vertices: [{ x: 0, y: 400 }, { x: 0, y: 770 }],
+        id: 'checkpoint-3'
+      },
+    ],
+    areaEffects: [
+      {
+        vertices: [
+          { x: -400, y: -200 },
+          { x: -200, y: -200 },
+          { x: -200, y: -400 },
+          { x: -100, y: -400 },
+          { x: -100, y: -100 },
+          { x: -400, y: -100 }
+        ],
+        effect: 'ice',
+        strength: 0.95, // Reduces friction by 30%
+        fillColor: [173, 216, 230] // Light blue for ice
+      }
+    ]
+  },
+  circle: {
+    displayName: 'Circle',
+    scale: {
+      player: 0.002,
+      spectator: 0.0003
+    },
+    start: {
+      type: 'polygon',
+      vertices: [
+        { x: 1000, y: -10 },
+        { x: 1250, y: -10 },
+        { x: 1250, y: 10 },
+        { x: 1000, y: 10 }
+      ]
+    },
+    shapes: [
+      {
+        vertices: circleToPolygon(1250, 50, { x: 0, y: 0 }),
+        fillColor: [100, 100, 100],
+        borderColors: ['#ff4d4d', '#ffffff'],
+        borderWidth: 20
+      },
+      {
+        vertices: circleToPolygon(1000, 40, { x: 0, y: 0 }),
+        borderColors: ['#ff4d4d', '#ffffff'],
+        borderWidth: 20
+      },
+    ],
+    checkpoints: [
+      {
+        type: 'line',
+        vertices: [{ x: 0, y: -1000 }, { x: 0, y: -1250 }],
+        id: 'checkpoint-1'
+      },
+      {
+        type: 'line',
+        vertices: [{ x: -1000, y: 0 }, { x: -1250, y: 0 }],
+        id: 'checkpoint-2'
+      },
+      {
+        type: 'line',
+        vertices: [{ x: 0, y: 1000 }, { x: 0, y: 1250 }],
         id: 'checkpoint-3'
       },
     ]
