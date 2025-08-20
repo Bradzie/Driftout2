@@ -8,6 +8,20 @@
   let fakePingLatency = 100; // Default 100ms
   const originalSocketEmit = socket.emit.bind(socket);
   
+  // Settings system
+  let settings = {
+    showFPS: false,
+    showPing: false
+  };
+  
+  // Performance tracking
+  let fpsCounter = 0;
+  let lastFpsUpdate = 0;
+  let frameCount = 0;
+  let currentFPS = 0;
+  let pingValue = 0;
+  let lastPingTime = 0;
+  
   // Wrap socket.emit to add artificial delay when fake ping is enabled
   socket.emit = function(...args) {
     if (fakePingEnabled && fakePingLatency > 0) {
@@ -180,6 +194,38 @@
     authScreen.classList.add('hidden');
     menu.classList.remove('hidden');
     miniLeaderboard.classList.remove('hidden');
+    loadCarTypes();
+  }
+  
+  function updatePlayerInfo() {
+    if (currentUser) {
+      toolbarPlayerName.textContent = currentUser.name || currentUser.username || 'Player';
+    }
+  }
+  
+  async function loadCarTypes() {
+    try {
+      const response = await fetch('/api/cars');
+      if (response.ok) {
+        const carTypes = await response.json();
+        if (carTypes && carTypes.length > 0) {
+          // Load the first car type as default
+          updateCarCard(carTypes[0]);
+        }
+      }
+      
+      // Initialize settings system when the main menu is shown
+      loadSettings();
+    } catch (error) {
+      console.error('Failed to load car types:', error);
+    }
+  }
+  
+  function updateCarCard(carType) {
+    if (carType) {
+      carName.textContent = carType.name || 'Unknown Car';
+      // Update other car display elements as needed
+    }
   }
 
   function refreshSocketSession() {
@@ -399,6 +445,12 @@
 
   // Check authentication on page load
   checkAuthSession();
+  
+  // Initialize settings system
+  loadSettings();
+  
+  // Update kill feed position on window resize
+  window.addEventListener('resize', updateKillFeedPosition);
 
   // Periodic session validation for guest users (every 5 minutes)
   setInterval(() => {
@@ -478,17 +530,48 @@
   });
   
   // Settings toggle handlers
-  fpsToggle.addEventListener('change', (e) => {
-    settings.showFPS = e.target.checked;
-    saveSettings();
-    updatePerformanceOverlay();
-  });
+  function handleToggleChange(toggleElement, settingKey) {
+    return (e) => {
+      settings[settingKey] = e.target.checked;
+      saveSettings();
+      updatePerformanceOverlay();
+    };
+  }
   
-  pingToggle.addEventListener('change', (e) => {
-    settings.showPing = e.target.checked;
-    saveSettings();
-    updatePerformanceOverlay();
-  });
+  function handleSliderClick(toggleElement, settingKey) {
+    return (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleElement.checked = !toggleElement.checked;
+      
+      // Trigger change event manually
+      toggleElement.dispatchEvent(new Event('change'));
+    };
+  }
+  
+  // Setup FPS toggle
+  if (fpsToggle) {
+    fpsToggle.addEventListener('change', handleToggleChange(fpsToggle, 'showFPS'));
+    
+    const fpsSlider = fpsToggle.parentElement?.querySelector('.toggle-slider');
+    if (fpsSlider) {
+      fpsSlider.addEventListener('click', handleSliderClick(fpsToggle, 'showFPS'));
+    }
+  } else {
+    console.error('fpsToggle element not found!');
+  }
+  
+  // Setup Ping toggle  
+  if (pingToggle) {
+    pingToggle.addEventListener('change', handleToggleChange(pingToggle, 'showPing'));
+    
+    const pingSlider = pingToggle.parentElement?.querySelector('.toggle-slider');
+    if (pingSlider) {
+      pingSlider.addEventListener('click', handleSliderClick(pingToggle, 'showPing'));
+    }
+  } else {
+    console.error('pingToggle element not found!');
+  }
   
   // Room browser event listeners
   roomBrowserButton.addEventListener('click', openRoomBrowser);
@@ -812,20 +895,6 @@
     returnToMenu();
   }
 
-  // Settings system
-  let settings = {
-    showFPS: false,
-    showPing: false
-  };
-  
-  // Performance tracking
-  let fpsCounter = 0;
-  let lastFpsUpdate = 0;
-  let frameCount = 0;
-  let currentFPS = 0;
-  let pingValue = 0;
-  let lastPingTime = 0;
-
   function formatTime(milliseconds) {
     if (!milliseconds || milliseconds <= 0) return '0:00.000';
     
@@ -975,6 +1044,28 @@
     } else {
       pingDisplay.classList.add('hidden');
     }
+    
+    // Update kill feed position based on performance overlay
+    updateKillFeedPosition();
+  }
+  
+  function updateKillFeedPosition() {
+    // Wait for DOM to update, then calculate position
+    requestAnimationFrame(() => {
+      if (!killFeed) return; // Safety check
+      
+      const hasOverlay = settings.showFPS || settings.showPing;
+      
+      if (hasOverlay && performanceOverlay && !performanceOverlay.classList.contains('hidden')) {
+        const overlayRect = performanceOverlay.getBoundingClientRect();
+        const overlayBottom = overlayRect.bottom;
+        const killFeedTop = overlayBottom + 10; // 10px gap
+        killFeed.style.top = `${killFeedTop}px`;
+      } else {
+        // Reset to original position when no overlay
+        killFeed.style.top = '20px';
+      }
+    });
   }
   
   function updateFPS() {
@@ -987,11 +1078,12 @@
       lastFpsUpdate = now;
       
       if (settings.showFPS) {
-        fpsDisplay.textContent = `FPS: ${currentFPS}`;
+        fpsDisplay.textContent = `FPS ${currentFPS}`;
+        updateKillFeedPosition(); // Update position when FPS display changes
       }
     }
   }
-  
+
   function updatePing() {
     const now = Date.now();
     if (now - lastPingTime >= 2000 && socket.connected) { // Send ping every 2 seconds
@@ -1002,8 +1094,9 @@
         const realPing = Date.now() - startTime;
         pingValue = fakePingEnabled ? fakePingLatency : realPing;
         if (settings.showPing) {
-          const pingText = fakePingEnabled ? `Ping: ${pingValue}ms (FAKE)` : `Ping: ${pingValue}ms`;
+          const pingText = fakePingEnabled ? `Ping ${pingValue}ms (FAKE)` : `Ping ${pingValue}ms`;
           pingDisplay.textContent = pingText;
+          updateKillFeedPosition(); // Update position when ping display changes
         }
       });
     }

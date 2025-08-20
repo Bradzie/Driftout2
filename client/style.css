@@ -358,11 +358,12 @@ html, body {
   position: fixed;
   top: 20px;
   left: 20px;
-  z-index: 1000;
+  z-index: 99; /* Lower than performance overlay */
   max-width: 320px;
   max-height: 300px;
   overflow: hidden;
   pointer-events: none;
+  transition: top 0.3s ease-out;
 }
 
 .kill-feed-message {
@@ -1348,7 +1349,7 @@ input[type="number"]:focus {
 .performance-overlay {
   position: fixed;
   top: 20px;
-  right: 20px;
+  left: 20px;
   z-index: 100;
   display: flex;
   flex-direction: column;
@@ -1358,25 +1359,22 @@ input[type="number"]:focus {
 
 .fps-display,
 .ping-display {
-  background: rgba(20, 20, 20, 0.9);
+  background: rgba(20, 20, 20, 0.6);
   color: #ffffff;
   padding: 6px 12px;
-  border-radius: 6px;
   font-family: 'Courier New', monospace;
   font-size: 0.9rem;
-  font-weight: 600;
-  backdrop-filter: blur(5px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-weight: bolder;
   text-align: center;
   min-width: 80px;
 }
 
 .fps-display {
-  border-left: 3px solid #10b981;
+  border-top: 2px solid #ff5f5f;
 }
 
 .ping-display {
-  border-left: 3px solid #3b82f6;
+  border-top: 2px solid #ff5f5f;
 }
 
 /* Custom scrollbar for settings modal */
