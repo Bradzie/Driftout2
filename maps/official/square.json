@@ -1,0 +1,418 @@
+{
+  "displayName": "Square",
+  "scale": {
+    "player": 0.002,
+    "spectator": 0.0005
+  },
+  "start": {
+    "type": "polygon",
+    "vertices": [
+      {
+        "x": 400,
+        "y": -10
+      },
+      {
+        "x": 600,
+        "y": -10
+      },
+      {
+        "x": 600,
+        "y": 10
+      },
+      {
+        "x": 400,
+        "y": 10
+      }
+    ]
+  },
+  "shapes": [
+    {
+      "vertices": [
+        {
+          "x": -600,
+          "y": -600
+        },
+        {
+          "x": 600,
+          "y": -600
+        },
+        {
+          "x": 600,
+          "y": 100
+        },
+        {
+          "x": 800,
+          "y": 100
+        },
+        {
+          "x": 800,
+          "y": 650
+        },
+        {
+          "x": 650,
+          "y": 800
+        },
+        {
+          "x": 200,
+          "y": 800
+        },
+        {
+          "x": -400,
+          "y": 750
+        },
+        {
+          "x": -600,
+          "y": 600
+        }
+      ],
+      "fillColor": [
+        100,
+        100,
+        100
+      ],
+      "borderColors": [
+        "#ff4d4d",
+        "#ffffff"
+      ],
+      "borderWidth": 20
+    },
+    {
+      "vertices": [
+        {
+          "x": -400,
+          "y": -100
+        },
+        {
+          "x": -100,
+          "y": -100
+        },
+        {
+          "x": -100,
+          "y": -400
+        },
+        {
+          "x": 400,
+          "y": -400
+        },
+        {
+          "x": 400,
+          "y": 400
+        },
+        {
+          "x": -400,
+          "y": 400
+        }
+      ],
+      "borderColors": [
+        "#ff4d4d",
+        "#ffffff"
+      ],
+      "borderWidth": 20
+    },
+    {
+      "vertices": [
+        {
+          "x": -400,
+          "y": -400
+        },
+        {
+          "x": -200,
+          "y": -400
+        },
+        {
+          "x": -200,
+          "y": -200
+        },
+        {
+          "x": -400,
+          "y": -200
+        }
+      ],
+      "borderColors": [
+        "#ff4d4d",
+        "#ffffff"
+      ],
+      "borderWidth": 20
+    },
+    {
+      "vertices": [
+        {
+          "x": 600,
+          "y": 400
+        },
+        {
+          "x": 561.8033988749895,
+          "y": 517.5570504584946
+        },
+        {
+          "x": 461.8033988749895,
+          "y": 590.2113032590307
+        },
+        {
+          "x": 338.19660112501055,
+          "y": 590.2113032590307
+        },
+        {
+          "x": 238.19660112501055,
+          "y": 517.5570504584946
+        },
+        {
+          "x": 200,
+          "y": 400
+        },
+        {
+          "x": 238.19660112501052,
+          "y": 282.4429495415054
+        },
+        {
+          "x": 338.1966011250105,
+          "y": 209.7886967409693
+        },
+        {
+          "x": 461.80339887498945,
+          "y": 209.78869674096927
+        },
+        {
+          "x": 561.8033988749894,
+          "y": 282.4429495415053
+        }
+      ],
+      "borderColors": [
+        "#ff4d4d",
+        "#ffffff"
+      ],
+      "borderWidth": 20
+    }
+  ],
+  "dynamicObjects": [
+    {
+      "id": "metalBox1",
+      "position": {
+        "x": -300,
+        "y": 450
+      },
+      "size": {
+        "width": 25,
+        "height": 25
+      },
+      "shape": "rectangle",
+      "isStatic": false,
+      "density": 0.3,
+      "friction": 0.3,
+      "frictionAir": 0.2,
+      "restitution": 0.1,
+      "damageScale": 0,
+      "fillColor": [
+        216,
+        216,
+        216
+      ],
+      "strokeColor": [
+        128,
+        128,
+        128
+      ],
+      "strokeWidth": 4
+    },
+    {
+      "id": "woodBox1",
+      "position": {
+        "x": -200,
+        "y": 450
+      },
+      "size": {
+        "width": 25,
+        "height": 25
+      },
+      "shape": "rectangle",
+      "isStatic": false,
+      "density": 0.001,
+      "friction": 0.3,
+      "frictionAir": 0.1,
+      "restitution": 0.3,
+      "damageScale": 0,
+      "fillColor": [
+        139,
+        69,
+        19
+      ],
+      "strokeColor": [
+        101,
+        67,
+        33
+      ],
+      "strokeWidth": 4
+    },
+    {
+      "id": "woodBox2",
+      "position": {
+        "x": -100,
+        "y": 450
+      },
+      "size": {
+        "width": 25,
+        "height": 25
+      },
+      "shape": "rectangle",
+      "isStatic": false,
+      "density": 0.001,
+      "friction": 0.3,
+      "frictionAir": 0.1,
+      "restitution": 0.3,
+      "damageScale": 0,
+      "fillColor": [
+        139,
+        69,
+        19
+      ],
+      "strokeColor": [
+        101,
+        67,
+        33
+      ],
+      "strokeWidth": 4
+    },
+    {
+      "id": "woodBox3",
+      "position": {
+        "x": 0,
+        "y": 450
+      },
+      "size": {
+        "width": 25,
+        "height": 25
+      },
+      "shape": "rectangle",
+      "isStatic": false,
+      "density": 0.001,
+      "friction": 0.3,
+      "frictionAir": 0.1,
+      "restitution": 0.3,
+      "damageScale": 0,
+      "fillColor": [
+        139,
+        69,
+        19
+      ],
+      "strokeColor": [
+        101,
+        67,
+        33
+      ],
+      "strokeWidth": 4
+    },
+    {
+      "id": "woodBox4",
+      "position": {
+        "x": 100,
+        "y": 450
+      },
+      "size": {
+        "width": 25,
+        "height": 25
+      },
+      "shape": "rectangle",
+      "isStatic": false,
+      "density": 0.001,
+      "friction": 0.3,
+      "frictionAir": 0.1,
+      "restitution": 0.3,
+      "damageScale": 0,
+      "fillColor": [
+        139,
+        69,
+        19
+      ],
+      "strokeColor": [
+        101,
+        67,
+        33
+      ],
+      "strokeWidth": 4
+    }
+  ],
+  "checkpoints": [
+    {
+      "type": "line",
+      "vertices": [
+        {
+          "x": 0,
+          "y": -400
+        },
+        {
+          "x": 0,
+          "y": -600
+        }
+      ],
+      "id": "checkpoint-1"
+    },
+    {
+      "type": "line",
+      "vertices": [
+        {
+          "x": -400,
+          "y": 0
+        },
+        {
+          "x": -600,
+          "y": 0
+        }
+      ],
+      "id": "checkpoint-2"
+    },
+    {
+      "type": "line",
+      "vertices": [
+        {
+          "x": 0,
+          "y": 400
+        },
+        {
+          "x": 0,
+          "y": 770
+        }
+      ],
+      "id": "checkpoint-3"
+    }
+  ],
+  "areaEffects": [
+    {
+      "vertices": [
+        {
+          "x": -400,
+          "y": -200
+        },
+        {
+          "x": -200,
+          "y": -200
+        },
+        {
+          "x": -200,
+          "y": -400
+        },
+        {
+          "x": -100,
+          "y": -400
+        },
+        {
+          "x": -100,
+          "y": -100
+        },
+        {
+          "x": -400,
+          "y": -100
+        }
+      ],
+      "effect": "ice",
+      "strength": 0.95,
+      "fillColor": [
+        173,
+        216,
+        230
+      ]
+    }
+  ],
+  "author": "Official",
+  "created_at": "2025-08-20T13:04:58.845Z",
+  "category": "official"
+}

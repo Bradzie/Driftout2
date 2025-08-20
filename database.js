@@ -22,7 +22,24 @@ class UserDatabase {
       )
     `);
     
+    // Create maps table for map metadata
+    const createMapsTable = this.db.prepare(`
+      CREATE TABLE IF NOT EXISTS maps (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        author_id INTEGER,
+        filename TEXT UNIQUE NOT NULL,
+        category TEXT NOT NULL CHECK(category IN ('official', 'community')),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        download_count INTEGER DEFAULT 0,
+        is_public BOOLEAN DEFAULT 1,
+        FOREIGN KEY (author_id) REFERENCES users (id) ON DELETE SET NULL
+      )
+    `);
+    
     createUsersTable.run();
+    createMapsTable.run();
     console.log('Database initialized');
   }
 
@@ -140,6 +157,121 @@ class UserDatabase {
       return !!checkEmail.get(email.toLowerCase().trim());
     } catch (error) {
       console.error('Email check error:', error);
+      return false;
+    }
+  }
+
+  // Map database operations
+  
+  // Add a map to the database
+  addMap(name, authorId, filename, category) {
+    try {
+      const insertMap = this.db.prepare(`
+        INSERT INTO maps (name, author_id, filename, category)
+        VALUES (?, ?, ?, ?)
+      `);
+      
+      const result = insertMap.run(name, authorId, filename, category);
+      return { success: true, mapId: result.lastInsertRowid };
+    } catch (error) {
+      console.error('Add map error:', error);
+      return { success: false, error: 'Failed to add map to database' };
+    }
+  }
+
+  // Update map metadata
+  updateMap(mapId, name, authorId) {
+    try {
+      const updateMap = this.db.prepare(`
+        UPDATE maps SET name = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND author_id = ?
+      `);
+      
+      const result = updateMap.run(name, mapId, authorId);
+      return result.changes > 0;
+    } catch (error) {
+      console.error('Update map error:', error);
+      return false;
+    }
+  }
+
+  // Delete map from database
+  deleteMap(mapId, authorId) {
+    try {
+      const deleteMap = this.db.prepare(`
+        DELETE FROM maps WHERE id = ? AND author_id = ?
+      `);
+      
+      const result = deleteMap.run(mapId, authorId);
+      return result.changes > 0;
+    } catch (error) {
+      console.error('Delete map error:', error);
+      return false;
+    }
+  }
+
+  // Get map by filename
+  getMapByFilename(filename) {
+    try {
+      const getMap = this.db.prepare(`
+        SELECT m.*, u.username as author_name
+        FROM maps m
+        LEFT JOIN users u ON m.author_id = u.id
+        WHERE m.filename = ?
+      `);
+      
+      return getMap.get(filename);
+    } catch (error) {
+      console.error('Get map error:', error);
+      return null;
+    }
+  }
+
+  // Get maps by user
+  getMapsByUser(userId) {
+    try {
+      const getMaps = this.db.prepare(`
+        SELECT * FROM maps WHERE author_id = ?
+        ORDER BY updated_at DESC
+      `);
+      
+      return getMaps.all(userId);
+    } catch (error) {
+      console.error('Get user maps error:', error);
+      return [];
+    }
+  }
+
+  // Get all public maps
+  getAllPublicMaps() {
+    try {
+      const getMaps = this.db.prepare(`
+        SELECT m.*, u.username as author_name
+        FROM maps m
+        LEFT JOIN users u ON m.author_id = u.id
+        WHERE m.is_public = 1
+        ORDER BY m.download_count DESC, m.updated_at DESC
+      `);
+      
+      return getMaps.all();
+    } catch (error) {
+      console.error('Get public maps error:', error);
+      return [];
+    }
+  }
+
+  // Increment download count
+  incrementDownloadCount(mapId) {
+    try {
+      const updateDownloads = this.db.prepare(`
+        UPDATE maps SET download_count = download_count + 1
+        WHERE id = ?
+      `);
+      
+      updateDownloads.run(mapId);
+      return true;
+    } catch (error) {
+      console.error('Increment download count error:', error);
       return false;
     }
   }

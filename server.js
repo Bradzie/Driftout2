@@ -46,22 +46,185 @@ app.get('/api/carTypes', (req, res) => {
 
 // send available maps to client
 app.get('/api/maps', (req, res) => {
-  const mapList = Object.keys(MAP_TYPES).map(key => ({
-    key: key,
-    name: MAP_TYPES[key].name || key,
-    description: MAP_TYPES[key].description || ''
-  }));
-  res.json(mapList);
+  try {
+    const maps = mapManager.getAllMaps();
+    const mapList = maps.map(map => ({
+      key: map.key,
+      name: map.name,
+      description: map.description || '',
+      category: map.category,
+      author: map.author
+    }));
+    res.json(mapList);
+  } catch (error) {
+    console.error('Error getting maps:', error);
+    res.status(500).json({ error: 'Failed to load maps' });
+  }
 });
 
 // send full map data to client for editor
 app.get('/api/maps/:key', (req, res) => {
   const key = req.params.key;
-  const map = MAP_TYPES[key];
-  if (map) {
-    res.json(map);
-  } else {
-    res.status(404).json({ error: 'Map not found' });
+  try {
+    const map = mapManager.getMap(key);
+    if (map) {
+      res.json(map);
+    } else {
+      res.status(404).json({ error: 'Map not found' });
+    }
+  } catch (error) {
+    console.error('Error getting map:', error);
+    res.status(500).json({ error: 'Failed to load map' });
+  }
+});
+
+// New map management endpoints
+
+// Upload a new community map (authenticated users only)
+app.post('/api/maps', async (req, res) => {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  try {
+    const { name, mapData } = req.body;
+    
+    if (!name || !mapData) {
+      return res.status(400).json({ error: 'Name and map data are required' });
+    }
+
+    // Generate unique filename
+    const sanitizedName = name.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
+    const timestamp = Date.now();
+    const filename = `${req.session.userId}_${sanitizedName}_${timestamp}`;
+    
+    // Add metadata to map data
+    const enhancedMapData = {
+      ...mapData,
+      displayName: name,
+      author: req.session.username,
+      author_id: req.session.userId,
+      created_at: new Date().toISOString(),
+      category: 'community'
+    };
+
+    // Save map file
+    const saved = mapManager.saveMap(filename, 'community', enhancedMapData);
+    if (!saved) {
+      return res.status(500).json({ error: 'Failed to save map' });
+    }
+
+    // Add to database
+    const dbResult = userDb.addMap(name, req.session.userId, filename, 'community');
+    if (!dbResult.success) {
+      // Cleanup file if database insert failed
+      mapManager.deleteMap(filename, 'community');
+      return res.status(500).json({ error: dbResult.error });
+    }
+
+    res.json({ 
+      success: true, 
+      mapId: dbResult.mapId,
+      filename: filename
+    });
+  } catch (error) {
+    console.error('Map upload error:', error);
+    res.status(500).json({ error: 'Map upload failed' });
+  }
+});
+
+// Update user's own map
+app.put('/api/maps/:key', async (req, res) => {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  try {
+    const { key } = req.params;
+    const { name, mapData } = req.body;
+    
+    // Check if user owns this map
+    const mapInfo = userDb.getMapByFilename(key);
+    if (!mapInfo || mapInfo.author_id !== req.session.userId) {
+      return res.status(403).json({ error: 'You can only edit your own maps' });
+    }
+
+    // Update map data
+    const enhancedMapData = {
+      ...mapData,
+      displayName: name,
+      author: req.session.username,
+      author_id: req.session.userId,
+      created_at: mapInfo.created_at,
+      updated_at: new Date().toISOString(),
+      category: 'community'
+    };
+
+    // Save updated map file
+    const saved = mapManager.saveMap(key, 'community', enhancedMapData);
+    if (!saved) {
+      return res.status(500).json({ error: 'Failed to update map' });
+    }
+
+    // Update database
+    const updated = userDb.updateMap(mapInfo.id, name, req.session.userId);
+    if (!updated) {
+      return res.status(500).json({ error: 'Failed to update map metadata' });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Map update error:', error);
+    res.status(500).json({ error: 'Map update failed' });
+  }
+});
+
+// Delete user's own map
+app.delete('/api/maps/:key', async (req, res) => {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  try {
+    const { key } = req.params;
+    
+    // Check if user owns this map
+    const mapInfo = userDb.getMapByFilename(key);
+    if (!mapInfo || mapInfo.author_id !== req.session.userId) {
+      return res.status(403).json({ error: 'You can only delete your own maps' });
+    }
+
+    // Delete from filesystem
+    const deleted = mapManager.deleteMap(key, 'community');
+    if (!deleted) {
+      return res.status(500).json({ error: 'Failed to delete map file' });
+    }
+
+    // Delete from database
+    const dbDeleted = userDb.deleteMap(mapInfo.id, req.session.userId);
+    if (!dbDeleted) {
+      return res.status(500).json({ error: 'Failed to delete map metadata' });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Map delete error:', error);
+    res.status(500).json({ error: 'Map delete failed' });
+  }
+});
+
+// Get current user's maps
+app.get('/api/maps/my', async (req, res) => {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  try {
+    const userMaps = userDb.getMapsByUser(req.session.userId);
+    res.json(userMaps);
+  } catch (error) {
+    console.error('Get user maps error:', error);
+    res.status(500).json({ error: 'Failed to get user maps' });
   }
 });
 
@@ -96,7 +259,7 @@ app.post('/api/rooms/create', express.json(), (req, res) => {
     if (name && name.length > 50) {
       return res.status(400).json({ error: 'Room name too long' });
     }
-    if (mapKey && !MAP_TYPES[mapKey]) {
+    if (mapKey && !mapManager.mapExists(mapKey)) {
       return res.status(400).json({ error: 'Invalid map' });
     }
     if (maxPlayers && (maxPlayers < 1 || maxPlayers > 16)) {
@@ -288,10 +451,8 @@ const PORT = process.env.PORT || 3000;
 const HELPERS = require('./helpers');
 const { abilityRegistry, SpikeTrapAbility } = require('./abilities');
 
-const MAP_TYPES = require('./mapTypes');
-const mapKeys = Object.keys(MAP_TYPES);
-let currentMapIndex = 0;
-let currentMapKey = mapKeys[currentMapIndex];
+const MapManager = require('./MapManager');
+const mapManager = new MapManager('./maps');
 // Legacy global track bodies removed - now handled per room
 
 function pointInPolygon(x, y, vertices) {
@@ -314,7 +475,7 @@ function pointInPolygon(x, y, vertices) {
 }
 
 function applyAreaEffects(room) {
-  const map = MAP_TYPES[room.currentMapKey];
+  const map = mapManager.getMap(room.currentMapKey);
   if (!map || !map.areaEffects) return;
 
   for (const [sid, car] of room.players.entries()) {
@@ -448,8 +609,8 @@ class Car {
     this.ability = carDef.ability ? abilityRegistry.create(carDef.ability) : null;
     this.isGhost = false;
     this.trapDamageHistory = new Map();
-    const roomMapKey = this.room ? this.room.currentMapKey : currentMapKey;
-    const mapDef = MAP_TYPES[roomMapKey];
+    const roomMapKey = this.room ? this.room.currentMapKey : 'square'; // fallback
+    const mapDef = mapManager.getMap(roomMapKey);
     let startPos = { x: 0, y: 0 };
     this.checkpointsVisited = new Set()
     this._cpLastSides = new Map()
@@ -557,7 +718,8 @@ class Car {
 
     const pos = this.body.position
     const roomMapKey = this.room ? this.room.currentMapKey : currentMapKey;
-    const checkpoints = MAP_TYPES[roomMapKey]?.checkpoints || []
+    const map = mapManager.getMap(roomMapKey);
+    const checkpoints = map?.checkpoints || []
 
     for (let i = 0; i < checkpoints.length; i++) {
       if (checkpoints[i].id == null)
@@ -597,7 +759,7 @@ class Car {
       this._cpLastSides.set(cp.id, side)
     }
     let insideStart = false
-    const mapDef = MAP_TYPES[roomMapKey]
+    const mapDef = mapManager.getMap(roomMapKey)
     if (mapDef?.start?.vertices?.length) {
       insideStart = pointInPolygon(this.body.position.x, this.body.position.y, mapDef.start.vertices)
     }
@@ -637,7 +799,7 @@ class Car {
   }
   resetCar() {
     const roomMapKey = this.room ? this.room.currentMapKey : currentMapKey;
-    const map = MAP_TYPES[roomMapKey];
+    const map = mapManager.getMap(roomMapKey);
     let startPos = { x: 0, y: 0 }
     if (map.start?.vertices?.length) {
       const verts = map.start.vertices
@@ -739,9 +901,9 @@ class Room {
     };
     
     // Room-specific map
-    const mapKeys = Object.keys(MAP_TYPES);
+    const mapKeys = mapManager.getAllMapKeys();
     this.currentMapIndex = 0;
-    this.currentMapKey = mapKey || mapKeys[this.currentMapIndex];
+    this.currentMapKey = mapKey || mapKeys[this.currentMapIndex] || 'square';
     this.currentTrackBodies = [];
     this.currentDynamicBodies = [];
     
@@ -1016,7 +1178,7 @@ class Room {
     }
     this.currentDynamicBodies = []
 
-    const map = MAP_TYPES[mapKey]
+    const map = mapManager.getMap(mapKey)
     const thickness = 10
     if (!map) return
 
@@ -1268,8 +1430,8 @@ const rooms = [];
 
 // Helper function to get a random map key
 function getRandomMapKey() {
-  const mapKeys = Object.keys(MAP_TYPES);
-  return mapKeys[Math.floor(Math.random() * mapKeys.length)];
+  const mapKeys = mapManager.getAllMapKeys();
+  return mapKeys[Math.floor(Math.random() * mapKeys.length)] || 'square';
 }
 
 // Create initial room
@@ -1279,7 +1441,8 @@ function initializeRooms() {
     const randomMapKey = getRandomMapKey();
     const defaultRoom = new Room(uuidv4(), randomMapKey);
     defaultRoom.name = 'Official Room';
-    console.log(`Initial room created with random map: ${MAP_TYPES[randomMapKey]?.name || randomMapKey}`);
+    const mapData = mapManager.getMap(randomMapKey);
+    console.log(`Initial room created with random map: ${mapData?.displayName || randomMapKey}`);
     rooms.push(defaultRoom);
   }
 }
@@ -1371,7 +1534,8 @@ function assignRoom() {
   const randomMapKey = getRandomMapKey();
   const newRoom = new Room(uuidv4(), randomMapKey);
   newRoom.name = `Room ${rooms.length + 1}`;
-  console.log(`Auto-assigned room created with random map: ${MAP_TYPES[randomMapKey]?.name || randomMapKey}`);
+  const mapData = mapManager.getMap(randomMapKey);
+  console.log(`Auto-assigned room created with random map: ${mapData?.displayName || randomMapKey}`);
   rooms.push(newRoom);
   return newRoom;
 }
@@ -1390,7 +1554,8 @@ function ensureDefaultRoom() {
     const randomMapKey = getRandomMapKey();
     const defaultRoom = new Room(uuidv4(), randomMapKey);
     defaultRoom.name = 'Main Room';
-    console.log(`Default room created with random map: ${MAP_TYPES[randomMapKey]?.name || randomMapKey}`);
+    const mapData = mapManager.getMap(randomMapKey);
+    console.log(`Default room created with random map: ${mapData?.displayName || randomMapKey}`);
     rooms.push(defaultRoom);
     
     // Room created successfully - now using room-specific worlds
@@ -2042,9 +2207,9 @@ function gameLoop() {
           // Short delay to let the kill feed message display before returning to menu
           setTimeout(() => {
             // Cycle to next map for this room
-            const mapKeys = Object.keys(MAP_TYPES);
+            const mapKeys = mapManager.getAllMapKeys();
             room.currentMapIndex = (room.currentMapIndex + 1) % mapKeys.length;
-            room.currentMapKey = mapKeys[room.currentMapIndex];
+            room.currentMapKey = mapKeys[room.currentMapIndex] || 'square';
             room.setTrackBodies(room.currentMapKey);
             room.resetRound();
             for (const [sid, car] of room.players.entries()) {
@@ -2135,7 +2300,7 @@ setInterval(() => {
     for (const socketId of allSocketIds) {
       const socket = io.sockets.sockets.get(socketId);
       if (socket) {
-        const map = MAP_TYPES[room.currentMapKey];
+        const map = mapManager.getMap(room.currentMapKey);
         const clientAbilityObjects = room.gameState.abilityObjects.map(obj => ({
           id: obj.id,
           type: obj.type,
@@ -2276,7 +2441,7 @@ function broadcastToSpectators() {
       })) : [],
       abilityObjects: clientAbilityObjects,
       dynamicObjects: clientDynamicObjects,
-      map: MAP_TYPES[room.currentMapKey], // Always send current map
+      map: mapManager.getMap(room.currentMapKey), // Always send current map
       timestamp: Date.now()
     };
     

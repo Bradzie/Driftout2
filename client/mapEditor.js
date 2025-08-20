@@ -7,15 +7,14 @@ function initMapEditor() {
   resizeEditorCanvas();
 
   // load maps list
-  fetch('/api/maps')
-    .then(res => res.json())
-    .then(maps => {
-      const select = document.getElementById('mapSelect');
-      select.innerHTML = maps.map(m => `<option value="${m.key}">${m.name}</option>`).join('');
-      if (maps.length) {
-        loadMap(maps[0].key);
-      }
-    });
+  loadMapsList();
+  // Load first map if available
+  setTimeout(() => {
+    const select = document.getElementById('mapSelect');
+    if (select.options.length > 0) {
+      loadMap(select.options[0].value);
+    }
+  }, 100);
 
   document.getElementById('mapSelect').addEventListener('change', e => {
     loadMap(e.target.value);
@@ -42,7 +41,105 @@ function initMapEditor() {
     URL.revokeObjectURL(url);
   });
 
+  // Add save to server functionality
+  document.getElementById('saveMapButton')?.addEventListener('click', saveMapToServer);
+  document.getElementById('uploadMapButton')?.addEventListener('click', uploadNewMap);
+
   window.addEventListener('resize', resizeEditorCanvas);
+}
+
+async function saveMapToServer() {
+  if (!editorMap) {
+    alert('No map data to save');
+    return;
+  }
+
+  const mapName = prompt('Enter map name:');
+  if (!mapName) return;
+
+  try {
+    const response = await fetch('/api/maps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        name: mapName, 
+        mapData: editorMap 
+      })
+    });
+
+    const result = await response.json();
+    
+    if (result.success) {
+      alert('Map saved successfully!');
+      // Refresh maps list
+      loadMapsList();
+    } else {
+      alert('Failed to save map: ' + result.error);
+    }
+  } catch (error) {
+    console.error('Save map error:', error);
+    alert('Failed to save map');
+  }
+}
+
+async function uploadNewMap() {
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = '.json';
+  
+  fileInput.onchange = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const mapData = JSON.parse(text);
+      
+      const mapName = prompt('Enter map name:', file.name.replace('.json', ''));
+      if (!mapName) return;
+
+      const response = await fetch('/api/maps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          name: mapName, 
+          mapData: mapData 
+        })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        alert('Map uploaded successfully!');
+        // Load the uploaded map
+        editorMap = mapData;
+        renderEditor();
+        // Refresh maps list
+        loadMapsList();
+      } else {
+        alert('Failed to upload map: ' + result.error);
+      }
+    } catch (error) {
+      console.error('Upload map error:', error);
+      alert('Failed to upload map: Invalid JSON file');
+    }
+  };
+  
+  fileInput.click();
+}
+
+function loadMapsList() {
+  fetch('/api/maps')
+    .then(res => res.json())
+    .then(maps => {
+      const select = document.getElementById('mapSelect');
+      select.innerHTML = maps.map(m => 
+        `<option value="${m.key}">${m.name} (${m.category})</option>`
+      ).join('');
+    })
+    .catch(error => {
+      console.error('Error loading maps:', error);
+    });
 }
 
 function resizeEditorCanvas() {
