@@ -2649,7 +2649,7 @@ input[type="number"]:focus {
 
 .chat-message {
   color: #ffffff;
-  font-size: 1.1rem;
+  font-size: 1rem;
   margin-bottom: 4px;
   line-height: 1.3;
   word-wrap: break-word;
@@ -2660,7 +2660,7 @@ input[type="number"]:focus {
 }
 
 .chat-player-name {
-  color: #4fc3f7;
+  color: #ff5f5f;
   font-weight: 600;
   margin-right: 4px;
 }
@@ -2672,7 +2672,6 @@ input[type="number"]:focus {
 .chat-input-area {
   background: rgba(0, 0, 0, 0.8);
   padding: 10px;
-  backdrop-filter: blur(6px);
   border: 1px solid rgba(255, 255, 255, 0.2);
   transition: all 0.2s ease;
 }
@@ -2686,14 +2685,13 @@ input[type="number"]:focus {
 .chat-input {
   width: 100%;
   background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
   padding: 8px 12px;
   color: #ffffff;
   font-size: 14px;
   outline: none;
   transition: all 0.2s ease;
   box-sizing: border-box;
+  font-family: 'Overpass', sans-serif;
 }
 
 .chat-input:focus {
@@ -2707,7 +2705,7 @@ input[type="number"]:focus {
 
 .chat-hint {
   color: rgba(255, 255, 255, 0.6);
-  font-size: 11px;
+  font-size: 10px;
   margin-top: 5px;
   text-align: center;
 }
@@ -2715,4 +2713,33 @@ input[type="number"]:focus {
 /* Hide chat messages when no messages exist */
 .chat-messages:empty {
   display: none;
+}
+
+/* Chat Prompt */
+.chat-prompt {
+  background: rgba(0, 0, 0, 0.5);
+  padding: 8px 12px;
+  backdrop-filter: blur(4px);
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.chat-prompt:hover {
+  background: rgba(0, 0, 0, 0.8);
+  border-color: rgba(255, 95, 95, 0.3);
+  transform: translateY(-1px);
+}
+
+.chat-prompt-text {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.9rem;
+  text-align: center;
+  font-weight: 500;
+  user-select: none;
+}
+
+.chat-prompt.hidden {
+  opacity: 0;
+  transform: translateY(10px);
+  pointer-events: none;
 }

@@ -197,11 +197,6 @@
     loadCarTypes();
   }
   
-  function updatePlayerInfo() {
-    if (currentUser) {
-      toolbarPlayerName.textContent = currentUser.name || currentUser.username || 'Player';
-    }
-  }
   
   async function loadCarTypes() {
     try {
@@ -230,6 +225,8 @@
 
   function refreshSocketSession() {
     console.log('Refreshing socket session after authentication...');
+    // Update player info immediately after authentication
+    updatePlayerInfo();
     // Add a small delay to ensure the HTTP session is properly set
     setTimeout(() => {
       socket.emit('refreshSession');
@@ -306,6 +303,10 @@
     if (currentUser) {
       const displayName = currentUser.username + (currentUser.isGuest ? ' (Guest)' : '');
       toolbarPlayerName.textContent = displayName;
+      
+      // Also set the player name for chat
+      playerName = currentUser.username;
+      console.log('Player name set from currentUser:', playerName);
     }
   }
 
@@ -1864,14 +1865,17 @@
   const chatInputArea = document.getElementById('chatInputArea');
   const chatInput = document.getElementById('chatInput');
   const chatMessages = document.getElementById('chatMessages');
+  const chatPrompt = document.getElementById('chatPrompt');
 
   function toggleChatInput() {
     isChatFocused = !isChatFocused;
     if (isChatFocused) {
       chatInputArea.classList.remove('hidden');
+      chatPrompt.classList.add('hidden');
       chatInput.focus();
     } else {
       chatInputArea.classList.add('hidden');
+      chatPrompt.classList.remove('hidden');
       chatInput.blur();
       chatInput.value = '';
     }
@@ -1888,14 +1892,23 @@
     
     if (!playerName) {
       console.log('Chat message blocked: no player name set');
-      // Try to get player name from current game state
-      const mySocketId = socket.id;
-      const latestState = gameStates[gameStates.length - 1];
-      if (latestState && latestState.players) {
-        const myPlayer = latestState.players.find(p => p.socketId === mySocketId);
-        if (myPlayer && myPlayer.name) {
-          playerName = myPlayer.name;
-          console.log('Retrieved player name from game state:', playerName);
+      
+      // Try to get player name from currentUser first
+      if (currentUser) {
+        playerName = currentUser.name || currentUser.username || 'Player';
+        console.log('Retrieved player name from currentUser:', playerName);
+      }
+      
+      // If still no name, try to get from game state
+      if (!playerName) {
+        const mySocketId = socket.id;
+        const latestState = gameStates[gameStates.length - 1];
+        if (latestState && latestState.players) {
+          const myPlayer = latestState.players.find(p => p.socketId === mySocketId);
+          if (myPlayer && myPlayer.name) {
+            playerName = myPlayer.name;
+            console.log('Retrieved player name from game state:', playerName);
+          }
         }
       }
       
@@ -1948,6 +1961,24 @@
       toggleChatInput();
     }
   });
+
+  // Add click listener to chat prompt
+  chatPrompt.addEventListener('click', () => {
+    if (!isChatFocused) {
+      toggleChatInput();
+    }
+  });
+
+  // Initialize chat prompt visibility
+  function initializeChatState() {
+    if (!isChatFocused) {
+      chatPrompt.classList.remove('hidden');
+      chatInputArea.classList.add('hidden');
+    }
+  }
+
+  // Initialize chat state when page loads
+  initializeChatState();
 
   // Ability and upgrade input handling
   document.addEventListener('keydown', (e) => {

@@ -164,14 +164,19 @@ app.post('/api/auth/register', async (req, res) => {
       req.session.username = username;
       req.session.isGuest = false;
       
-      res.json({ 
-        success: true, 
-        user: { 
-          id: result.userId, 
-          username: username, 
-          email: email,
-          isGuest: false
-        } 
+      req.session.save((err) => {
+        if (err) {
+          console.error('Session save error after registration:', err);
+        }
+        res.json({ 
+          success: true, 
+          user: { 
+            id: result.userId, 
+            username: username, 
+            email: email,
+            isGuest: false
+          } 
+        });
       });
     } else {
       res.status(400).json({ error: result.error });
@@ -197,14 +202,19 @@ app.post('/api/auth/login', async (req, res) => {
       req.session.username = result.user.username;
       req.session.isGuest = false;
       
-      res.json({ 
-        success: true, 
-        user: { 
-          id: result.user.id, 
-          username: result.user.username, 
-          email: result.user.email,
-          isGuest: false
-        } 
+      req.session.save((err) => {
+        if (err) {
+          console.error('Session save error after login:', err);
+        }
+        res.json({ 
+          success: true, 
+          user: { 
+            id: result.user.id, 
+            username: result.user.username, 
+            email: result.user.email,
+            isGuest: false
+          } 
+        });
       });
     } else {
       res.status(400).json({ error: result.error });
@@ -228,14 +238,19 @@ app.post('/api/auth/guest', (req, res) => {
     req.session.username = name;
     req.session.isGuest = true;
     
-    res.json({ 
-      success: true, 
-      user: { 
-        id: null, 
-        username: name,
-        email: null,
-        isGuest: true
-      } 
+    req.session.save((err) => {
+      if (err) {
+        console.error('Session save error after guest login:', err);
+      }
+      res.json({ 
+        success: true, 
+        user: { 
+          id: null, 
+          username: name,
+          email: null,
+          isGuest: true
+        } 
+      });
     });
   } catch (error) {
     console.error('Guest login error:', error);
