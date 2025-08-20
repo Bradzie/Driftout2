@@ -1,5 +1,13 @@
 let editorCanvas, editorCtx;
 let editorMap = null;
+let creatingShape = false;
+let newShapeVertices = [];
+let panX = 0;
+let panY = 0;
+let zoom = 1;
+let isPannable = false;
+let lastX = 0;
+let lastY = 0;
 
 function initMapEditor() {
   editorCanvas = document.getElementById('mapEditorCanvas');
@@ -12,7 +20,7 @@ function initMapEditor() {
   setTimeout(() => {
     const select = document.getElementById('mapSelect');
     if (select.options.length > 0) {
-      loadMap(select.options[0].value);
+      loadMap('square');
     }
   }, 100);
 
@@ -41,11 +49,97 @@ function initMapEditor() {
     URL.revokeObjectURL(url);
   });
 
+  document.getElementById('createShapeButton').addEventListener('click', () => {
+    creatingShape = !creatingShape;
+    if (creatingShape) {
+      newShapeVertices = [];
+      editorCanvas.addEventListener('click', handleCanvasClick);
+      window.addEventListener('keydown', handleKeyDown);
+    } else {
+      editorCanvas.removeEventListener('click', handleCanvasClick);
+      window.removeEventListener('keydown', handleKeyDown);
+    }
+  });
+
   // Add save to server functionality
   document.getElementById('saveMapButton')?.addEventListener('click', saveMapToServer);
   document.getElementById('uploadMapButton')?.addEventListener('click', uploadNewMap);
 
   window.addEventListener('resize', resizeEditorCanvas);
+
+  // Pan and zoom event listeners
+  editorCanvas.addEventListener('mousedown', (e) => {
+    if (e.button === 1) { // Middle mouse button
+      isPannable = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+    }
+  });
+
+  editorCanvas.addEventListener('mousemove', (e) => {
+    if (isPannable) {
+      const dx = e.clientX - lastX;
+      const dy = e.clientY - lastY;
+      panX += dx;
+      panY += dy;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      renderEditor();
+    }
+  });
+
+  editorCanvas.addEventListener('mouseup', (e) => {
+    if (e.button === 1) {
+      isPannable = false;
+    }
+  });
+
+  editorCanvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const zoomFactor = 1.1;
+    if (e.deltaY < 0) {
+      zoom *= zoomFactor;
+    } else {
+      zoom /= zoomFactor;
+    }
+    renderEditor();
+  });
+}
+
+function handleCanvasClick(event) {
+  if (!creatingShape) return;
+  const rect = editorCanvas.getBoundingClientRect();
+  const x = (event.clientX - rect.left - editorCanvas.width / 2 - panX) / zoom;
+  const y = -(event.clientY - rect.top - editorCanvas.height / 2 - panY) / zoom;
+  newShapeVertices.push({ x, y });
+  renderEditor();
+}
+
+function handleKeyDown(event) {
+  if (!creatingShape) return;
+  if (event.key === 'Enter') {
+    if (newShapeVertices.length > 2) {
+      if (!editorMap.shapes) {
+        editorMap.shapes = [];
+      }
+      editorMap.shapes.push({
+        vertices: newShapeVertices,
+        fillColor: [128, 128, 128]
+      });
+      document.getElementById('mapDataInput').value = JSON.stringify(editorMap, null, 2);
+    }
+    creatingShape = false;
+    newShapeVertices = [];
+    editorCanvas.removeEventListener('click', handleCanvasClick);
+    window.removeEventListener('keydown', handleKeyDown);
+    renderEditor();
+  } else if (event.key === 'Escape') {
+    creatingShape = false;
+    newShapeVertices = [];
+    editorCanvas.removeEventListener('click', handleCanvasClick);
+    window.removeEventListener('keydown', handleKeyDown);
+    renderEditor();
+  }
 }
 
 async function saveMapToServer() {
@@ -165,7 +259,8 @@ function renderEditor() {
   if (!editorMap) return;
 
   editorCtx.save();
-  editorCtx.translate(editorCanvas.width / 2, editorCanvas.height / 2);
+  editorCtx.translate(editorCanvas.width / 2 + panX, editorCanvas.height / 2 + panY);
+  editorCtx.scale(zoom, zoom);
 
   // draw shapes
   if (Array.isArray(editorMap.shapes)) {
@@ -184,6 +279,17 @@ function renderEditor() {
       }
       editorCtx.fill();
     });
+  }
+
+  // draw new shape
+  if (creatingShape && newShapeVertices.length > 0) {
+    editorCtx.strokeStyle = '#0f0';
+    editorCtx.beginPath();
+    editorCtx.moveTo(newShapeVertices[0].x, -newShapeVertices[0].y);
+    for (let i = 1; i < newShapeVertices.length; i++) {
+      editorCtx.lineTo(newShapeVertices[i].x, -newShapeVertices[i].y);
+    }
+    editorCtx.stroke();
   }
 
   // start area
@@ -214,15 +320,27 @@ function renderEditor() {
   if (Array.isArray(editorMap.dynamicObjects)) {
     editorCtx.fillStyle = '#f0f';
     editorMap.dynamicObjects.forEach(obj => {
-      if (obj.type === 'circle') {
-        editorCtx.beginPath();
-        editorCtx.arc(obj.x || 0, -(obj.y || 0), obj.radius || 10, 0, Math.PI * 2);
-        editorCtx.fill();
-      } else if (Array.isArray(obj.vertices)) {
+      if (Array.isArray(obj.vertices)) {
         editorCtx.beginPath();
         editorCtx.moveTo(obj.vertices[0].x, -obj.vertices[0].y);
         for (let i = 1; i < obj.vertices.length; i++) {
           editorCtx.lineTo(obj.vertices[i].x, -obj.vertices[i].y);
+        }
+        editorCtx.closePath();
+        editorCtx.fill();
+      }
+    });
+  }
+
+  // area effects
+  if (Array.isArray(editorMap.areaEffects)) {
+    editorCtx.fillStyle = 'rgba(0, 0, 255, 0.5)';
+    editorMap.areaEffects.forEach(area => {
+      if (Array.isArray(area.vertices)) {
+        editorCtx.beginPath();
+        editorCtx.moveTo(area.vertices[0].x, -area.vertices[0].y);
+        for (let i = 1; i < area.vertices.length; i++) {
+          editorCtx.lineTo(area.vertices[i].x, -area.vertices[i].y);
         }
         editorCtx.closePath();
         editorCtx.fill();
