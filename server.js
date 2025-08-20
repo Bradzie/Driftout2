@@ -13,6 +13,9 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+// Debug mode - toggle this to enable/disable admin panel
+const DEBUG_MODE = true;
+
 // Initialize database
 const userDb = new UserDatabase();
 
@@ -266,9 +269,6 @@ app.get('/api/auth/session', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-
-// Debug mode - toggle this to enable/disable admin panel
-const DEBUG_MODE = false;
 
 const HELPERS = require('./helpers');
 const { abilityRegistry, SpikeTrapAbility } = require('./abilities');

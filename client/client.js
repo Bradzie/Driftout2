@@ -2,6 +2,45 @@
   let socket = io();
   let currentMap = null;
   let currentUser = null;
+  
+  // Fake ping functionality
+  let fakePingEnabled = false;
+  let fakePingLatency = 100; // Default 100ms
+  const originalSocketEmit = socket.emit.bind(socket);
+  
+  // Wrap socket.emit to add artificial delay when fake ping is enabled
+  socket.emit = function(...args) {
+    if (fakePingEnabled && fakePingLatency > 0) {
+      setTimeout(() => {
+        originalSocketEmit(...args);
+      }, fakePingLatency / 2); // Half the latency for one-way delay
+    } else {
+      originalSocketEmit(...args);
+    }
+  };
+  
+  // Store original socket.on to wrap incoming messages with delay
+  const originalSocketOn = socket.on.bind(socket);
+  const wrappedHandlers = new Map();
+  
+  socket.on = function(event, handler) {
+    if (wrappedHandlers.has(handler)) {
+      return originalSocketOn(event, wrappedHandlers.get(handler));
+    }
+    
+    const wrappedHandler = function(...args) {
+      if (fakePingEnabled && fakePingLatency > 0 && event !== 'ping') {
+        setTimeout(() => {
+          handler(...args);
+        }, fakePingLatency / 2); // Half the latency for incoming messages
+      } else {
+        handler(...args);
+      }
+    };
+    
+    wrappedHandlers.set(handler, wrappedHandler);
+    return originalSocketOn(event, wrappedHandler);
+  };
 
   // Authentication elements
   const authScreen = document.getElementById('authScreen');
@@ -960,9 +999,11 @@
       const startTime = now;
       
       socket.emit('ping', startTime, (responseTime) => {
-        pingValue = Date.now() - startTime;
+        const realPing = Date.now() - startTime;
+        pingValue = fakePingEnabled ? fakePingLatency : realPing;
         if (settings.showPing) {
-          pingDisplay.textContent = `Ping: ${pingValue}ms`;
+          const pingText = fakePingEnabled ? `Ping: ${pingValue}ms (FAKE)` : `Ping: ${pingValue}ms`;
+          pingDisplay.textContent = pingText;
         }
       });
     }
@@ -2113,6 +2154,8 @@
     const speedValue = document.getElementById('debugSpeedValue');
     const regenSlider = document.getElementById('debugRegen');
     const regenValue = document.getElementById('debugRegenValue');
+    const fakePingSlider = document.getElementById('debugFakePingSlider');
+    const fakePingValue = document.getElementById('debugFakePingValue');
     
     // Buttons
     const givePointsBtn = document.getElementById('debugGivePoints');
@@ -2125,6 +2168,7 @@
     const setStatsBtn = document.getElementById('debugSetStats');
     const resetUpgradesBtn = document.getElementById('debugResetUpgrades');
     const getPlayerDataBtn = document.getElementById('debugGetPlayerData');
+    const toggleFakePingBtn = document.getElementById('debugToggleFakePing');
     
     // Collapse/expand functionality
     debugToggle.addEventListener('click', () => {
@@ -2144,6 +2188,10 @@
     });
     regenSlider.addEventListener('input', () => {
       regenValue.textContent = parseFloat(regenSlider.value).toFixed(2);
+    });
+    fakePingSlider.addEventListener('input', () => {
+      fakePingValue.textContent = fakePingSlider.value;
+      fakePingLatency = parseInt(fakePingSlider.value);
     });
 
     // Button event listeners
@@ -2191,6 +2239,13 @@
 
     getPlayerDataBtn.addEventListener('click', () => {
       socket.emit('debug:getPlayerData');
+    });
+
+    toggleFakePingBtn.addEventListener('click', () => {
+      fakePingEnabled = !fakePingEnabled;
+      toggleFakePingBtn.textContent = fakePingEnabled ? 'Fake Ping: ON' : 'Fake Ping: OFF';
+      toggleFakePingBtn.setAttribute('data-active', fakePingEnabled.toString());
+      fakePingSlider.disabled = !fakePingEnabled;
     });
 
     // F12 toggle shortcut

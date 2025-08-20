@@ -483,6 +483,18 @@
         <button id="debugSetStats" class="debug-btn full-width">Apply Stats</button>
       </div>
 
+      <!-- Network Simulation -->
+      <div class="debug-section">
+        <h4>Network Simulation</h4>
+        <div class="debug-row">
+          <button id="debugToggleFakePing" class="debug-btn" data-active="false">Fake Ping: OFF</button>
+        </div>
+        <div class="debug-row">
+          <label>Latency: <span id="debugFakePingValue">100</span>ms</label>
+          <input type="range" id="debugFakePingSlider" min="0" max="500" step="10" value="100" class="debug-slider" disabled>
+        </div>
+      </div>
+
       <!-- Quick Actions -->
       <div class="debug-section">
         <h4>Quick Actions</h4>
