@@ -8,7 +8,6 @@
   const authSelection = document.getElementById('authSelection');
   const loginForm = document.getElementById('loginForm');
   const registerForm = document.getElementById('registerForm');
-  const guestForm = document.getElementById('guestForm');
   const authLoading = document.getElementById('authLoading');
 
   // Toolbar elements
@@ -74,6 +73,11 @@
   const roomBrowserCloseBtn = document.getElementById('roomBrowserCloseBtn');
   const refreshRoomsButton = document.getElementById('refreshRoomsButton');
   const roomsList = document.getElementById('roomsList');
+  const openCreateRoomButton = document.getElementById('openCreateRoomButton');
+  
+  // Get create room modal elements
+  const createRoomModal = document.getElementById('createRoomModal');
+  const createRoomCloseBtn = document.getElementById('createRoomCloseBtn');
   const createRoomName = document.getElementById('createRoomName');
   const createRoomMap = document.getElementById('createRoomMap');
   const createRoomMaxPlayers = document.getElementById('createRoomMaxPlayers');
@@ -178,8 +182,8 @@
     authSelection.classList.remove('hidden');
     loginForm.classList.add('hidden');
     registerForm.classList.add('hidden');
-    guestForm.classList.add('hidden');
     authLoading.classList.add('hidden');
+    document.getElementById('quickPlayName').focus();
   }
 
   function showLoginForm() {
@@ -194,17 +198,11 @@
     document.getElementById('registerUsername').focus();
   }
 
-  function showGuestForm() {
-    authSelection.classList.add('hidden');
-    guestForm.classList.remove('hidden');
-    document.getElementById('guestName').focus();
-  }
 
   function showAuthLoading() {
     authSelection.classList.add('hidden');
     loginForm.classList.add('hidden');
     registerForm.classList.add('hidden');
-    guestForm.classList.add('hidden');
     authLoading.classList.remove('hidden');
   }
 
@@ -282,7 +280,7 @@
     }
   }
 
-  async function handleGuestLogin(name) {
+  async function handleQuickPlay(name) {
     try {
       showAuthLoading();
       
@@ -300,13 +298,13 @@
         showMainMenu();
         updatePlayerInfo();
       } else {
-        showGuestForm();
-        showError('guestError', data.error);
+        showAuthSelection();
+        showError('quickPlayError', data.error);
       }
     } catch (error) {
-      console.error('Guest login failed:', error);
-      showGuestForm();
-      showError('guestError', 'Guest login failed. Please try again.');
+      console.error('Quick play failed:', error);
+      showAuthSelection();
+      showError('quickPlayError', 'Quick play failed. Please try again.');
     }
   }
 
@@ -326,11 +324,17 @@
   // Authentication event listeners
   document.getElementById('showLoginBtn').addEventListener('click', showLoginForm);
   document.getElementById('showRegisterBtn').addEventListener('click', showRegisterForm);
-  document.getElementById('showGuestBtn').addEventListener('click', showGuestForm);
   
   document.getElementById('backFromLoginBtn').addEventListener('click', showAuthSelection);
   document.getElementById('backFromRegisterBtn').addEventListener('click', showAuthSelection);
-  document.getElementById('backFromGuestBtn').addEventListener('click', showAuthSelection);
+  
+  // Quick play form handler
+  document.getElementById('quickPlayForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    hideError('quickPlayError');
+    const name = document.getElementById('quickPlayName').value;
+    await handleQuickPlay(name);
+  });
 
   document.getElementById('loginFormElement').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -349,12 +353,6 @@
     await handleRegister(username, email, password);
   });
 
-  document.getElementById('guestFormElement').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    hideError('guestError');
-    const name = document.getElementById('guestName').value;
-    await handleGuestLogin(name);
-  });
 
   // Toolbar event listeners
   toolbarLogoutBtn.addEventListener('click', handleLogout);
@@ -457,6 +455,10 @@
   roomBrowserButton.addEventListener('click', openRoomBrowser);
   roomBrowserCloseBtn.addEventListener('click', closeRoomBrowser);
   refreshRoomsButton.addEventListener('click', loadRooms);
+  openCreateRoomButton.addEventListener('click', openCreateRoomModal);
+  
+  // Create room modal event listeners
+  createRoomCloseBtn.addEventListener('click', closeCreateRoomModal);
   createRoomButton.addEventListener('click', handleCreateRoom);
 
   // Map editor button
@@ -475,6 +477,13 @@
   roomBrowserModal.addEventListener('click', (e) => {
     if (e.target === roomBrowserModal) {
       closeRoomBrowser();
+    }
+  });
+  
+  // Close create room modal when clicking outside modal
+  createRoomModal.addEventListener('click', (e) => {
+    if (e.target === createRoomModal) {
+      closeCreateRoomModal();
     }
   });
   
@@ -995,6 +1004,17 @@
     }
   }
   
+  // Create room modal functions
+  function openCreateRoomModal() {
+    createRoomModal.classList.remove('hidden');
+    loadMaps(); // Load maps when opening create room modal
+    document.getElementById('createRoomName').focus();
+  }
+  
+  function closeCreateRoomModal() {
+    createRoomModal.classList.add('hidden');
+  }
+  
   async function loadMaps() {
     try {
       const response = await fetch('/api/maps');
@@ -1150,7 +1170,10 @@
       maxPlayersValue.textContent = '8';
       createRoomPrivate.checked = false;
       
-      // Refresh rooms list
+      // Close create room modal
+      closeCreateRoomModal();
+      
+      // Refresh rooms list if room browser is still open
       await loadRooms();
       
       // Auto-join the created room

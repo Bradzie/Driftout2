@@ -1432,7 +1432,7 @@ input[type="number"]:focus {
 }
 
 .room-browser-content {
-  background: #ffffff;
+  background: #2f2f2f;
   width: 90%;
   max-width: 800px;
   max-height: 90vh;
@@ -1482,9 +1482,9 @@ input[type="number"]:focus {
 }
 
 .room-browser-section {
-  margin-bottom: 30px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid rgba(183, 130, 240, 0.2);
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #ffffff;
 }
 
 .room-browser-section:last-child {
@@ -1517,8 +1517,8 @@ input[type="number"]:focus {
 }
 
 .refresh-button:hover {
-  background: rgba(183, 130, 240, 0.3);
-  transform: scale(1.05);
+  background: #993939;
+  transform: translateY(-2px);
 }
 
 .rooms-list {
@@ -1627,25 +1627,23 @@ input[type="number"]:focus {
 
 .form-input, .form-select {
   padding: 12px;
-  background: #3a3a3a;
-  border: 1px solid rgba(183, 130, 240, 0.3);
-  border-radius: 6px;
-  color: #ffffff;
-  font-size: 1rem;
-  transition: border-color 0.3s ease;
+  background: #ffffff;
+  color: #3a3a3a;
+  font-size: 1.2rem;
+  font-family: 'Overpass', sans-serif;
+  font-weight: bold;
+  text-align: center;
 }
 
 .form-input:focus, .form-select:focus {
   outline: none;
   border-color: #ff5f5f;
-  box-shadow: 0 0 0 2px rgba(183, 130, 240, 0.2);
 }
 
 .form-slider {
   width: 100%;
   height: 6px;
   background: #3a3a3a;
-  border-radius: 3px;
   outline: none;
   -webkit-appearance: none;
 }
@@ -1661,7 +1659,7 @@ input[type="number"]:focus {
 }
 
 .form-slider::-webkit-slider-thumb:hover {
-  background: #9c5fd4;
+  background: #993939;
   transform: scale(1.1);
 }
 
@@ -1677,8 +1675,7 @@ input[type="number"]:focus {
   height: 20px;
   appearance: none;
   background: #3a3a3a;
-  border: 2px solid rgba(183, 130, 240, 0.3);
-  border-radius: 4px;
+  border: #993939;
   cursor: pointer;
   position: relative;
   transition: all 0.3s ease;
@@ -1686,18 +1683,13 @@ input[type="number"]:focus {
 
 .form-checkbox:checked {
   background: #ff5f5f;
-  border-color: #ff5f5f;
 }
 
 .form-checkbox:checked::after {
-  content: '✓';
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  color: white;
-  font-weight: bold;
-  font-size: 14px;
 }
 
 .form-checkbox-text {
@@ -1707,21 +1699,18 @@ input[type="number"]:focus {
 
 .create-room-button {
   padding: 16px;
-  background: linear-gradient(135deg, #ff5f5f 0%, #9c5fd4 100%);
+  background: #ff5f5f;
   color: white;
   border: none;
-  border-radius: 8px;
   font-size: 1.1rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
-  box-shadow: 0 4px 12px rgba(183, 130, 240, 0.3);
 }
 
 .create-room-button:hover:not(:disabled) {
-  background: linear-gradient(135deg, #9c5fd4 0%, #8a4bc2 100%);
+  background: #993939
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(183, 130, 240, 0.4);
 }
 
 .create-room-button:disabled {
@@ -1730,6 +1719,89 @@ input[type="number"]:focus {
   opacity: 0.6;
   transform: none;
   box-shadow: none;
+}
+
+/* Create Room Modal */
+.create-room-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1001; /* Higher than room browser modal */
+  backdrop-filter: blur(4px);
+}
+
+.create-room-content {
+  background: #2f2f2f;
+  width: 90%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow: hidden;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+}
+
+.create-room-header {
+  background: #ff5f5f;
+  color: white;
+  padding: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.create-room-title {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 600;
+}
+
+.create-room-close-btn {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 2rem;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.create-room-close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.create-room-body {
+  padding: 24px;
+  overflow-y: auto;
+  max-height: calc(90vh - 80px);
+}
+
+.create-room-open-button {
+  padding: 16px 32px;
+  background: #ff5f5f;
+  color: white;
+  border: none;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  letter-spacing: 0.5px;
+}
+
+.create-room-open-button:hover {
+  background: #993939;
+  transform: translateY(-2px);
 }
 
 /* Custom scrollbar for room browser */
@@ -1764,6 +1836,23 @@ input[type="number"]:focus {
   
   .create-room-form {
     gap: 15px;
+  }
+  
+  .create-room-content {
+    width: 95%;
+    max-width: 95%;
+  }
+  
+  .create-room-header {
+    padding: 16px;
+  }
+  
+  .create-room-title {
+    font-size: 1.2rem;
+  }
+  
+  .create-room-body {
+    padding: 8px;
   }
 }
 
@@ -2171,13 +2260,16 @@ input[type="number"]:focus {
   border: none;
   background: rgba(255, 255, 255, 0.95);
   color: #333;
-  font-size: 1rem;
+  font-size: 1.3rem;
+  font-family: 'Overpass', sans-serif;
+  font-weight: bold;
   transition: all 0.2s ease;
+  text-align: center;
 }
 
 .auth-input:focus {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(37, 150, 190, 0.2);
+  border: 1px solid #ff5f5f;
   background: #ffffff;
 }
 
@@ -2237,6 +2329,54 @@ input[type="number"]:focus {
   color: #ff5f5f;
   font-size: 1.1rem;
   font-weight: 500;
+}
+
+.play-btn {
+  background: #ff5f5f !important;
+  font-size: 1.2rem !important;
+  padding: 1.2rem 2rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 1px;
+  font-family: 'Overpass', sans-serif;
+}
+
+.play-btn:hover {
+  background: #993939 !important;
+  transform: translateY(-2px);
+}
+
+.auth-options-footer {
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.4);
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.auth-link-btn {
+  background: #ff5f5f;
+  border: none;
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: bold;
+  font-family: 'Overpass', sans-serif;
+  cursor: pointer;
+  padding: 0.5rem;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+.auth-link-btn:hover {
+  background: #993939;
+  transform: none;
+  transform: translateY(-2px);
+}
+
+.auth-separator {
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 300;
 }
 
 @keyframes fadeInUp {
@@ -2533,7 +2673,6 @@ input[type="number"]:focus {
 
 .chat-input-area {
   background: rgba(0, 0, 0, 0.8);
-  border-radius: 6px;
   padding: 10px;
   backdrop-filter: blur(6px);
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -2560,7 +2699,7 @@ input[type="number"]:focus {
 }
 
 .chat-input:focus {
-  border-color: #4fc3f7;
+  border-color: #ff5f5f;
   background: rgba(255, 255, 255, 0.15);
 }
 

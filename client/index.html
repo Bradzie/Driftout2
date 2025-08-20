@@ -38,17 +38,19 @@
     <div class="auth-container">
       <h1 class="auth-title">DRIFTZ.IO</h1>
       
-      <!-- Login/Register Selection -->
+      <!-- Quick Play Form -->
       <div id="authSelection" class="auth-selection">
-        <div class="auth-option">
-          <button id="showLoginBtn" class="auth-option-btn">Login</button>
+        <div class="auth-options-footer">
+          <button id="showLoginBtn" class="auth-link-btn">Login</button>
+          <button id="showRegisterBtn" class="auth-link-btn">Register</button>
         </div>
-        <div class="auth-option">
-          <button id="showRegisterBtn" class="auth-option-btn">Register</button>
-        </div>
-        <div class="auth-option">
-          <button id="showGuestBtn" class="auth-option-btn">Play as Guest</button>
-        </div>
+        <form id="quickPlayForm" class="auth-form-content">
+          <div class="auth-input-group">
+            <input type="text" id="quickPlayName" class="auth-input" placeholder="Enter your name" maxlength="20" required>
+          </div>
+          <div id="quickPlayError" class="auth-error hidden"></div>
+          <button type="submit" class="auth-submit-btn play-btn">Play as Guest</button>
+        </form>
       </div>
 
       <!-- Login Form -->
@@ -95,20 +97,6 @@
         </form>
       </div>
 
-      <!-- Guest Form -->
-      <div id="guestForm" class="auth-form hidden">
-        <div class="auth-form-header">
-          <h2 class="auth-form-title">Guest</h2>
-          <button id="backFromGuestBtn" class="auth-back-btn">Back</button>
-        </div>
-        <form id="guestFormElement" class="auth-form-content">
-          <div class="auth-input-group">
-            <input type="text" id="guestName" class="auth-input" placeholder="Name" maxlength="20" required>
-          </div>
-          <div id="guestError" class="auth-error hidden"></div>
-          <button type="submit" class="auth-submit-btn">Continue</button>
-        </form>
-      </div>
 
       <!-- Loading State -->
       <div id="authLoading" class="auth-loading hidden">
@@ -379,33 +367,48 @@
           </div>
         </div>
         
-        <!-- Create Room Section -->
+        <!-- Create Room Action -->
         <div class="room-browser-section">
-          <h3 class="section-title">Create New Room</h3>
-          <div class="create-room-form">
-            <div class="form-row">
-              <label class="form-label">Room Name</label>
-              <input type="text" id="createRoomName" class="form-input" placeholder="My Awesome Room" maxlength="50">
-            </div>
-            <div class="form-row">
-              <label class="form-label">Map</label>
-              <select id="createRoomMap" class="form-select">
-                <option value="">Loading maps...</option>
-              </select>
-            </div>
-            <div class="form-row">
-              <label class="form-label">Max Players: <span id="maxPlayersValue">8</span></label>
-              <input type="range" id="createRoomMaxPlayers" class="form-slider" min="2" max="16" value="8">
-            </div>
-            <div class="form-row">
-              <label class="form-checkbox-label">
-                <input type="checkbox" id="createRoomPrivate" class="form-checkbox">
-                <span class="form-checkbox-text">Private Room</span>
-              </label>
-            </div>
-            <div class="form-row">
-              <button id="createRoomButton" class="create-room-button">Create Room</button>
-            </div>
+          <div class="create-room-action">
+            <button id="openCreateRoomButton" class="create-room-open-button">Create</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Room Modal -->
+  <div id="createRoomModal" class="create-room-modal hidden">
+    <div class="create-room-content">
+      <div class="create-room-header">
+        <h2 class="create-room-title">Create New Room</h2>
+        <button id="createRoomCloseBtn" class="create-room-close-btn">×</button>
+      </div>
+      
+      <div class="create-room-body">
+        <div class="create-room-form">
+          <div class="form-row">
+            <label class="form-label">Room Name</label>
+            <input type="text" id="createRoomName" class="form-input" placeholder="Name" maxlength="50">
+          </div>
+          <div class="form-row">
+            <label class="form-label">Map</label>
+            <select id="createRoomMap" class="form-select">
+              <option value="">Loading maps...</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label class="form-label">Max Players: <span id="maxPlayersValue">8</span></label>
+            <input type="range" id="createRoomMaxPlayers" class="form-slider" min="2" max="16" value="8">
+          </div>
+          <div class="form-row">
+            <label class="form-checkbox-label">
+              <input type="checkbox" id="createRoomPrivate" class="form-checkbox">
+              <span class="form-checkbox-text">Private Room</span>
+            </label>
+          </div>
+          <div class="form-row">
+            <button id="createRoomButton" class="create-room-button">Create Room</button>
           </div>
         </div>
       </div>
