@@ -307,6 +307,12 @@
       // Also set the player name for chat
       playerName = currentUser.username;
       console.log('Player name set from currentUser:', playerName);
+      
+      // Show chat when authenticated
+      chatContainer.classList.remove('hidden');
+    } else {
+      // Hide chat when not authenticated
+      chatContainer.classList.add('hidden');
     }
   }
 
