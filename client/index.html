@@ -522,15 +522,71 @@
   <!-- Map Editor Overlay -->
   <div id="mapEditorContainer" class="map-editor-container hidden">
     <div class="map-editor-sidebar">
-      <select id="mapSelect"></select>
-      <div class="map-editor-buttons">
-        <button id="applyMapData">Apply JSON</button>
-        <button id="downloadMapData">Download JSON</button>
-        <button id="saveMapButton">Save to Server</button>
-        <button id="uploadMapButton">Upload Map</button>
-        <button id="createShapeButton">Create Shape</button>
+      <!-- Map Selection -->
+      <div class="editor-section">
+        <label>Map:</label>
+        <select id="mapSelect"></select>
       </div>
-      <textarea id="mapDataInput" class="map-editor-text"></textarea>
+      
+      <!-- Tools Panel -->
+      <div class="editor-section">
+        <h3>Tools</h3>
+        <div class="tool-buttons">
+          <button id="selectTool" class="tool-btn active" data-tool="select">Select</button>
+          <button id="createShapeTool" class="tool-btn" data-tool="createShape">Shape</button>
+          <button id="addCheckpointTool" class="tool-btn" data-tool="checkpoint">Checkpoint</button>
+          <button id="addDynamicTool" class="tool-btn" data-tool="dynamic">Dynamic</button>
+          <button id="addAreaEffectTool" class="tool-btn" data-tool="areaEffect">Area Effect</button>
+        </div>
+      </div>
+      
+      <!-- Grid Settings -->
+      <div class="editor-section">
+        <h3>Grid</h3>
+        <label><input type="checkbox" id="showGrid" checked> Show Grid</label>
+        <label><input type="checkbox" id="snapToGrid" checked> Snap to Grid</label>
+        <label>Grid Size: 
+          <select id="gridSize">
+            <option value="10">10px</option>
+            <option value="25" selected>25px</option>
+            <option value="50">50px</option>
+            <option value="100">100px</option>
+          </select>
+        </label>
+      </div>
+      
+      <!-- Properties Panel -->
+      <div class="editor-section">
+        <h3>Properties</h3>
+        <div id="propertiesPanel">
+          <p>Select an object to edit properties</p>
+        </div>
+      </div>
+      
+      <!-- Layers Panel -->
+      <div class="editor-section">
+        <h3>Objects</h3>
+        <div id="layersPanel">
+          <!-- Dynamic object list -->
+        </div>
+      </div>
+      
+      <!-- File Operations -->
+      <div class="editor-section">
+        <h3>File</h3>
+        <div class="map-editor-buttons">
+          <button id="applyMapData">Apply JSON</button>
+          <button id="downloadMapData">Download</button>
+          <button id="saveMapButton">Save</button>
+          <button id="uploadMapButton">Upload</button>
+        </div>
+      </div>
+      
+      <!-- JSON Editor -->
+      <div class="editor-section">
+        <h3>JSON</h3>
+        <textarea id="mapDataInput" class="map-editor-text"></textarea>
+      </div>
     </div>
     <canvas id="mapEditorCanvas" class="map-editor-canvas"></canvas>
   </div>
