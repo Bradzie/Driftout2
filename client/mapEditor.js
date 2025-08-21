@@ -36,23 +36,31 @@ function initMapEditor() {
   editorCtx = editorCanvas.getContext('2d');
   resizeEditorCanvas();
 
-  // Load maps list
-  loadMapsList();
-  setTimeout(() => {
-    const select = document.getElementById('mapSelect');
-    if (select.options.length > 0) {
-      loadMap(select.value);
-    }
-  }, 100);
+  // Start with a new blank map
+  createNewMap();
 
   initEventListeners();
   updateUI();
 }
 
 function initEventListeners() {
-  // Map selection
-  document.getElementById('mapSelect').addEventListener('change', e => {
-    loadMap(e.target.value);
+  // Map operations
+  document.getElementById('newMapButton').addEventListener('click', createNewMap);
+  document.getElementById('browseMapButton').addEventListener('click', showBrowseModal);
+  document.getElementById('closeBrowseModal').addEventListener('click', hideBrowseModal);
+  
+  // Browse modal close handlers
+  document.getElementById('browseMapModal').addEventListener('click', (e) => {
+    if (e.target.id === 'browseMapModal') {
+      hideBrowseModal();
+    }
+  });
+  
+  // ESC key to close browse modal
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !document.getElementById('browseMapModal').classList.contains('hidden')) {
+      hideBrowseModal();
+    }
   });
 
   // Tool selection
@@ -1291,23 +1299,51 @@ function updateUI() {
 }
 
 // File operations
+function createNewMap() {
+  // Create blank map template with start property
+  editorMap = {
+    "displayName": "New Map",
+    "scale": { 
+      "player": 0.002, 
+      "spectator": 0.0005 
+    },
+    "start": {
+      "type": "polygon",
+      "vertices": [
+        { "x": -50, "y": -10 },
+        { "x": 50, "y": -10 },
+        { "x": 50, "y": 10 },
+        { "x": -50, "y": 10 }
+      ]
+    },
+    "shapes": [],
+    "checkpoints": [], 
+    "areaEffects": [],
+    "dynamicObjects": []
+  };
+  
+  currentMapInfo = { 
+    key: null, 
+    name: "New Map", 
+    directory: null, 
+    isNew: true 
+  };
+  
+  updateUI();
+  renderEditor();
+}
+
 function loadMap(key) {
   fetch(`/api/maps/${key}`)
     .then(res => res.json())
     .then(map => {
       editorMap = map;
-      const select = document.getElementById('mapSelect');
-      const selectedOption = Array.from(select.options).find(o => o.value === key);
-      if (selectedOption) {
-        currentMapInfo = {
-          key: key,
-          name: selectedOption.text.split(' (')[0],
-          directory: key.split('/')[0],
-          isNew: false,
-        };
-      } else {
-        currentMapInfo = { key: null, name: null, directory: null, isNew: true };
-      }
+      currentMapInfo = {
+        key: key,
+        name: map.displayName || key.split('/').pop().replace('.json', ''),
+        directory: key.split('/')[0],
+        isNew: false,
+      };
       updateUI();
       renderEditor();
     })
@@ -1437,22 +1473,52 @@ async function executeSave(mapName, directory, author, key = null) {
   }
 }
 
-function loadMapsList(selectKey = null) {
+function showBrowseModal() {
+  const modal = document.getElementById('browseMapModal');
+  modal.classList.remove('hidden');
+  
+  // Load and display maps
   fetch('/api/maps')
     .then(res => res.json())
     .then(maps => {
-      const select = document.getElementById('mapSelect');
-      const currentValue = selectKey || select.value;
-      select.innerHTML = maps.map(m => 
-        `<option value="${m.key}">${m.name} (${m.category})</option>`
-      ).join('');
-      if (currentValue) {
-        select.value = currentValue;
-      }
+      displayMapsInBrowser(maps);
     })
     .catch(error => {
       console.error('Error loading maps:', error);
+      document.getElementById('mapsGrid').innerHTML = '<p>Error loading maps</p>';
     });
+}
+
+function hideBrowseModal() {
+  document.getElementById('browseMapModal').classList.add('hidden');
+}
+
+function displayMapsInBrowser(maps) {
+  const grid = document.getElementById('mapsGrid');
+  
+  grid.innerHTML = maps.map(map => {
+    const author = map.key.includes('official/') ? 'Official' : 'Community';
+    const category = map.category || author;
+    
+    return `
+      <div class="map-entry" data-map-key="${map.key}">
+        <div class="map-preview">
+          <div class="no-preview">No preview</div>
+        </div>
+        <div class="map-info">
+          <h4 class="map-name">${map.name}</h4>
+          <p class="map-author">Author: ${author}</p>
+          <p class="map-category">Category: ${category}</p>
+          <button class="select-map-btn" onclick="selectMapFromBrowser('${map.key}')">Select</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function selectMapFromBrowser(key) {
+  hideBrowseModal();
+  loadMap(key);
 }
 
 function resizeEditorCanvas() {

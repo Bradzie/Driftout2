@@ -526,10 +526,15 @@
   <!-- Map Editor Overlay -->
   <div id="mapEditorContainer" class="map-editor-container hidden">
     <div class="map-editor-sidebar">
-      <!-- Map Selection -->
+      <!-- Map Operations -->
       <div class="editor-section">
-        <label>Map:</label>
-        <select id="mapSelect"></select>
+        <h3>Map</h3>
+        <div class="map-editor-buttons">
+          <button id="newMapButton">New</button>
+          <button id="browseMapButton">Browse</button>
+          <button id="saveMapButton">Save</button>
+          <button id="saveAsMapButton">Save As...</button>
+        </div>
       </div>
       
       <!-- Tools Panel -->
@@ -575,16 +580,21 @@
         </div>
       </div>
       
-      <!-- File Operations -->
-      <div class="editor-section">
-        <h3>File</h3>
-        <div class="map-editor-buttons">
-          <button id="saveMapButton">Save</button>
-          <button id="saveAsMapButton">Save As...</button>
-        </div>
-      </div>
     </div>
     <canvas id="mapEditorCanvas" class="map-editor-canvas"></canvas>
+  </div>
+
+  <!-- Browse Maps Modal Dialog -->
+  <div id="browseMapModal" class="modal hidden">
+    <div class="modal-content browse-modal">
+      <div class="modal-header">
+        <h2>Browse Maps</h2>
+        <button class="close-button" id="closeBrowseModal">&times;</button>
+      </div>
+      <div class="maps-grid" id="mapsGrid">
+        <!-- Dynamic map entries will be inserted here -->
+      </div>
+    </div>
   </div>
 
   <!-- Save Map Modal Dialog -->
