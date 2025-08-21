@@ -2995,14 +2995,28 @@
     dynamicObjects.forEach((obj) => {
       if (obj.vertices && obj.vertices.length) {
         ctx.save();
-        ctx.translate(centerX, centerY);
         
+        const objX = obj.position.x;
+        const objY = obj.position.y;
+
         ctx.beginPath();
         obj.vertices.forEach((v, i) => {
-          const x = (v.x - focusX) * scale;
-          const y = (v.y - focusY) * scale;
-          if (i === 0) ctx.moveTo(x, -y);
-          else ctx.lineTo(x, -y);
+            const cos = Math.cos(obj.angle);
+            const sin = Math.sin(obj.angle);
+            const rotatedX = v.x * cos - v.y * sin;
+            const rotatedY = v.x * sin + v.y * cos;
+
+            const worldX = objX + rotatedX;
+            const worldY = objY + rotatedY;
+
+            const screenX = centerX + (worldX - focusX) * scale;
+            const screenY = centerY - (worldY - focusY) * scale;
+
+            if (i === 0) {
+                ctx.moveTo(screenX, screenY);
+            } else {
+                ctx.lineTo(screenX, screenY);
+            }
         });
         ctx.closePath();
         
@@ -3042,13 +3056,8 @@
         
         // Draw health bar for dynamic objects
         if (obj.health !== undefined && obj.maxHealth !== undefined && obj.health < obj.maxHealth) {
-          // Calculate center from vertices
-          const centerVertex = obj.vertices.reduce((sum, v) => ({ x: sum.x + v.x, y: sum.y + v.y }), { x: 0, y: 0 });
-          centerVertex.x /= obj.vertices.length;
-          centerVertex.y /= obj.vertices.length;
-          
-          const objScreenX = centerX + (centerVertex.x - focusX) * scale;
-          const objScreenY = centerY - (centerVertex.y - focusY) * scale;
+          const objScreenX = centerX + (objX - focusX) * scale;
+          const objScreenY = centerY - (objY - focusY) * scale;
           
           const barWidth = 30 * scale;
           const barHeight = 4 * scale;
@@ -3078,14 +3087,28 @@
       abilityObjects.forEach((obj) => {
         if (obj.type === 'spike_trap' && obj.vertices && obj.vertices.length) {
           ctx.save();
-          ctx.translate(centerX, centerY);
           
+          const objX = obj.position.x;
+          const objY = obj.position.y;
+
           ctx.beginPath();
           obj.vertices.forEach((v, i) => {
-            const x = (v.x - focusX) * scale;
-            const y = (v.y - focusY) * scale;
-            if (i === 0) ctx.moveTo(x, -y);
-            else ctx.lineTo(x, -y);
+              const cos = Math.cos(obj.angle);
+              const sin = Math.sin(obj.angle);
+              const rotatedX = v.x * cos - v.y * sin;
+              const rotatedY = v.x * sin + v.y * cos;
+
+              const worldX = objX + rotatedX;
+              const worldY = objY + rotatedY;
+
+              const screenX = centerX + (worldX - focusX) * scale;
+              const screenY = centerY - (worldY - focusY) * scale;
+
+              if (i === 0) {
+                  ctx.moveTo(screenX, screenY);
+              } else {
+                  ctx.lineTo(screenX, screenY);
+              }
           });
           ctx.closePath();
           

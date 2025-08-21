@@ -1347,8 +1347,8 @@ function drawShape(shape, isSelected) {
 
   // Draw border with alternating colors if available
   if (Array.isArray(shape.borderColors) && shape.borderColors.length > 0 && shape.borderWidth > 0) {
-    const lineWidth = (shape.borderWidth || 8) / zoom;
-    const stripeLength = (shape.stripeLength || shape.borderWidth * 1.8 || 25) / zoom;
+    const lineWidth = shape.borderWidth || 8;
+    const stripeLength = shape.stripeLength || shape.borderWidth * 1.8 || 25;
     
     for (let i = 0; i < shape.vertices.length; i++) {
       const a = { x: shape.vertices[i].x, y: -shape.vertices[i].y };
@@ -1474,7 +1474,7 @@ function drawDynamicObject(obj, isSelected) {
   // Stroke
   if (obj.strokeColor && Array.isArray(obj.strokeColor)) {
     editorCtx.strokeStyle = `rgb(${obj.strokeColor[0]},${obj.strokeColor[1]},${obj.strokeColor[2]})`;
-    editorCtx.lineWidth = (obj.strokeWidth || 2) / zoom;
+    editorCtx.lineWidth = obj.strokeWidth || 2;
     editorCtx.stroke();
   }
 
@@ -2282,7 +2282,7 @@ function saveMap() {
   if (currentMapInfo.isNew || !currentMapInfo.name) {
     saveMapAs();
   } else {
-    executeSave(currentMapInfo.name, currentMapInfo.directory, editorMap.author || 'Bradzie', currentMapInfo.key);
+    executeSave(currentMapInfo.name, currentMapInfo.directory, editorMap.author, currentMapInfo.key);
   }
 }
 
