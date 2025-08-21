@@ -8,6 +8,12 @@ let selectedObject = null;
 let selectedVertex = null;
 let isDragging = false;
 let dragStartPos = null;
+let currentMapInfo = {
+  key: null,
+  name: null,
+  directory: null,
+  isNew: true,
+};
 
 // Grid settings
 let showGrid = true;
@@ -35,7 +41,7 @@ function initMapEditor() {
   setTimeout(() => {
     const select = document.getElementById('mapSelect');
     if (select.options.length > 0) {
-      loadMap('square');
+      loadMap(select.value);
     }
   }, 100);
 
@@ -72,10 +78,8 @@ function initEventListeners() {
   });
 
   // File operations
-  document.getElementById('applyMapData').addEventListener('click', applyMapData);
-  document.getElementById('downloadMapData').addEventListener('click', downloadMapData);
-  document.getElementById('saveMapButton')?.addEventListener('click', saveMapToServer);
-  document.getElementById('uploadMapButton')?.addEventListener('click', uploadNewMap);
+  document.getElementById('saveMapButton')?.addEventListener('click', saveMap);
+  document.getElementById('saveAsMapButton')?.addEventListener('click', saveMapAs);
 
   // Canvas events
   editorCanvas.addEventListener('mousedown', handleMouseDown);
@@ -171,7 +175,6 @@ function handleMouseMove(e) {
     const snappedPos = snapToGridPos(mousePos);
     selectedVertex.x = snappedPos.x;
     selectedVertex.y = snappedPos.y;
-    updateMapDataInput();
     renderEditor();
   }
 }
@@ -233,7 +236,7 @@ function handleKeyDown(e) {
     case 'S':
       if (e.ctrlKey) {
         e.preventDefault();
-        saveMapToServer();
+        saveMap();
       } else {
         document.getElementById('snapToGrid').checked = !snapToGrid;
         snapToGrid = !snapToGrid;
@@ -518,7 +521,6 @@ function finishCreatingShape() {
       borderColors: ['#ff4d4d', '#ffffff'],
       borderWidth: 20
     });
-    updateMapDataInput();
   }
   
   creatingShape = false;
@@ -547,7 +549,6 @@ function deleteSelectedObject() {
 
   selectedObject = null;
   selectedVertex = null;
-  updateMapDataInput();
   updatePropertiesPanel();
   updateLayersPanel();
   renderEditor();
@@ -1227,7 +1228,6 @@ function handleSliderChange(event) {
 }
 
 function updateMapAndRender() {
-  updateMapDataInput();
   renderEditor();
 }
 
@@ -1290,19 +1290,24 @@ function updateUI() {
   updateLayersPanel();
 }
 
-function updateMapDataInput() {
-  if (editorMap) {
-    document.getElementById('mapDataInput').value = JSON.stringify(editorMap, null, 2);
-  }
-}
-
-// File operations (keep existing functions)
+// File operations
 function loadMap(key) {
   fetch(`/api/maps/${key}`)
     .then(res => res.json())
     .then(map => {
       editorMap = map;
-      updateMapDataInput();
+      const select = document.getElementById('mapSelect');
+      const selectedOption = Array.from(select.options).find(o => o.value === key);
+      if (selectedOption) {
+        currentMapInfo = {
+          key: key,
+          name: selectedOption.text.split(' (')[0],
+          directory: key.split('/')[0],
+          isNew: false,
+        };
+      } else {
+        currentMapInfo = { key: null, name: null, directory: null, isNew: true };
+      }
       updateUI();
       renderEditor();
     })
@@ -1311,37 +1316,15 @@ function loadMap(key) {
     });
 }
 
-function applyMapData() {
-  try {
-    const data = JSON.parse(document.getElementById('mapDataInput').value);
-    editorMap = data;
-    selectedObject = null;
-    selectedVertex = null;
-    updateUI();
-    renderEditor();
-  } catch (err) {
-    alert('Invalid JSON');
+function saveMap() {
+  if (currentMapInfo.isNew || !currentMapInfo.name) {
+    saveMapAs();
+  } else {
+    executeSave(currentMapInfo.name, currentMapInfo.directory, editorMap.author || 'Bradzie', currentMapInfo.key);
   }
 }
 
-function downloadMapData() {
-  if (!editorMap) return;
-  const blob = new Blob([JSON.stringify(editorMap, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'map.json';
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-async function saveMapToServer() {
-  if (!editorMap) {
-    alert('No map data to save');
-    return;
-  }
-
-  // Show the save modal dialog
+function saveMapAs() {
   showSaveMapModal();
 }
 
@@ -1352,10 +1335,14 @@ function showSaveMapModal() {
   const mapNameInput = document.getElementById('saveMapName');
   const authorInput = document.getElementById('saveMapAuthor');
   
-  // Reset form
-  mapNameInput.value = '';
-  authorInput.value = 'Bradzie';
-  document.getElementById('saveCommunity').checked = true;
+  // Pre-fill form
+  mapNameInput.value = currentMapInfo.isNew ? '' : currentMapInfo.name;
+  authorInput.value = editorMap.author || 'Bradzie';
+  if (currentMapInfo.directory === 'official') {
+    document.getElementById('saveOfficial').checked = true;
+  } else {
+    document.getElementById('saveCommunity').checked = true;
+  }
   
   modal.classList.remove('hidden');
   mapNameInput.focus();
@@ -1385,11 +1372,14 @@ function closeSaveMapModal() {
   }
 }
 
-async function confirmSaveMap() {
+function confirmSaveMap() {
   const mapName = document.getElementById('saveMapName').value.trim();
   const author = document.getElementById('saveMapAuthor').value.trim();
   const directory = document.querySelector('input[name="saveDirectory"]:checked').value;
-  
+  executeSave(mapName, directory, author);
+}
+
+async function executeSave(mapName, directory, author, key = null) {
   if (!mapName) {
     alert('Please enter a map name');
     return;
@@ -1403,7 +1393,6 @@ async function confirmSaveMap() {
   closeSaveMapModal();
   
   try {
-    // Add author and metadata to map data
     const enhancedMapData = {
       ...editorMap,
       displayName: mapName,
@@ -1412,21 +1401,33 @@ async function confirmSaveMap() {
       updated_at: new Date().toISOString()
     };
     
+    const payload = { 
+      name: mapName,
+      directory: directory,
+      mapData: enhancedMapData 
+    };
+
+    if (key) {
+      payload.key = key;
+    }
+    
     const response = await fetch('/api/maps', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        name: mapName,
-        directory: directory,
-        mapData: enhancedMapData 
-      })
+      body: JSON.stringify(payload)
     });
 
     const result = await response.json();
     
     if (result.success) {
       alert(`Map saved successfully to ${directory} directory!`);
-      loadMapsList();
+      currentMapInfo = {
+        key: result.key,
+        name: mapName,
+        directory: directory,
+        isNew: false,
+      };
+      loadMapsList(result.key);
     } else {
       alert('Failed to save map: ' + result.error);
     }
@@ -1436,60 +1437,18 @@ async function confirmSaveMap() {
   }
 }
 
-async function uploadNewMap() {
-  const fileInput = document.createElement('input');
-  fileInput.type = 'file';
-  fileInput.accept = '.json';
-  
-  fileInput.onchange = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    try {
-      const text = await file.text();
-      const mapData = JSON.parse(text);
-      
-      const mapName = prompt('Enter map name:', file.name.replace('.json', ''));
-      if (!mapName) return;
-
-      const response = await fetch('/api/maps', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          name: mapName, 
-          mapData: mapData 
-        })
-      });
-
-      const result = await response.json();
-      
-      if (result.success) {
-        alert('Map uploaded successfully!');
-        editorMap = mapData;
-        updateMapDataInput();
-        updateUI();
-        renderEditor();
-        loadMapsList();
-      } else {
-        alert('Failed to upload map: ' + result.error);
-      }
-    } catch (error) {
-      console.error('Upload map error:', error);
-      alert('Failed to upload map: Invalid JSON file');
-    }
-  };
-  
-  fileInput.click();
-}
-
-function loadMapsList() {
+function loadMapsList(selectKey = null) {
   fetch('/api/maps')
     .then(res => res.json())
     .then(maps => {
       const select = document.getElementById('mapSelect');
+      const currentValue = selectKey || select.value;
       select.innerHTML = maps.map(m => 
         `<option value="${m.key}">${m.name} (${m.category})</option>`
       ).join('');
+      if (currentValue) {
+        select.value = currentValue;
+      }
     })
     .catch(error => {
       console.error('Error loading maps:', error);

@@ -49,7 +49,7 @@ app.get('/api/maps', (req, res) => {
   try {
     const maps = mapManager.getAllMaps();
     const mapList = maps.map(map => ({
-      key: map.key,
+      key: `${map.category}/${map.key}`,
       name: map.name,
       description: map.description || '',
       category: map.category,
@@ -63,10 +63,10 @@ app.get('/api/maps', (req, res) => {
 });
 
 // send full map data to client for editor
-app.get('/api/maps/:key', (req, res) => {
-  const key = req.params.key;
+app.get('/api/maps/:category/:key', (req, res) => {
+  const { category, key } = req.params;
   try {
-    const map = mapManager.getMap(key);
+    const map = mapManager.getMap(key, category);
     if (map) {
       res.json(map);
     } else {
@@ -80,70 +80,87 @@ app.get('/api/maps/:key', (req, res) => {
 
 // New map management endpoints
 
-// Upload a new community map (authenticated users only)
+// Upload a new community map or overwrite an existing one (authenticated users only)
 app.post('/api/maps', async (req, res) => {
   if (!req.session.userId) {
     return res.status(401).json({ error: 'Authentication required' });
   }
 
   try {
-    const { name, mapData, directory } = req.body;
+    const { name, mapData, directory, key } = req.body;
     
     if (!name || !mapData) {
       return res.status(400).json({ error: 'Name and map data are required' });
     }
 
-    // Validate directory parameter
-    const targetDirectory = directory || 'community';
-    if (!['official', 'community'].includes(targetDirectory)) {
-      return res.status(400).json({ error: 'Invalid directory. Must be "official" or "community"' });
-    }
-
-    // Generate filename based on directory choice
     let filename;
-    if (targetDirectory === 'official') {
-      // For official maps, use simple name-based filename
-      filename = name.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
+    let targetDirectory;
+    let isNewMap = true;
+
+    if (key) {
+      // Overwriting an existing map
+      const keyParts = key.split('/');
+      targetDirectory = keyParts[0];
+      filename = keyParts.slice(1).join('/');
+      isNewMap = false;
+
+      if (!['official', 'community'].includes(targetDirectory)) {
+        return res.status(400).json({ error: 'Invalid directory in key.' });
+      }
+      
     } else {
-      // For community maps, use unique filename with user ID
-      const sanitizedName = name.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
-      const timestamp = Date.now();
-      filename = `${req.session.userId}_${sanitizedName}_${timestamp}`;
+      // Creating a new map
+      targetDirectory = directory || 'community';
+      if (!['official', 'community'].includes(targetDirectory)) {
+        return res.status(400).json({ error: 'Invalid directory. Must be "official" or "community"' });
+      }
+
+      if (targetDirectory === 'official') {
+        filename = name.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
+      } else {
+        const sanitizedName = name.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
+        const timestamp = Date.now();
+        filename = `${req.session.userId}_${sanitizedName}_${timestamp}`;
+      }
     }
     
-    // Add metadata to map data
     const enhancedMapData = {
       ...mapData,
       displayName: name,
       author: mapData.author || req.session.username,
       author_id: req.session.userId,
-      created_at: mapData.created_at || new Date().toISOString(),
+      created_at: isNewMap ? new Date().toISOString() : (mapData.created_at || new Date().toISOString()),
       updated_at: new Date().toISOString(),
       category: targetDirectory
     };
 
-    // Save map file
     const saved = mapManager.saveMap(filename, targetDirectory, enhancedMapData);
     if (!saved) {
       return res.status(500).json({ error: 'Failed to save map' });
     }
 
-    // Add to database
-    const dbResult = userDb.addMap(name, req.session.userId, filename, targetDirectory);
-    if (!dbResult.success) {
-      // Cleanup file if database insert failed
-      mapManager.deleteMap(filename, targetDirectory);
-      return res.status(500).json({ error: dbResult.error });
+    if (isNewMap) {
+      const dbResult = userDb.addMap(name, req.session.userId, filename, targetDirectory);
+      if (!dbResult.success) {
+        mapManager.deleteMap(filename, targetDirectory);
+        return res.status(500).json({ error: dbResult.error });
+      }
+       res.json({ 
+        success: true, 
+        mapId: dbResult.mapId,
+        filename: filename,
+        key: `${targetDirectory}/${filename}`
+      });
+    } else {
+         res.json({ 
+            success: true, 
+            filename: filename,
+            key: `${targetDirectory}/${filename}`
+        });
     }
-
-    res.json({ 
-      success: true, 
-      mapId: dbResult.mapId,
-      filename: filename
-    });
   } catch (error) {
-    console.error('Map upload error:', error);
-    res.status(500).json({ error: 'Map upload failed' });
+    console.error('Map save error:', error);
+    res.status(500).json({ error: 'Map save failed' });
   }
 });
 
