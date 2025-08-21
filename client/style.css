@@ -2731,6 +2731,76 @@ input[type="number"]:focus {
   background-color: #ff5f5f;
 }
 
+/* Property Editor Styles */
+.property-form {
+  padding: 0;
+}
+
+.property-form h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.9rem;
+  color: #ff5f5f;
+  text-transform: capitalize;
+}
+
+.property-form h5 {
+  margin: 0.5rem 0 0.25rem 0;
+  font-size: 0.8rem;
+  color: #ccc;
+  font-weight: normal;
+}
+
+.property-group {
+  margin: 0.5rem 0;
+  padding: 0.25rem;
+  border-left: 2px solid #666;
+  padding-left: 0.5rem;
+}
+
+.color-input-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.color-input {
+  width: 40px;
+  height: 25px;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.color-preview {
+  font-size: 0.7rem;
+  color: #aaa;
+  min-width: 60px;
+}
+
+.property-slider {
+  width: 100%;
+  margin: 0.25rem 0;
+}
+
+.property-checkbox {
+  margin-right: 0.5rem;
+}
+
+/* Improved property input styling */
+.property-input {
+  font-size: 0.8rem;
+  width: 80px;
+}
+
+.property-input[type="text"] {
+  width: 100%;
+}
+
+select.property-input {
+  width: 100%;
+  font-size: 0.8rem;
+}
+
 /* General button style for map editor */
 #mapEditorButton {
   background: #ff5f5f;
@@ -2879,4 +2949,186 @@ input[type="number"]:focus {
   opacity: 0;
   transform: translateY(10px);
   pointer-events: none;
+}
+
+/* Modal Styles */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10000;
+  backdrop-filter: blur(4px);
+}
+
+.modal.hidden {
+  display: none;
+}
+
+.modal-content {
+  background: #1a1a1a;
+  border: 2px solid #333;
+  border-radius: 10px;
+  padding: 0;
+  min-width: 400px;
+  max-width: 500px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+  animation: modalSlideIn 0.3s ease;
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-50px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.modal-header {
+  padding: 20px 25px 15px 25px;
+  border-bottom: 1px solid #333;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-header h3 {
+  margin: 0;
+  color: #fff;
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  color: #999;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.modal-close:hover {
+  background: #333;
+  color: #fff;
+}
+
+.modal-body {
+  padding: 25px;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group:last-child {
+  margin-bottom: 0;
+}
+
+.form-group label {
+  display: block;
+  color: #ccc;
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.form-input {
+  width: 100%;
+  padding: 12px 15px;
+  background: #2a2a2a;
+  border: 2px solid #444;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: #ff5f5f;
+  background: #333;
+}
+
+.radio-group {
+  display: flex;
+  gap: 15px;
+  margin-top: 8px;
+}
+
+.radio-label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: #ccc;
+  font-size: 0.9rem;
+  transition: color 0.2s ease;
+}
+
+.radio-label:hover {
+  color: #fff;
+}
+
+.radio-label input[type="radio"] {
+  margin-right: 8px;
+  accent-color: #ff5f5f;
+}
+
+.radio-text {
+  user-select: none;
+}
+
+.modal-footer {
+  padding: 20px 25px;
+  border-top: 1px solid #333;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 80px;
+}
+
+.btn-secondary {
+  background: #444;
+  color: #ccc;
+}
+
+.btn-secondary:hover {
+  background: #555;
+  color: #fff;
+}
+
+.btn-primary {
+  background: #ff5f5f;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #ff4444;
+  transform: translateY(-1px);
 }

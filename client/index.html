@@ -591,6 +591,43 @@
     <canvas id="mapEditorCanvas" class="map-editor-canvas"></canvas>
   </div>
 
+  <!-- Save Map Modal Dialog -->
+  <div id="saveMapModal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Save Map</h3>
+        <button class="modal-close" onclick="closeSaveMapModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="saveMapName">Map Name:</label>
+          <input type="text" id="saveMapName" class="form-input" placeholder="Enter map name">
+        </div>
+        <div class="form-group">
+          <label for="saveMapAuthor">Author:</label>
+          <input type="text" id="saveMapAuthor" class="form-input" value="Bradzie">
+        </div>
+        <div class="form-group">
+          <label>Directory:</label>
+          <div class="radio-group">
+            <label class="radio-label">
+              <input type="radio" name="saveDirectory" value="official" id="saveOfficial">
+              <span class="radio-text">Official</span>
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="saveDirectory" value="community" id="saveCommunity" checked>
+              <span class="radio-text">Community</span>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeSaveMapModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="confirmSaveMap()">Save Map</button>
+      </div>
+    </div>
+  </div>
+
   <script src="client.js"></script>
   <script src="mapEditor.js"></script>
 </body>

@@ -355,8 +355,131 @@ function findVertexAtPosition(pos, tolerance = 10) {
 }
 
 function findObjectAtPosition(pos) {
-  // TODO: Implement object selection logic
+  const tolerance = 10 / zoom; // Adjust tolerance based on zoom level
+
+  // Check dynamic objects first (they're on top)
+  if (editorMap.dynamicObjects) {
+    for (let i = editorMap.dynamicObjects.length - 1; i >= 0; i--) {
+      const obj = editorMap.dynamicObjects[i];
+      if (isPointInDynamicObject(pos, obj, tolerance)) {
+        return { type: 'dynamicObject', index: i, data: obj };
+      }
+    }
+  }
+
+  // Check area effects
+  if (editorMap.areaEffects) {
+    for (let i = editorMap.areaEffects.length - 1; i >= 0; i--) {
+      const area = editorMap.areaEffects[i];
+      if (isPointInPolygon(pos, area.vertices)) {
+        return { type: 'areaEffect', index: i, data: area };
+      }
+    }
+  }
+
+  // Check checkpoints
+  if (editorMap.checkpoints) {
+    for (let i = editorMap.checkpoints.length - 1; i >= 0; i--) {
+      const checkpoint = editorMap.checkpoints[i];
+      if (checkpoint.vertices.length === 2) {
+        // Line checkpoint - check distance to line
+        if (isPointNearLine(pos, checkpoint.vertices[0], checkpoint.vertices[1], tolerance)) {
+          return { type: 'checkpoint', index: i, data: checkpoint };
+        }
+      } else if (checkpoint.vertices.length > 2) {
+        // Polygon checkpoint
+        if (isPointInPolygon(pos, checkpoint.vertices)) {
+          return { type: 'checkpoint', index: i, data: checkpoint };
+        }
+      }
+    }
+  }
+
+  // Check shapes last (they're typically the background)
+  if (editorMap.shapes) {
+    for (let i = editorMap.shapes.length - 1; i >= 0; i--) {
+      const shape = editorMap.shapes[i];
+      if (isPointInPolygon(pos, shape.vertices)) {
+        return { type: 'shape', index: i, data: shape };
+      }
+    }
+  }
+
   return null;
+}
+
+// Helper function: Point in polygon test using ray casting
+function isPointInPolygon(point, vertices) {
+  if (!vertices || vertices.length < 3) return false;
+  
+  let inside = false;
+  let j = vertices.length - 1;
+  
+  for (let i = 0; i < vertices.length; i++) {
+    const xi = vertices[i].x;
+    const yi = vertices[i].y;
+    const xj = vertices[j].x;
+    const yj = vertices[j].y;
+    
+    if (((yi > point.y) !== (yj > point.y)) && 
+        (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+    j = i;
+  }
+  
+  return inside;
+}
+
+// Helper function: Point near line test
+function isPointNearLine(point, lineStart, lineEnd, tolerance) {
+  const A = point.x - lineStart.x;
+  const B = point.y - lineStart.y;
+  const C = lineEnd.x - lineStart.x;
+  const D = lineEnd.y - lineStart.y;
+
+  const dot = A * C + B * D;
+  const lenSq = C * C + D * D;
+  
+  if (lenSq === 0) {
+    // Line is actually a point
+    return Math.hypot(A, B) <= tolerance;
+  }
+  
+  let param = dot / lenSq;
+  
+  let xx, yy;
+  if (param < 0) {
+    xx = lineStart.x;
+    yy = lineStart.y;
+  } else if (param > 1) {
+    xx = lineEnd.x;
+    yy = lineEnd.y;
+  } else {
+    xx = lineStart.x + param * C;
+    yy = lineStart.y + param * D;
+  }
+
+  const dx = point.x - xx;
+  const dy = point.y - yy;
+  return Math.hypot(dx, dy) <= tolerance;
+}
+
+// Helper function: Point in dynamic object test
+function isPointInDynamicObject(point, obj, tolerance) {
+  if (!obj.position || !obj.size) return false;
+  
+  if (obj.shape === 'circle') {
+    const radius = Math.max(obj.size.width, obj.size.height) / 2;
+    const distance = Math.hypot(point.x - obj.position.x, point.y - obj.position.y);
+    return distance <= radius + tolerance;
+  } else {
+    // Rectangle (default)
+    const halfWidth = obj.size.width / 2 + tolerance;
+    const halfHeight = obj.size.height / 2 + tolerance;
+    return Math.abs(point.x - obj.position.x) <= halfWidth &&
+           Math.abs(point.y - obj.position.y) <= halfHeight;
+  }
 }
 
 function finishCreatingShape() {
@@ -514,7 +637,57 @@ function drawShape(shape, isSelected) {
   }
   editorCtx.fill();
 
-  // Draw border if selected
+  // Draw border with alternating colors if available
+  if (Array.isArray(shape.borderColors) && shape.borderColors.length > 0 && shape.borderWidth > 0) {
+    const lineWidth = (shape.borderWidth || 8) / zoom;
+    const stripeLength = (shape.stripeLength || shape.borderWidth * 1.8 || 25) / zoom;
+    
+    for (let i = 0; i < shape.vertices.length; i++) {
+      const a = { x: shape.vertices[i].x, y: -shape.vertices[i].y };
+      const b = { x: shape.vertices[(i + 1) % shape.vertices.length].x, y: -shape.vertices[(i + 1) % shape.vertices.length].y };
+      
+      // Use different color for each side of the polygon
+      const sideColor = shape.borderColors[i % shape.borderColors.length];
+      
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const len = Math.hypot(dx, dy);
+      const steps = Math.max(1, Math.floor(len / stripeLength));
+      
+      const perpX = -dy / len;
+      const perpY = dx / len;
+      const offsetX = (perpX * lineWidth) / 2;
+      const offsetY = (perpY * lineWidth) / 2;
+      
+      for (let s = 0; s < steps; s++) {
+        const t0 = s / steps;
+        const t1 = (s + 1) / steps;
+        const x0 = a.x + dx * t0;
+        const y0 = a.y + dy * t0;
+        const x1 = a.x + dx * t1;
+        const y1 = a.y + dy * t1;
+        
+        editorCtx.beginPath();
+        editorCtx.moveTo(x0 + offsetX, y0 + offsetY);
+        editorCtx.lineTo(x1 + offsetX, y1 + offsetY);
+        editorCtx.lineTo(x1 - offsetX, y1 - offsetY);
+        editorCtx.lineTo(x0 - offsetX, y0 - offsetY);
+        editorCtx.closePath();
+        
+        editorCtx.fillStyle = sideColor;
+        editorCtx.fill();
+      }
+      
+      // Draw corner caps
+      const radius = lineWidth / 2;
+      editorCtx.beginPath();
+      editorCtx.arc(a.x, a.y, radius, 0, Math.PI * 2);
+      editorCtx.fillStyle = sideColor;
+      editorCtx.fill();
+    }
+  }
+
+  // Draw selection border if selected
   if (isSelected) {
     editorCtx.strokeStyle = '#ffff00';
     editorCtx.lineWidth = 2 / zoom;
@@ -635,8 +808,400 @@ function updatePropertiesPanel() {
     return;
   }
 
-  // TODO: Generate property editor based on selected object type
-  panel.innerHTML = `<p>Selected: ${selectedObject.type} ${selectedObject.index}</p>`;
+  const objectData = getSelectedObjectData();
+  if (!objectData) {
+    panel.innerHTML = '<p>Object not found</p>';
+    return;
+  }
+
+  const propertyForm = generatePropertyForm(selectedObject.type, objectData, selectedObject.index);
+  panel.innerHTML = propertyForm;
+  attachPropertyEventListeners();
+}
+
+function getSelectedObjectData() {
+  if (!selectedObject || !editorMap) return null;
+
+  switch (selectedObject.type) {
+    case 'shape':
+      return editorMap.shapes?.[selectedObject.index];
+    case 'dynamicObject':
+      return editorMap.dynamicObjects?.[selectedObject.index];
+    case 'checkpoint':
+      return editorMap.checkpoints?.[selectedObject.index];
+    case 'areaEffect':
+      return editorMap.areaEffects?.[selectedObject.index];
+    default:
+      return null;
+  }
+}
+
+function generatePropertyForm(type, data, index) {
+  let html = `<div class="property-form">`;
+  html += `<h4>${type.charAt(0).toUpperCase() + type.slice(1)} ${index + 1}</h4>`;
+
+  switch (type) {
+    case 'shape':
+      html += buildShapeProperties(data, index);
+      break;
+    case 'dynamicObject':
+      html += buildDynamicObjectProperties(data, index);
+      break;
+    case 'checkpoint':
+      html += buildCheckpointProperties(data, index);
+      break;
+    case 'areaEffect':
+      html += buildAreaEffectProperties(data, index);
+      break;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
+// Property input component builders
+function createColorInput(label, value, id) {
+  const hexColor = Array.isArray(value) ? rgbToHex(value[0], value[1], value[2]) : '#888888';
+  return `
+    <div class="property-row">
+      <label class="property-label">${label}:</label>
+      <div class="color-input-group">
+        <input type="color" id="${id}" class="color-input" value="${hexColor}">
+        <span class="color-preview">${hexColor}</span>
+      </div>
+    </div>
+  `;
+}
+
+function createNumberInput(label, value, id, min = 0, max = 1000, step = 1) {
+  return `
+    <div class="property-row">
+      <label class="property-label">${label}:</label>
+      <input type="number" id="${id}" class="property-input" value="${value || 0}" 
+             min="${min}" max="${max}" step="${step}">
+    </div>
+  `;
+}
+
+function createTextInput(label, value, id, placeholder = '') {
+  return `
+    <div class="property-row">
+      <label class="property-label">${label}:</label>
+      <input type="text" id="${id}" class="property-input" value="${value || ''}" 
+             placeholder="${placeholder}">
+    </div>
+  `;
+}
+
+function createCheckboxInput(label, value, id) {
+  return `
+    <div class="property-row">
+      <label class="property-label">
+        <input type="checkbox" id="${id}" class="property-checkbox" ${value ? 'checked' : ''}>
+        ${label}
+      </label>
+    </div>
+  `;
+}
+
+function createSelectInput(label, value, id, options) {
+  let optionsHtml = options.map(option => 
+    `<option value="${option.value}" ${option.value === value ? 'selected' : ''}>${option.label}</option>`
+  ).join('');
+  
+  return `
+    <div class="property-row">
+      <label class="property-label">${label}:</label>
+      <select id="${id}" class="property-input">
+        ${optionsHtml}
+      </select>
+    </div>
+  `;
+}
+
+function createSliderInput(label, value, id, min = 0, max = 1, step = 0.01) {
+  return `
+    <div class="property-row">
+      <label class="property-label">${label}: <span id="${id}_value">${value}</span></label>
+      <input type="range" id="${id}" class="property-slider" value="${value || 0}" 
+             min="${min}" max="${max}" step="${step}">
+    </div>
+  `;
+}
+
+// Object-specific property builders
+function buildShapeProperties(shape, index) {
+  let html = '';
+  
+  // Fill Color
+  html += createColorInput('Fill Color', shape.fillColor, `shape_fillColor_${index}`);
+  
+  // Border Colors (multiple)
+  if (shape.borderColors) {
+    shape.borderColors.forEach((color, i) => {
+      html += createColorInput(`Border ${i + 1}`, hexToRgb(color), `shape_borderColor_${index}_${i}`);
+    });
+  }
+  
+  // Border Width
+  html += createNumberInput('Border Width', shape.borderWidth, `shape_borderWidth_${index}`, 0, 100, 1);
+  
+  return html;
+}
+
+function buildDynamicObjectProperties(obj, index) {
+  let html = '';
+  
+  // Basic Properties
+  html += createTextInput('ID', obj.id, `dynamic_id_${index}`, 'Object identifier');
+  
+  // Position
+  html += '<div class="property-group"><h5>Position</h5>';
+  html += createNumberInput('X', obj.position?.x, `dynamic_x_${index}`, -10000, 10000, 1);
+  html += createNumberInput('Y', obj.position?.y, `dynamic_y_${index}`, -10000, 10000, 1);
+  html += '</div>';
+  
+  // Size
+  html += '<div class="property-group"><h5>Size</h5>';
+  html += createNumberInput('Width', obj.size?.width, `dynamic_width_${index}`, 1, 1000, 1);
+  html += createNumberInput('Height', obj.size?.height, `dynamic_height_${index}`, 1, 1000, 1);
+  html += '</div>';
+  
+  // Shape Type
+  const shapeOptions = [
+    { value: 'rectangle', label: 'Rectangle' },
+    { value: 'circle', label: 'Circle' }
+  ];
+  html += createSelectInput('Shape', obj.shape, `dynamic_shape_${index}`, shapeOptions);
+  
+  // Physics Properties
+  html += '<div class="property-group"><h5>Physics</h5>';
+  html += createCheckboxInput('Static', obj.isStatic, `dynamic_isStatic_${index}`);
+  html += createSliderInput('Density', obj.density, `dynamic_density_${index}`, 0, 5, 0.01);
+  html += createSliderInput('Friction', obj.friction, `dynamic_friction_${index}`, 0, 2, 0.01);
+  html += createSliderInput('Air Friction', obj.frictionAir, `dynamic_frictionAir_${index}`, 0, 1, 0.01);
+  html += createSliderInput('Restitution', obj.restitution, `dynamic_restitution_${index}`, 0, 2, 0.01);
+  html += createSliderInput('Damage Scale', obj.damageScale, `dynamic_damageScale_${index}`, 0, 5, 0.01);
+  html += '</div>';
+  
+  // Visual Properties
+  html += '<div class="property-group"><h5>Appearance</h5>';
+  html += createColorInput('Fill Color', obj.fillColor, `dynamic_fillColor_${index}`);
+  html += createColorInput('Stroke Color', obj.strokeColor, `dynamic_strokeColor_${index}`);
+  html += createNumberInput('Stroke Width', obj.strokeWidth, `dynamic_strokeWidth_${index}`, 0, 20, 1);
+  html += '</div>';
+  
+  return html;
+}
+
+function buildCheckpointProperties(checkpoint, index) {
+  let html = '';
+  
+  html += createTextInput('ID', checkpoint.id, `checkpoint_id_${index}`, 'checkpoint-1');
+  
+  const typeOptions = [
+    { value: 'line', label: 'Line' },
+    { value: 'polygon', label: 'Polygon' }
+  ];
+  html += createSelectInput('Type', checkpoint.type, `checkpoint_type_${index}`, typeOptions);
+  
+  return html;
+}
+
+function buildAreaEffectProperties(area, index) {
+  let html = '';
+  
+  const effectOptions = [
+    { value: 'ice', label: 'Ice (Reduces Friction)' },
+    { value: 'boost', label: 'Boost (Speed Up)' },
+    { value: 'damage', label: 'Damage Zone' },
+    { value: 'slow', label: 'Slow Zone' }
+  ];
+  html += createSelectInput('Effect Type', area.effect, `area_effect_${index}`, effectOptions);
+  
+  html += createSliderInput('Strength', area.strength, `area_strength_${index}`, 0, 2, 0.01);
+  html += createColorInput('Fill Color', area.fillColor, `area_fillColor_${index}`);
+  
+  return html;
+}
+
+// Utility functions
+function rgbToHex(r, g, b) {
+  return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+}
+
+function hexToRgb(hex) {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? [
+    parseInt(result[1], 16),
+    parseInt(result[2], 16),
+    parseInt(result[3], 16)
+  ] : [128, 128, 128];
+}
+
+// Event handler attachment
+function attachPropertyEventListeners() {
+  // Color inputs
+  document.querySelectorAll('.color-input').forEach(input => {
+    input.addEventListener('input', handleColorChange);
+  });
+  
+  // Number inputs
+  document.querySelectorAll('.property-input[type="number"]').forEach(input => {
+    input.addEventListener('input', handleNumberChange);
+  });
+  
+  // Text inputs
+  document.querySelectorAll('.property-input[type="text"]').forEach(input => {
+    input.addEventListener('input', handleTextChange);
+  });
+  
+  // Checkboxes
+  document.querySelectorAll('.property-checkbox').forEach(input => {
+    input.addEventListener('change', handleCheckboxChange);
+  });
+  
+  // Select dropdowns
+  document.querySelectorAll('.property-input[type=""], .property-input:not([type])').forEach(input => {
+    if (input.tagName === 'SELECT') {
+      input.addEventListener('change', handleSelectChange);
+    }
+  });
+  
+  // Sliders
+  document.querySelectorAll('.property-slider').forEach(input => {
+    input.addEventListener('input', handleSliderChange);
+  });
+}
+
+// Property change event handlers
+function handleColorChange(event) {
+  const input = event.target;
+  const rgb = hexToRgb(input.value);
+  const idParts = input.id.split('_');
+  const objectType = idParts[0];
+  const property = idParts[1];
+  const index = parseInt(idParts[2]);
+  
+  const objectData = getSelectedObjectData();
+  if (!objectData) return;
+  
+  if (objectType === 'shape' && property === 'borderColor') {
+    const colorIndex = parseInt(idParts[3]);
+    if (objectData.borderColors && objectData.borderColors[colorIndex]) {
+      objectData.borderColors[colorIndex] = input.value;
+    }
+  } else {
+    // Regular color properties (fillColor, strokeColor)
+    objectData[property] = rgb;
+  }
+  
+  // Update preview color display
+  const preview = input.nextElementSibling;
+  if (preview && preview.classList.contains('color-preview')) {
+    preview.textContent = input.value;
+  }
+  
+  updateMapAndRender();
+}
+
+function handleNumberChange(event) {
+  const input = event.target;
+  const value = parseFloat(input.value);
+  const idParts = input.id.split('_');
+  const objectType = idParts[0];
+  const property = idParts[1];
+  const index = parseInt(idParts[2]);
+  
+  const objectData = getSelectedObjectData();
+  if (!objectData) return;
+  
+  // Handle nested properties
+  if (property === 'x' && objectData.position) {
+    objectData.position.x = value;
+  } else if (property === 'y' && objectData.position) {
+    objectData.position.y = value;
+  } else if (property === 'width' && objectData.size) {
+    objectData.size.width = value;
+  } else if (property === 'height' && objectData.size) {
+    objectData.size.height = value;
+  } else {
+    objectData[property] = value;
+  }
+  
+  updateMapAndRender();
+}
+
+function handleTextChange(event) {
+  const input = event.target;
+  const value = input.value;
+  const idParts = input.id.split('_');
+  const objectType = idParts[0];
+  const property = idParts[1];
+  const index = parseInt(idParts[2]);
+  
+  const objectData = getSelectedObjectData();
+  if (!objectData) return;
+  
+  objectData[property] = value;
+  updateMapAndRender();
+}
+
+function handleCheckboxChange(event) {
+  const input = event.target;
+  const value = input.checked;
+  const idParts = input.id.split('_');
+  const objectType = idParts[0];
+  const property = idParts[1];
+  const index = parseInt(idParts[2]);
+  
+  const objectData = getSelectedObjectData();
+  if (!objectData) return;
+  
+  objectData[property] = value;
+  updateMapAndRender();
+}
+
+function handleSelectChange(event) {
+  const input = event.target;
+  const value = input.value;
+  const idParts = input.id.split('_');
+  const objectType = idParts[0];
+  const property = idParts[1];
+  const index = parseInt(idParts[2]);
+  
+  const objectData = getSelectedObjectData();
+  if (!objectData) return;
+  
+  objectData[property] = value;
+  updateMapAndRender();
+}
+
+function handleSliderChange(event) {
+  const input = event.target;
+  const value = parseFloat(input.value);
+  const idParts = input.id.split('_');
+  const objectType = idParts[0];
+  const property = idParts[1];
+  const index = parseInt(idParts[2]);
+  
+  const objectData = getSelectedObjectData();
+  if (!objectData) return;
+  
+  objectData[property] = value;
+  
+  // Update value display
+  const valueDisplay = document.getElementById(`${input.id}_value`);
+  if (valueDisplay) {
+    valueDisplay.textContent = value.toFixed(2);
+  }
+  
+  updateMapAndRender();
+}
+
+function updateMapAndRender() {
+  updateMapDataInput();
+  renderEditor();
 }
 
 // Layers panel management
@@ -749,23 +1314,91 @@ async function saveMapToServer() {
     return;
   }
 
-  const mapName = prompt('Enter map name:');
-  if (!mapName) return;
+  // Show the save modal dialog
+  showSaveMapModal();
+}
 
+let saveModalHandleEnter = null;
+
+function showSaveMapModal() {
+  const modal = document.getElementById('saveMapModal');
+  const mapNameInput = document.getElementById('saveMapName');
+  const authorInput = document.getElementById('saveMapAuthor');
+  
+  // Reset form
+  mapNameInput.value = '';
+  authorInput.value = 'Bradzie';
+  document.getElementById('saveCommunity').checked = true;
+  
+  modal.classList.remove('hidden');
+  mapNameInput.focus();
+  
+  // Handle Enter key in form inputs
+  saveModalHandleEnter = (e) => {
+    if (e.key === 'Enter') {
+      confirmSaveMap();
+    }
+  };
+  
+  mapNameInput.addEventListener('keydown', saveModalHandleEnter);
+  authorInput.addEventListener('keydown', saveModalHandleEnter);
+}
+
+function closeSaveMapModal() {
+  const modal = document.getElementById('saveMapModal');
+  modal.classList.add('hidden');
+  
+  // Remove event listeners
+  if (saveModalHandleEnter) {
+    const mapNameInput = document.getElementById('saveMapName');
+    const authorInput = document.getElementById('saveMapAuthor');
+    mapNameInput.removeEventListener('keydown', saveModalHandleEnter);
+    authorInput.removeEventListener('keydown', saveModalHandleEnter);
+    saveModalHandleEnter = null;
+  }
+}
+
+async function confirmSaveMap() {
+  const mapName = document.getElementById('saveMapName').value.trim();
+  const author = document.getElementById('saveMapAuthor').value.trim();
+  const directory = document.querySelector('input[name="saveDirectory"]:checked').value;
+  
+  if (!mapName) {
+    alert('Please enter a map name');
+    return;
+  }
+  
+  if (!author) {
+    alert('Please enter an author name');
+    return;
+  }
+  
+  closeSaveMapModal();
+  
   try {
+    // Add author and metadata to map data
+    const enhancedMapData = {
+      ...editorMap,
+      displayName: mapName,
+      author: author,
+      created_at: editorMap.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    
     const response = await fetch('/api/maps', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
-        name: mapName, 
-        mapData: editorMap 
+        name: mapName,
+        directory: directory,
+        mapData: enhancedMapData 
       })
     });
 
     const result = await response.json();
     
     if (result.success) {
-      alert('Map saved successfully!');
+      alert(`Map saved successfully to ${directory} directory!`);
       loadMapsList();
     } else {
       alert('Failed to save map: ' + result.error);
@@ -846,3 +1479,5 @@ function resizeEditorCanvas() {
 // Expose global functions
 window.initMapEditor = initMapEditor;
 window.selectObject = selectObject;
+window.closeSaveMapModal = closeSaveMapModal;
+window.confirmSaveMap = confirmSaveMap;

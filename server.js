@@ -87,38 +87,52 @@ app.post('/api/maps', async (req, res) => {
   }
 
   try {
-    const { name, mapData } = req.body;
+    const { name, mapData, directory } = req.body;
     
     if (!name || !mapData) {
       return res.status(400).json({ error: 'Name and map data are required' });
     }
 
-    // Generate unique filename
-    const sanitizedName = name.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
-    const timestamp = Date.now();
-    const filename = `${req.session.userId}_${sanitizedName}_${timestamp}`;
+    // Validate directory parameter
+    const targetDirectory = directory || 'community';
+    if (!['official', 'community'].includes(targetDirectory)) {
+      return res.status(400).json({ error: 'Invalid directory. Must be "official" or "community"' });
+    }
+
+    // Generate filename based on directory choice
+    let filename;
+    if (targetDirectory === 'official') {
+      // For official maps, use simple name-based filename
+      filename = name.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
+    } else {
+      // For community maps, use unique filename with user ID
+      const sanitizedName = name.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
+      const timestamp = Date.now();
+      filename = `${req.session.userId}_${sanitizedName}_${timestamp}`;
+    }
     
     // Add metadata to map data
     const enhancedMapData = {
       ...mapData,
       displayName: name,
-      author: req.session.username,
+      author: mapData.author || req.session.username,
       author_id: req.session.userId,
-      created_at: new Date().toISOString(),
-      category: 'community'
+      created_at: mapData.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      category: targetDirectory
     };
 
     // Save map file
-    const saved = mapManager.saveMap(filename, 'community', enhancedMapData);
+    const saved = mapManager.saveMap(filename, targetDirectory, enhancedMapData);
     if (!saved) {
       return res.status(500).json({ error: 'Failed to save map' });
     }
 
     // Add to database
-    const dbResult = userDb.addMap(name, req.session.userId, filename, 'community');
+    const dbResult = userDb.addMap(name, req.session.userId, filename, targetDirectory);
     if (!dbResult.success) {
       // Cleanup file if database insert failed
-      mapManager.deleteMap(filename, 'community');
+      mapManager.deleteMap(filename, targetDirectory);
       return res.status(500).json({ error: dbResult.error });
     }
 
