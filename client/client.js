@@ -146,7 +146,7 @@
   // Get references to car card template elements
   const carRadioInput = document.querySelector('input[name="car"]');
   const carName = document.getElementById('carName');
-  const carPolygon = document.getElementById('carPolygon');
+  const carShape = document.getElementById('carShape');
   const speedFill = document.getElementById('speedFill');
   const healthFill = document.getElementById('healthFill');
   const handlingFill = document.getElementById('handlingFill');
@@ -1479,12 +1479,20 @@
     carRadioInput.value = carType;
     carName.textContent = car.displayName || carType;
     
-    // Update car visual
-    const points = car.shape.vertices.map(v => `${v.x * 1.5},${-v.y * 1.5}`).join(' ');
-    carPolygon.setAttribute('points', points);
-    carPolygon.setAttribute('fill', `rgb(${car.color.fill.join(',')})`);
-    carPolygon.setAttribute('stroke', `rgb(${car.color.stroke.join(',')})`);
-    carPolygon.setAttribute('stroke-width', car.color.strokeWidth || 2);
+    // Update car visual - clear existing shapes and add new ones
+    carShape.innerHTML = '';
+    car.shapes.forEach((shape, index) => {
+      const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      const points = shape.vertices.map(v => `${v.x * 1.5},${-v.y * 1.5}`).join(' ');
+      const shapeColor = shape.color || car.color;
+      
+      polygon.setAttribute('points', points);
+      polygon.setAttribute('fill', `rgb(${shapeColor.fill.join(',')})`);
+      polygon.setAttribute('stroke', `rgb(${shapeColor.stroke.join(',')})`);
+      polygon.setAttribute('stroke-width', shapeColor.strokeWidth || 2);
+      
+      carShape.appendChild(polygon);
+    });
     
     // Update stat bars
     speedFill.style.width = `${car.displaySpeed}%`;
@@ -3061,51 +3069,81 @@
         }
       }
       
-      // Get vertices - either from player object or look up from CAR_TYPES
-      let vertices = p.vertices;
-      if (!vertices && p.type && CAR_TYPES[p.type]) {
-        vertices = CAR_TYPES[p.type].shape.vertices;
-      }
-      
-      if (vertices && vertices.length) {
-        ctx.beginPath();
+      // Get car type definition
+      const carDef = CAR_TYPES[p.type];
+      if (!carDef) return;
+
+      // Check if this is a multi-shape car (always use CAR_TYPES rendering for multi-shape)
+      const isMultiShape = carDef.shapes && carDef.shapes.length > 1;
+      const useCAR_TYPESRendering = isMultiShape || !p.vertices || !p.vertices.length;
+
+      if (!useCAR_TYPESRendering) {
+        // Single-shape player mode - use server-provided rotated vertices
+        ctx.fillStyle = `rgb(${p.color.fill[0]},${p.color.fill[1]},${p.color.fill[2]})`;
+        ctx.strokeStyle = `rgb(${p.color.stroke[0]}, ${p.color.stroke[1]}, ${p.color.stroke[2]})`;
+        ctx.lineWidth = (p.color.strokeWidth || 2) * scale;
         
-        vertices.forEach((v, i) => {
-          // In spectator mode, vertices are from CAR_TYPES and need manual rotation
-          // In player mode, vertices are from body.vertices and are already rotated by Matter.js
-          let rotatedX, rotatedY;
-          if (mode === 'spectator' && p.angle !== undefined) {
-            // Apply manual rotation for spectator mode
-            const cos = Math.cos(p.angle);
-            const sin = Math.sin(p.angle);
-            rotatedX = v.x * cos - v.y * sin;
-            rotatedY = v.x * sin + v.y * cos;
-          } else {
-            // Use vertices as-is (already rotated by Matter.js in player mode)
-            rotatedX = v.x;
-            rotatedY = v.y;
-          }
-          
-          const x = (p.x + rotatedX - focusX) * scale;
-          const y = (p.y + rotatedY - focusY) * scale;
+        ctx.beginPath();
+        p.vertices.forEach((v, i) => {
+          const x = (p.x + v.x - focusX) * scale;
+          const y = (p.y + v.y - focusY) * scale;
           if (i === 0) ctx.moveTo(centerX + x, centerY - y);
           else ctx.lineTo(centerX + x, centerY - y);
         });
         ctx.closePath();
-        ctx.fillStyle = `rgb(${p.color.fill[0]},${p.color.fill[1]},${p.color.fill[2]})`;
         ctx.fill();
-      } else if (p.radius) {
-        ctx.beginPath();
-        ctx.arc(screenX, screenY, p.radius * scale, 0, 2 * Math.PI);
-        ctx.fillStyle = `rgb(${p.color.fill[0]},${p.color.fill[1]},${p.color.fill[2]})`;
-        ctx.fill();
-      }
-
-      if (p.color && p.color.stroke) {
-        ctx.strokeStyle = `rgb(${p.color.stroke[0]}, ${p.color.stroke[1]}, ${p.color.stroke[2]})`;
-        ctx.lineWidth = (p.color.strokeWidth || 2) * scale;
-        ctx.lineJoin = 'round';
-        ctx.stroke();
+        
+        if (p.color && p.color.stroke) {
+          ctx.lineJoin = 'round';
+          ctx.stroke();
+        }
+      } else {
+        // Multi-shape or spectator mode - use CAR_TYPES and manual rotation
+        // Render each shape directly using original vertices (server handles positioning)
+        carDef.shapes.forEach((shape, shapeIndex) => {
+          // Use shape-specific color if available, otherwise use car default
+          const shapeColor = shape.color || carDef.color;
+          
+          ctx.fillStyle = `rgba(${shapeColor.fill.join(',')}, ${ctx.globalAlpha || 1})`;
+          ctx.strokeStyle = `rgba(${shapeColor.stroke.join(',')}, ${ctx.globalAlpha || 1})`;
+          ctx.lineWidth = shapeColor.strokeWidth || 2;
+          
+          const vertices = shape.vertices;
+          if (vertices && vertices.length) {
+            ctx.beginPath();
+            
+            vertices.forEach((v, i) => {
+              // Flip X coordinate to correct mirrored rendering for multi-shape cars
+              const flippedX = -v.x;
+              const originalY = v.y;
+              
+              // Apply rotation to flipped coordinates
+              let rotatedX, rotatedY;
+              if (p.angle !== undefined) {
+                const cos = Math.cos(p.angle);
+                const sin = Math.sin(p.angle);
+                rotatedX = flippedX * cos - originalY * sin;
+                rotatedY = flippedX * sin + originalY * cos;
+              } else {
+                rotatedX = flippedX;
+                rotatedY = originalY;
+              }
+            
+              const x = (p.x + rotatedX - focusX) * scale;
+              const y = (p.y + rotatedY - focusY) * scale;
+              if (i === 0) ctx.moveTo(centerX + x, centerY - y);
+              else ctx.lineTo(centerX + x, centerY - y);
+            });
+            ctx.closePath();
+            ctx.fill();
+            
+            // Apply stroke for this shape
+            if (shapeColor.stroke) {
+              ctx.lineJoin = 'round';
+              ctx.stroke();
+            }
+          }
+        });
       }
 
       ctx.restore();

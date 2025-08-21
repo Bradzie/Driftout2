@@ -645,14 +645,73 @@ class Car {
       ...(def.bodyOptions || {}),
       label: `car-${this.id}`
     }
-  if (def.shape && def.shape.vertices.length > 2) {
-    this.body = Matter.Bodies.fromVertices(
-      startPos.x,
-      startPos.y,
-      [def.shape.vertices],
-      bodyOpts,
-      false
-    )
+  if (def.shapes && def.shapes.length > 0) {
+    if (def.shapes.length === 1) {
+      // Single shape - use simple body
+      const shape = def.shapes[0]
+      const shapeBodyOpts = {
+        ...bodyOpts,
+        ...(shape.bodyOptions || {})
+      }
+      this.body = Matter.Bodies.fromVertices(
+        startPos.x,
+        startPos.y,
+        [shape.vertices],
+        shapeBodyOpts,
+        false
+      )
+    } else {
+      // Multiple shapes - create compound body
+      // First, calculate the overall center of mass for all shapes combined
+      let totalArea = 0;
+      let centerX = 0;
+      let centerY = 0;
+      
+      def.shapes.forEach(shape => {
+        // Calculate centroid of this shape
+        const centroid = Matter.Vertices.centre(shape.vertices);
+        // Rough area calculation for weighting (using bounding box area)
+        const bounds = Matter.Bounds.create(shape.vertices);
+        const area = (bounds.max.x - bounds.min.x) * (bounds.max.y - bounds.min.y);
+        
+        centerX += centroid.x * area;
+        centerY += centroid.y * area;
+        totalArea += area;
+      });
+      
+      // Overall center of mass
+      const overallCenter = { x: centerX / totalArea, y: centerY / totalArea };
+      const bodies = def.shapes.map((shape, index) => {
+        // Calculate where this shape should be positioned relative to the overall center
+        const shapeCentroid = Matter.Vertices.centre(shape.vertices);
+        const offsetX = shapeCentroid.x - overallCenter.x;
+        const offsetY = shapeCentroid.y - overallCenter.y;
+        
+        const shapePosition = {
+          x: startPos.x + offsetX,
+          y: startPos.y + offsetY
+        };
+        
+        const shapeBodyOpts = {
+          ...bodyOpts,
+          ...(shape.bodyOptions || {}),
+          label: `car-${this.id}-shape-${index}`
+        }
+        return Matter.Bodies.fromVertices(
+          shapePosition.x,
+          shapePosition.y,
+          [shape.vertices],
+          shapeBodyOpts,
+          false
+        )
+      })
+      this.body = Matter.Body.create({
+        parts: bodies,
+        ...bodyOpts,
+        label: `car-${this.id}`
+      })
+      
+    }
     this.displaySize = 15 // used for rendering hud around car (health bars, etc.)
   }
     Matter.Body.setAngle(this.body, 0);
@@ -967,11 +1026,37 @@ class Room {
     
         const isCarA = bodyA.label?.startsWith?.('car-')
         const isCarB = bodyB.label?.startsWith?.('car-')
+        
         const isSpikeA = bodyA.label === 'spike-trap'
         const isSpikeB = bodyB.label === 'spike-trap'
     
-        const carA = isCarA ? [...this.players.values()].find(c => c.body === bodyA) : null
-        const carB = isCarB ? [...this.players.values()].find(c => c.body === bodyB) : null
+        // For compound bodies, we need to find the main car body from shape parts
+        const findCarFromBody = (body) => {
+          // First try direct match
+          let car = [...this.players.values()].find(c => c.body === body)
+          if (car) {
+            return car
+          }
+          
+          // If not found, check if this is a shape part of a compound body
+          if (body.label?.includes('car-') && body.label?.includes('shape-')) {
+            // Extract car ID from shape label (e.g., "car-d0a4f375-7638-49d7-a851-c0b8e8bed711-shape-0")
+            // Remove "car-" prefix and "-shape-X" suffix to get the full UUID
+            const match = body.label.match(/^car-(.+)-shape-\d+$/)
+            if (match) {
+              const carId = match[1]
+              car = [...this.players.values()].find(c => c.id.toString() === carId)
+              if (car) {
+                return car
+              }
+            }
+          }
+          
+          return null
+        }
+    
+        const carA = isCarA ? findCarFromBody(bodyA) : null
+        const carB = isCarB ? findCarFromBody(bodyB) : null
     
         // Handle spike trap collisions (ignore owner completely)
         if (isSpikeA && carB) {
@@ -994,9 +1079,14 @@ class Room {
         // Handle collisions (only if not ghost and not spike traps)
         if (!isSpikeA && !isSpikeB) {
           // Calculate relative velocity for velocity-based damage
-          const relativeVelocityX = bodyA.velocity.x - bodyB.velocity.x;
-          const relativeVelocityY = bodyA.velocity.y - bodyB.velocity.y;
+          // For compound bodies, use the main car body velocity instead of shape part velocity
+          const bodyAVel = carA ? carA.body.velocity : bodyA.velocity;
+          const bodyBVel = carB ? carB.body.velocity : bodyB.velocity;
+          
+          const relativeVelocityX = bodyAVel.x - bodyBVel.x;
+          const relativeVelocityY = bodyAVel.y - bodyBVel.y;
           const relativeSpeed = Math.sqrt(relativeVelocityX * relativeVelocityX + relativeVelocityY * relativeVelocityY);
+          
           
           // Apply mutual collision damage with overflow mechanics
           if (carA && carB && !carA.isGhost && !carB.isGhost) {
@@ -1397,14 +1487,16 @@ class Room {
         maxLaps: car.maxLaps,
         upgradePoints: car.upgradePoints,
         upgradeUsage: car.upgradeUsage,
-        color: CAR_TYPES[car.type].color,
-        shape: CAR_TYPES[car.type].shape,
         name: car.name,
         checkpointsVisited: Array.from(car.checkpointsVisited),
-        vertices: car.body.vertices.map(v => ({
-          x: v.x - pos.x,
-          y: v.y - pos.y
-        })),
+        // Only send vertices and color for single-shape cars (backward compatibility)
+        ...((CAR_TYPES[car.type]?.shapes?.length === 1) ? {
+          color: CAR_TYPES[car.type].color,
+          vertices: car.body.vertices.map(v => ({
+            x: v.x - pos.x,
+            y: v.y - pos.y
+          }))
+        } : {}),
         abilityCooldownReduction: car.abilityCooldownReduction || 0,
         crashed: car.justCrashed || false,
         crashedAt: car.crashedAt || null,
