@@ -14,7 +14,7 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 // Debug mode - toggle this to enable/disable admin panel
-const DEBUG_MODE = true;
+const DEBUG_MODE = false;
 
 // Initialize database
 const userDb = new UserDatabase();

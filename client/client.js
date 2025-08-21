@@ -420,9 +420,19 @@
     menu.classList.remove('hidden');
     toolbarBackBtn.classList.add('hidden'); // Hide back button when leaving map editor
     
-    // Connect to official room in spectator mode
-    if (!socket || !socket.connected) {
+    // Always attempt to connect to official room when returning from map editor
+    try {
+      // Disconnect current connection if it exists
+      if (socket && socket.connected) {
+        socket.disconnect();
+      }
+      
+      // Connect to official room in spectator mode
       connectToRoom('official');
+    } catch (error) {
+      console.error('Failed to reconnect to official room:', error);
+      // Show disconnect warning if connection fails
+      showMenuDisconnectionWarning();
     }
   }
 
@@ -2487,6 +2497,8 @@
     carCard.style.display = 'none';
     switchButton.style.display = 'none';
     joinButton.style.display = 'none';
+    roomBrowserButton.style.display = 'none'; // Hide Browse Rooms button
+    mapEditorButton.style.display = 'none'; // Hide Map Editor button
     
     // Show the menu disconnection warning template
     menuDisconnectionWarning.classList.remove('hidden');
@@ -2497,6 +2509,8 @@
     carCard.style.display = 'block';
     switchButton.style.display = 'block';
     joinButton.style.display = 'block';
+    roomBrowserButton.style.display = 'block'; // Show Browse Rooms button
+    mapEditorButton.style.display = 'block'; // Show Map Editor button
     
     // Hide the warning template
     menuDisconnectionWarning.classList.add('hidden');

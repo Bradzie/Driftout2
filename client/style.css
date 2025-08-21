@@ -514,6 +514,9 @@ html, body {
   backdrop-filter: blur(5px);
   z-index: 2000;
   font-family: Arial, sans-serif;
+  /* Override default overlay centering to position below title */
+  align-items: flex-start;
+  padding-top: 25vh; /* Position below the DRIFTZ.IO title */
 }
 
 .disconnect-content {
@@ -523,6 +526,9 @@ html, body {
   border-radius: 10px;
   border: 2px solid #ff5f5f;
   font-family: Arial, sans-serif;
+  max-width: 500px; /* Limit width for better readability */
+  width: 90%; /* Responsive width */
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3); /* Add shadow for better visibility */
 }
 
 .disconnect-title {
@@ -2435,7 +2441,7 @@ input[type="number"]:focus {
   left: 0;
   width: 100%;
   height: 80px;
-  z-index: 499;
+  z-index: 2000;
   pointer-events: none;
 }
 
@@ -2451,7 +2457,7 @@ input[type="number"]:focus {
   align-items: center;
   justify-content: space-between;
   padding: 0 20px;
-  z-index: 500;
+  z-index: 2001;
   transform: translateY(-100%);
   transition: transform 0.3s ease-out;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
@@ -2553,8 +2559,22 @@ input[type="number"]:focus {
     gap: 10px;
   }
   
-.toolbar-hover-zone {
+  .toolbar-hover-zone {
     height: 60px;
+  }
+  
+  /* Mobile disconnect overlay adjustments */
+  .disconnect-overlay {
+    padding-top: 15vh; /* Less top padding on mobile */
+  }
+  
+  .disconnect-content {
+    padding: 25px; /* Reduced padding on mobile */
+    width: 95%; /* More width on mobile */
+  }
+  
+  .disconnect-title {
+    font-size: 1.5em; /* Smaller title on mobile */
   }
 }
 
