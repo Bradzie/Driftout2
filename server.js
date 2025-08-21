@@ -290,8 +290,20 @@ app.post('/api/rooms/create', express.json(), (req, res) => {
     if (name && name.length > 50) {
       return res.status(400).json({ error: 'Room name too long' });
     }
-    if (mapKey && !mapManager.mapExists(mapKey)) {
-      return res.status(400).json({ error: 'Invalid map' });
+    if (mapKey) {
+      // Parse category/key format if present
+      let keyToCheck = mapKey;
+      let categoryToCheck = null;
+      
+      if (mapKey.includes('/')) {
+        const parts = mapKey.split('/');
+        categoryToCheck = parts[0];
+        keyToCheck = parts[1];
+      }
+      
+      if (!mapManager.mapExists(keyToCheck, categoryToCheck)) {
+        return res.status(400).json({ error: 'Invalid map' });
+      }
     }
     if (maxPlayers && (maxPlayers < 1 || maxPlayers > 16)) {
       return res.status(400).json({ error: 'Invalid max players (1-16)' });

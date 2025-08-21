@@ -401,9 +401,12 @@
           </div>
           <div class="form-row">
             <label class="form-label">Map</label>
-            <select id="createRoomMap" class="form-select">
-              <option value="">Loading maps...</option>
-            </select>
+            <div class="map-selection">
+              <div id="selectedMapDisplay" class="selected-map-display">
+                <span class="no-map-selected">No map selected</span>
+              </div>
+              <button type="button" id="browseMapButton" class="browse-map-button">Browse Maps</button>
+            </div>
           </div>
           <div class="form-row">
             <label class="form-label">Max Players: <span id="maxPlayersValue">8</span></label>

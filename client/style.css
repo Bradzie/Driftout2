@@ -1808,6 +1808,76 @@ input[type="number"]:focus {
   transform: translateY(-2px);
 }
 
+/* Map Selection Styles */
+.map-selection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.selected-map-display {
+  min-height: 44px;
+  border: 2px solid #555;
+  background: #1a1a1a;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.selected-map-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.selected-map-name {
+  font-weight: 600;
+  color: #4CAF50;
+}
+
+.no-map-selected {
+  color: #888;
+  font-style: italic;
+}
+
+.browse-map-button {
+  padding: 12px 20px;
+  background: #4CAF50;
+  color: white;
+  border: none;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.browse-map-button:hover {
+  background: #45a049;
+  transform: translateY(-1px);
+}
+
+.clear-map-btn {
+  background: #ff4444;
+  border: none;
+  color: white;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease;
+}
+
+.clear-map-btn:hover {
+  background: #cc3333;
+}
+
 /* Custom scrollbar for room browser */
 .room-browser-body::-webkit-scrollbar {
   width: 8px;

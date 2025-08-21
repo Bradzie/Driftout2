@@ -133,7 +133,8 @@
   const createRoomModal = document.getElementById('createRoomModal');
   const createRoomCloseBtn = document.getElementById('createRoomCloseBtn');
   const createRoomName = document.getElementById('createRoomName');
-  const createRoomMap = document.getElementById('createRoomMap');
+  const selectedMapDisplay = document.getElementById('selectedMapDisplay');
+  const browseMapButton = document.getElementById('browseMapButton');
   const createRoomMaxPlayers = document.getElementById('createRoomMaxPlayers');
 
   // Map editor elements
@@ -613,6 +614,7 @@
   // Create room modal event listeners
   createRoomCloseBtn.addEventListener('click', closeCreateRoomModal);
   createRoomButton.addEventListener('click', handleCreateRoom);
+  browseMapButton.addEventListener('click', openMapBrowserForRoom);
 
   // Map editor button
   mapEditorButton.addEventListener('click', () => {
@@ -640,6 +642,28 @@
       closeCreateRoomModal();
     }
   });
+  
+  // Close browse map modal when clicking outside or ESC
+  const browseMapModal = document.getElementById('browseMapModal');
+  const closeBrowseModalBtn = document.getElementById('closeBrowseModal');
+  
+  if (browseMapModal && closeBrowseModalBtn) {
+    closeBrowseModalBtn.addEventListener('click', () => {
+      browseMapModal.classList.add('hidden');
+    });
+    
+    browseMapModal.addEventListener('click', (e) => {
+      if (e.target === browseMapModal) {
+        browseMapModal.classList.add('hidden');
+      }
+    });
+    
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !browseMapModal.classList.contains('hidden')) {
+        browseMapModal.classList.add('hidden');
+      }
+    });
+  }
   
   // Update max players value display
   createRoomMaxPlayers.addEventListener('input', (e) => {
@@ -1146,11 +1170,11 @@
   let roomsRefreshInterval = null;
   let availableMaps = [];
   let availableRooms = [];
+  let selectedMapForRoom = null; // Track selected map for room creation
   
   // Room browser functions
   function openRoomBrowser() {
     roomBrowserModal.classList.remove('hidden');
-    loadMaps();
     loadRooms();
     
     // Start auto-refresh
@@ -1173,7 +1197,9 @@
   // Create room modal functions
   function openCreateRoomModal() {
     createRoomModal.classList.remove('hidden');
-    loadMaps(); // Load maps when opening create room modal
+    // Reset selected map
+    selectedMapForRoom = null;
+    updateSelectedMapDisplay();
     document.getElementById('createRoomName').focus();
   }
   
@@ -1181,33 +1207,75 @@
     createRoomModal.classList.add('hidden');
   }
   
-  async function loadMaps() {
-    try {
-      const response = await fetch('/api/maps');
-      if (!response.ok) throw new Error('Failed to load maps');
-      
-      availableMaps = await response.json();
-      
-      // Populate map dropdown
-      createRoomMap.innerHTML = '';
-      availableMaps.forEach(map => {
-        const option = document.createElement('option');
-        option.value = map.key;
-        option.textContent = map.name || map.key;
-        if (map.description) {
-          option.title = map.description;
-        }
-        createRoomMap.appendChild(option);
+  function openMapBrowserForRoom() {
+    const modal = document.getElementById('browseMapModal');
+    modal.classList.remove('hidden');
+    
+    // Load and display maps for room creation
+    fetch('/api/maps')
+      .then(res => res.json())
+      .then(maps => {
+        displayMapsForRoomCreation(maps);
+      })
+      .catch(error => {
+        console.error('Error loading maps:', error);
+        document.getElementById('mapsGrid').innerHTML = '<p>Error loading maps</p>';
       });
+  }
+  
+  function displayMapsForRoomCreation(maps) {
+    const grid = document.getElementById('mapsGrid');
+    
+    grid.innerHTML = maps.map(map => {
+      const author = map.key.includes('official/') ? 'Official' : 'Community';
+      const category = map.category || author;
       
-      // Select first map by default
-      if (availableMaps.length > 0) {
-        createRoomMap.value = availableMaps[0].key;
-      }
-    } catch (error) {
-      console.error('Failed to load maps:', error);
+      return `
+        <div class="map-entry" data-map-key="${map.key}">
+          <div class="map-preview">
+            <div class="no-preview">No preview</div>
+          </div>
+          <div class="map-info">
+            <h4 class="map-name">${map.name}</h4>
+            <p class="map-author">Author: ${author}</p>
+            <p class="map-category">Category: ${category}</p>
+            <button class="select-map-btn" onclick="selectMapForRoom('${map.key}', '${map.name}')">Select</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+  
+  function selectMapForRoom(key, name) {
+    selectedMapForRoom = { key, name };
+    updateSelectedMapDisplay();
+    
+    // Close the browse modal
+    document.getElementById('browseMapModal').classList.add('hidden');
+  }
+  
+  function updateSelectedMapDisplay() {
+    if (selectedMapForRoom) {
+      selectedMapDisplay.innerHTML = `
+        <div class="selected-map-info">
+          <span class="selected-map-name">${selectedMapForRoom.name}</span>
+          <button type="button" class="clear-map-btn" onclick="clearSelectedMap()">×</button>
+        </div>
+      `;
+    } else {
+      selectedMapDisplay.innerHTML = '<span class="no-map-selected">No map selected</span>';
     }
   }
+  
+  function clearSelectedMap() {
+    selectedMapForRoom = null;
+    updateSelectedMapDisplay();
+  }
+  
+  // Expose functions globally for HTML onclick handlers
+  window.selectMapForRoom = selectMapForRoom;
+  window.clearSelectedMap = clearSelectedMap;
+  
   
   async function loadRooms() {
     try {
@@ -1285,13 +1353,18 @@
   
   async function handleCreateRoom() {
     const roomName = createRoomName.value.trim();
-    const mapKey = createRoomMap.value;
+    const mapKey = selectedMapForRoom?.key;
     const maxPlayers = parseInt(createRoomMaxPlayers.value);
     const isPrivate = createRoomPrivate.checked;
     
     // Validation
     if (!roomName) {
       alert('Please enter a room name');
+      return;
+    }
+    
+    if (!selectedMapForRoom) {
+      alert('Please select a map');
       return;
     }
     
@@ -1332,6 +1405,8 @@
       
       // Clear form
       createRoomName.value = '';
+      selectedMapForRoom = null;
+      updateSelectedMapDisplay();
       createRoomMaxPlayers.value = 8;
       maxPlayersValue.textContent = '8';
       createRoomPrivate.checked = false;

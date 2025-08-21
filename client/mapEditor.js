@@ -4,7 +4,8 @@ let editorMap = null;
 
 // State management
 let currentTool = 'select';
-let selectedObject = null;
+let selectedObjects = []; // Changed to array for multi-select
+let selectedObject = null; // Keep for backward compatibility
 let selectedVertex = null;
 let isDragging = false;
 let dragStartPos = null;
@@ -30,6 +31,20 @@ let lastMousePos = { x: 0, y: 0 };
 // Object creation state
 let creatingShape = false;
 let newShapeVertices = [];
+let creatingCheckpoint = false;
+let checkpointStartPoint = null;
+let creatingDynamic = false;
+let dynamicStartPoint = null;
+let creatingAreaEffect = false;
+let areaEffectVertices = [];
+
+// History management
+let historyStack = [];
+let historyIndex = -1;
+const MAX_HISTORY = 50;
+
+// Clipboard
+let clipboardObject = null;
 
 function initMapEditor() {
   editorCanvas = document.getElementById('mapEditorCanvas');
@@ -107,6 +122,18 @@ function selectTool(tool) {
     creatingShape = false;
     newShapeVertices = [];
   }
+  if (creatingCheckpoint) {
+    creatingCheckpoint = false;
+    checkpointStartPoint = null;
+  }
+  if (creatingDynamic) {
+    creatingDynamic = false;
+    dynamicStartPoint = null;
+  }
+  if (creatingAreaEffect) {
+    creatingAreaEffect = false;
+    areaEffectVertices = [];
+  }
 
   currentTool = tool;
   selectedObject = null;
@@ -148,7 +175,7 @@ function handleMouseDown(e) {
   if (e.button === 0) { // Left mouse button
     switch (currentTool) {
       case 'select':
-        handleSelectMouseDown(mousePos);
+        handleSelectMouseDown(mousePos, e.ctrlKey);
         break;
       case 'createShape':
         handleCreateShapeMouseDown(mousePos);
@@ -178,6 +205,8 @@ function handleMouseMove(e) {
     renderEditor();
     return;
   }
+  
+  lastMousePos = { x: e.clientX, y: e.clientY };
 
   if (isDragging && selectedVertex) {
     const snappedPos = snapToGridPos(mousePos);
@@ -227,11 +256,17 @@ function handleKeyDown(e) {
         creatingShape = false;
         newShapeVertices = [];
         renderEditor();
+      } else if (creatingAreaEffect) {
+        creatingAreaEffect = false;
+        areaEffectVertices = [];
+        renderEditor();
       }
       break;
     case 'Enter':
       if (creatingShape && newShapeVertices.length > 2) {
         finishCreatingShape();
+      } else if (creatingAreaEffect && areaEffectVertices.length > 2) {
+        finishCreatingAreaEffect();
       }
       break;
     case 'g':
@@ -250,24 +285,154 @@ function handleKeyDown(e) {
         snapToGrid = !snapToGrid;
       }
       break;
+    case 'z':
+    case 'Z':
+      if (e.ctrlKey && e.shiftKey) {
+        e.preventDefault();
+        redo();
+      } else if (e.ctrlKey) {
+        e.preventDefault();
+        undo();
+      }
+      break;
+    case 'y':
+    case 'Y':
+      if (e.ctrlKey) {
+        e.preventDefault();
+        redo();
+      }
+      break;
+    case 'c':
+    case 'C':
+      if (e.ctrlKey) {
+        e.preventDefault();
+        copySelectedObject();
+      }
+      break;
+    case 'v':
+    case 'V':
+      if (e.ctrlKey) {
+        e.preventDefault();
+        pasteObject();
+      }
+      break;
+    case 'a':
+    case 'A':
+      if (e.ctrlKey) {
+        e.preventDefault();
+        selectAllObjects();
+      } else {
+        selectTool('areaEffect');
+      }
+      break;
+    case 'd':
+    case 'D':
+      if (e.ctrlKey) {
+        e.preventDefault();
+        duplicateSelectedObject();
+      } else {
+        selectTool('dynamic');
+      }
+      break;
+    case '1':
+      selectTool('select');
+      break;
+    case '2':
+      selectTool('createShape');
+      break;
+    case '3':
+      selectTool('checkpoint');
+      break;
+    case '4':
+      selectTool('dynamic');
+      break;
+    case '5':
+      selectTool('areaEffect');
+      break;
+    case 'ArrowLeft':
+      if (e.ctrlKey) {
+        e.preventDefault();
+        alignSelectedObjects('left');
+      }
+      break;
+    case 'ArrowRight':
+      if (e.ctrlKey) {
+        e.preventDefault();
+        alignSelectedObjects('right');
+      }
+      break;
+    case 'ArrowUp':
+      if (e.ctrlKey) {
+        e.preventDefault();
+        alignSelectedObjects('top');
+      }
+      break;
+    case 'ArrowDown':
+      if (e.ctrlKey) {
+        e.preventDefault();
+        alignSelectedObjects('bottom');
+      }
+      break;
+    case 'PageUp':
+      if (e.ctrlKey) {
+        e.preventDefault();
+        moveToFront();
+      } else {
+        moveUp();
+      }
+      break;
+    case 'PageDown':
+      if (e.ctrlKey) {
+        e.preventDefault();
+        moveToBack();
+      } else {
+        moveDown();
+      }
+      break;
   }
 }
 
-function handleSelectMouseDown(mousePos) {
+function handleSelectMouseDown(mousePos, ctrlKey = false) {
   const clickedVertex = findVertexAtPosition(mousePos);
   const clickedObject = findObjectAtPosition(mousePos);
 
   if (clickedVertex) {
+    // Vertex manipulation takes precedence
     selectedVertex = clickedVertex.vertex;
     selectedObject = clickedVertex.object;
+    selectedObjects = [clickedVertex.object];
     isDragging = true;
     dragStartPos = mousePos;
   } else if (clickedObject) {
-    selectedObject = clickedObject;
+    if (ctrlKey) {
+      // Multi-select mode
+      const objIndex = selectedObjects.findIndex(obj => 
+        obj.type === clickedObject.type && obj.index === clickedObject.index
+      );
+      
+      if (objIndex >= 0) {
+        // Deselect if already selected
+        selectedObjects.splice(objIndex, 1);
+      } else {
+        // Add to selection
+        selectedObjects.push(clickedObject);
+      }
+      
+      // Update single selection for properties panel
+      selectedObject = selectedObjects.length === 1 ? selectedObjects[0] : null;
+    } else {
+      // Single select mode
+      selectedObject = clickedObject;
+      selectedObjects = [clickedObject];
+    }
     selectedVertex = null;
   } else {
-    selectedObject = null;
-    selectedVertex = null;
+    // Clicked on empty space
+    if (!ctrlKey) {
+      selectedObject = null;
+      selectedObjects = [];
+      selectedVertex = null;
+    }
   }
 
   updatePropertiesPanel();
@@ -288,15 +453,471 @@ function handleCreateShapeMouseDown(mousePos) {
 }
 
 function handleCreateCheckpointMouseDown(mousePos) {
-  // TODO: Implement checkpoint creation
+  if (!creatingCheckpoint) {
+    // Start creating checkpoint - first click
+    creatingCheckpoint = true;
+    checkpointStartPoint = { ...mousePos };
+  } else {
+    // Finish creating checkpoint - second click
+    const checkpoint = {
+      type: "line",
+      vertices: [
+        checkpointStartPoint,
+        { ...mousePos }
+      ],
+      id: generateCheckpointId()
+    };
+    
+    saveToHistory();
+    editorMap.checkpoints.push(checkpoint);
+    creatingCheckpoint = false;
+    checkpointStartPoint = null;
+    updateUI();
+    renderEditor();
+  }
 }
 
 function handleCreateDynamicMouseDown(mousePos) {
-  // TODO: Implement dynamic object creation
+  if (!creatingDynamic) {
+    // Start creating dynamic object - first click
+    creatingDynamic = true;
+    dynamicStartPoint = { ...mousePos };
+  } else {
+    // Finish creating dynamic object - second click
+    const width = Math.abs(mousePos.x - dynamicStartPoint.x);
+    const height = Math.abs(mousePos.y - dynamicStartPoint.y);
+    const centerX = (dynamicStartPoint.x + mousePos.x) / 2;
+    const centerY = (dynamicStartPoint.y + mousePos.y) / 2;
+    
+    const dynamicObject = {
+      id: generateDynamicId(),
+      vertices: [
+        { x: centerX - width/2, y: centerY - height/2 },
+        { x: centerX + width/2, y: centerY - height/2 },
+        { x: centerX + width/2, y: centerY + height/2 },
+        { x: centerX - width/2, y: centerY + height/2 }
+      ],
+      isStatic: false,
+      density: 0.3,
+      friction: 0.3,
+      frictionAir: 0.2,
+      restitution: 0.1,
+      damageScale: 0,
+      fillColor: [139, 69, 19],
+      strokeColor: [101, 67, 33],
+      strokeWidth: 4
+    };
+    
+    saveToHistory();
+    editorMap.dynamicObjects.push(dynamicObject);
+    creatingDynamic = false;
+    dynamicStartPoint = null;
+    updateUI();
+    renderEditor();
+  }
 }
 
 function handleCreateAreaEffectMouseDown(mousePos) {
-  // TODO: Implement area effect creation
+  const snappedPos = snapToGridPos(mousePos);
+  
+  if (!creatingAreaEffect) {
+    creatingAreaEffect = true;
+    areaEffectVertices = [];
+  }
+  
+  areaEffectVertices.push({ x: snappedPos.x, y: snappedPos.y });
+  renderEditor();
+}
+
+function generateCheckpointId() {
+  let id = 1;
+  while (editorMap.checkpoints.find(cp => cp.id === `checkpoint-${id}`)) {
+    id++;
+  }
+  return `checkpoint-${id}`;
+}
+
+function generateDynamicId() {
+  let id = 1;
+  while (editorMap.dynamicObjects.find(obj => obj.id === `dynamicBox${id}`)) {
+    id++;
+  }
+  return `dynamicBox${id}`;
+}
+
+// History management functions
+function saveToHistory() {
+  if (!editorMap) return;
+  
+  // Remove any redo history when we make a new change
+  historyStack.splice(historyIndex + 1);
+  
+  // Add current state to history
+  historyStack.push(JSON.parse(JSON.stringify(editorMap)));
+  
+  // Limit history size and adjust index accordingly
+  if (historyStack.length > MAX_HISTORY) {
+    historyStack.shift();
+    // Index stays the same since we removed from beginning
+  } else {
+    historyIndex++;
+  }
+}
+
+function undo() {
+  if (historyIndex > 0) {
+    historyIndex--;
+    editorMap = JSON.parse(JSON.stringify(historyStack[historyIndex]));
+    selectedObject = null;
+    selectedObjects = [];
+    selectedVertex = null;
+    updateUI();
+    renderEditor();
+  }
+}
+
+function redo() {
+  if (historyIndex < historyStack.length - 1) {
+    historyIndex++;
+    editorMap = JSON.parse(JSON.stringify(historyStack[historyIndex]));
+    selectedObject = null;
+    selectedObjects = [];
+    selectedVertex = null;
+    updateUI();
+    renderEditor();
+  }
+}
+
+// Copy/Paste functions
+function copySelectedObject() {
+  if (!selectedObject) return;
+  
+  const objectData = getSelectedObjectData();
+  if (objectData) {
+    clipboardObject = {
+      type: selectedObject.type,
+      data: JSON.parse(JSON.stringify(objectData))
+    };
+    console.log('Object copied to clipboard');
+  }
+}
+
+function pasteObject() {
+  if (!clipboardObject) return;
+  
+  saveToHistory();
+  
+  // Clone the object data
+  const pastedData = JSON.parse(JSON.stringify(clipboardObject.data));
+  
+  // Offset the position slightly to avoid overlap
+  const offset = 25;
+  if (pastedData.vertices && Array.isArray(pastedData.vertices)) {
+    pastedData.vertices.forEach(vertex => {
+      vertex.x += offset;
+      vertex.y += offset;
+    });
+  }
+  
+  // Generate new ID for dynamic objects and checkpoints
+  if (clipboardObject.type === 'dynamicObject') {
+    pastedData.id = generateDynamicId();
+  } else if (clipboardObject.type === 'checkpoint') {
+    pastedData.id = generateCheckpointId();
+  }
+  
+  // Add to appropriate array
+  switch (clipboardObject.type) {
+    case 'shape':
+      if (!editorMap.shapes) editorMap.shapes = [];
+      editorMap.shapes.push(pastedData);
+      break;
+    case 'dynamicObject':
+      if (!editorMap.dynamicObjects) editorMap.dynamicObjects = [];
+      editorMap.dynamicObjects.push(pastedData);
+      break;
+    case 'checkpoint':
+      if (!editorMap.checkpoints) editorMap.checkpoints = [];
+      editorMap.checkpoints.push(pastedData);
+      break;
+    case 'areaEffect':
+      if (!editorMap.areaEffects) editorMap.areaEffects = [];
+      editorMap.areaEffects.push(pastedData);
+      break;
+  }
+  
+  updateUI();
+  renderEditor();
+  console.log('Object pasted');
+}
+
+function selectAllObjects() {
+  selectedObjects = [];
+  
+  // Add all objects to selection
+  if (editorMap.shapes) {
+    editorMap.shapes.forEach((shape, index) => {
+      selectedObjects.push({ type: 'shape', index, data: shape });
+    });
+  }
+  
+  if (editorMap.checkpoints) {
+    editorMap.checkpoints.forEach((checkpoint, index) => {
+      selectedObjects.push({ type: 'checkpoint', index, data: checkpoint });
+    });
+  }
+  
+  if (editorMap.areaEffects) {
+    editorMap.areaEffects.forEach((area, index) => {
+      selectedObjects.push({ type: 'areaEffect', index, data: area });
+    });
+  }
+  
+  if (editorMap.dynamicObjects) {
+    editorMap.dynamicObjects.forEach((obj, index) => {
+      selectedObjects.push({ type: 'dynamicObject', index, data: obj });
+    });
+  }
+  
+  selectedObject = null; // Clear single selection for multi-select mode
+  selectedVertex = null;
+  updatePropertiesPanel();
+  updateLayersPanel();
+  renderEditor();
+}
+
+function duplicateSelectedObject() {
+  if (!selectedObject) return;
+  
+  // Copy the object to clipboard and paste it
+  copySelectedObject();
+  pasteObject();
+}
+
+// Alignment functions
+function alignSelectedObjects(alignment) {
+  if (selectedObjects.length < 2) return;
+  
+  saveToHistory();
+  
+  // Calculate bounds for alignment
+  let minX = Infinity, maxX = -Infinity;
+  let minY = Infinity, maxY = -Infinity;
+  let centerX = 0, centerY = 0;
+  
+  selectedObjects.forEach(obj => {
+    const objectData = getObjectData(obj);
+    if (objectData && objectData.vertices) {
+      objectData.vertices.forEach(vertex => {
+        minX = Math.min(minX, vertex.x);
+        maxX = Math.max(maxX, vertex.x);
+        minY = Math.min(minY, vertex.y);
+        maxY = Math.max(maxY, vertex.y);
+        centerX += vertex.x;
+        centerY += vertex.y;
+      });
+    }
+  });
+  
+  const totalVertices = selectedObjects.reduce((sum, obj) => {
+    const objectData = getObjectData(obj);
+    return sum + (objectData && objectData.vertices ? objectData.vertices.length : 0);
+  }, 0);
+  
+  centerX /= totalVertices;
+  centerY /= totalVertices;
+  
+  // Apply alignment
+  selectedObjects.forEach(obj => {
+    const objectData = getObjectData(obj);
+    if (!objectData || !objectData.vertices) return;
+    
+    // Calculate object center
+    let objCenterX = 0, objCenterY = 0;
+    objectData.vertices.forEach(vertex => {
+      objCenterX += vertex.x;
+      objCenterY += vertex.y;
+    });
+    objCenterX /= objectData.vertices.length;
+    objCenterY /= objectData.vertices.length;
+    
+    let offsetX = 0, offsetY = 0;
+    
+    switch (alignment) {
+      case 'left':
+        offsetX = minX - objCenterX;
+        break;
+      case 'right':
+        offsetX = maxX - objCenterX;
+        break;
+      case 'top':
+        offsetY = minY - objCenterY;
+        break;
+      case 'bottom':
+        offsetY = maxY - objCenterY;
+        break;
+      case 'centerH':
+        offsetX = centerX - objCenterX;
+        break;
+      case 'centerV':
+        offsetY = centerY - objCenterY;
+        break;
+    }
+    
+    // Apply offset to all vertices
+    objectData.vertices.forEach(vertex => {
+      vertex.x += offsetX;
+      vertex.y += offsetY;
+    });
+  });
+  
+  renderEditor();
+  updatePropertiesPanel();
+}
+
+function alignToGrid() {
+  if (selectedObjects.length === 0) return;
+  
+  saveToHistory();
+  
+  selectedObjects.forEach(obj => {
+    const objectData = getObjectData(obj);
+    if (!objectData || !objectData.vertices) return;
+    
+    objectData.vertices.forEach(vertex => {
+      vertex.x = Math.round(vertex.x / gridSize) * gridSize;
+      vertex.y = Math.round(vertex.y / gridSize) * gridSize;
+    });
+  });
+  
+  renderEditor();
+  updatePropertiesPanel();
+}
+
+function getObjectData(obj) {
+  switch (obj.type) {
+    case 'shape':
+      return editorMap.shapes?.[obj.index];
+    case 'checkpoint':
+      return editorMap.checkpoints?.[obj.index];
+    case 'areaEffect':
+      return editorMap.areaEffects?.[obj.index];
+    case 'dynamicObject':
+      return editorMap.dynamicObjects?.[obj.index];
+    default:
+      return null;
+  }
+}
+
+// Layer ordering functions
+function moveToFront() {
+  if (selectedObjects.length === 0) return;
+  
+  saveToHistory();
+  
+  selectedObjects.forEach(obj => {
+    const array = getObjectArray(obj.type);
+    if (!array || obj.index >= array.length) return;
+    
+    // Remove from current position and add to end
+    const objData = array.splice(obj.index, 1)[0];
+    array.push(objData);
+  });
+  
+  // Update indices for selected objects
+  updateSelectedObjectIndices();
+  updateLayersPanel();
+  renderEditor();
+}
+
+function moveToBack() {
+  if (selectedObjects.length === 0) return;
+  
+  saveToHistory();
+  
+  // Sort by index to maintain order when moving
+  const sortedObjects = selectedObjects.slice().sort((a, b) => a.index - b.index);
+  
+  sortedObjects.forEach((obj, i) => {
+    const array = getObjectArray(obj.type);
+    if (!array || obj.index >= array.length) return;
+    
+    // Remove from current position and add to beginning
+    const objData = array.splice(obj.index - i, 1)[0]; // Subtract i to account for previous removals
+    array.unshift(objData);
+  });
+  
+  // Update indices for selected objects
+  updateSelectedObjectIndices();
+  updateLayersPanel();
+  renderEditor();
+}
+
+function moveUp() {
+  if (selectedObjects.length === 0) return;
+  
+  saveToHistory();
+  
+  selectedObjects.forEach(obj => {
+    const array = getObjectArray(obj.type);
+    if (!array || obj.index >= array.length - 1) return;
+    
+    // Swap with next item
+    [array[obj.index], array[obj.index + 1]] = [array[obj.index + 1], array[obj.index]];
+    obj.index++; // Update selected object index
+  });
+  
+  updateLayersPanel();
+  renderEditor();
+}
+
+function moveDown() {
+  if (selectedObjects.length === 0) return;
+  
+  saveToHistory();
+  
+  selectedObjects.forEach(obj => {
+    const array = getObjectArray(obj.type);
+    if (!array || obj.index <= 0) return;
+    
+    // Swap with previous item
+    [array[obj.index], array[obj.index - 1]] = [array[obj.index - 1], array[obj.index]];
+    obj.index--; // Update selected object index
+  });
+  
+  updateLayersPanel();
+  renderEditor();
+}
+
+function getObjectArray(type) {
+  switch (type) {
+    case 'shape':
+      return editorMap.shapes;
+    case 'checkpoint':
+      return editorMap.checkpoints;
+    case 'areaEffect':
+      return editorMap.areaEffects;
+    case 'dynamicObject':
+      return editorMap.dynamicObjects;
+    default:
+      return null;
+  }
+}
+
+function updateSelectedObjectIndices() {
+  // Update indices in selected objects after array manipulations
+  selectedObjects.forEach(obj => {
+    const array = getObjectArray(obj.type);
+    if (!array) return;
+    
+    // Find new index of the object data
+    for (let i = 0; i < array.length; i++) {
+      if (array[i] === obj.data) {
+        obj.index = i;
+        break;
+      }
+    }
+  });
 }
 
 function findVertexAtPosition(pos, tolerance = 10) {
@@ -523,6 +1144,7 @@ function finishCreatingShape() {
     if (!editorMap.shapes) {
       editorMap.shapes = [];
     }
+    saveToHistory();
     editorMap.shapes.push({
       vertices: newShapeVertices,
       fillColor: [128, 128, 128],
@@ -537,25 +1159,58 @@ function finishCreatingShape() {
   renderEditor();
 }
 
-function deleteSelectedObject() {
-  if (!selectedObject) return;
-
-  switch (selectedObject.type) {
-    case 'shape':
-      editorMap.shapes.splice(selectedObject.index, 1);
-      break;
-    case 'checkpoint':
-      editorMap.checkpoints.splice(selectedObject.index, 1);
-      break;
-    case 'areaEffect':
-      editorMap.areaEffects.splice(selectedObject.index, 1);
-      break;
-    case 'dynamicObject':
-      editorMap.dynamicObjects.splice(selectedObject.index, 1);
-      break;
+function finishCreatingAreaEffect() {
+  if (areaEffectVertices.length > 2) {
+    if (!editorMap.areaEffects) {
+      editorMap.areaEffects = [];
+    }
+    saveToHistory();
+    editorMap.areaEffects.push({
+      vertices: areaEffectVertices,
+      effect: 'ice',
+      strength: 0.95,
+      fillColor: [173, 216, 230]
+    });
   }
+  
+  creatingAreaEffect = false;
+  areaEffectVertices = [];
+  selectTool('select');
+  renderEditor();
+}
+
+function deleteSelectedObject() {
+  if (selectedObjects.length === 0) return;
+  deleteSelectedObjects();
+}
+
+function deleteSelectedObjects() {
+  if (selectedObjects.length === 0) return;
+
+  saveToHistory();
+  
+  // Sort by index in reverse order to avoid index shifting issues
+  const sortedObjects = selectedObjects.slice().sort((a, b) => b.index - a.index);
+  
+  sortedObjects.forEach(obj => {
+    switch (obj.type) {
+      case 'shape':
+        editorMap.shapes.splice(obj.index, 1);
+        break;
+      case 'checkpoint':
+        editorMap.checkpoints.splice(obj.index, 1);
+        break;
+      case 'areaEffect':
+        editorMap.areaEffects.splice(obj.index, 1);
+        break;
+      case 'dynamicObject':
+        editorMap.dynamicObjects.splice(obj.index, 1);
+        break;
+    }
+  });
 
   selectedObject = null;
+  selectedObjects = [];
   selectedVertex = null;
   updatePropertiesPanel();
   updateLayersPanel();
@@ -584,28 +1239,32 @@ function renderEditor() {
   // Draw shapes
   if (Array.isArray(editorMap.shapes)) {
     editorMap.shapes.forEach((shape, index) => {
-      drawShape(shape, selectedObject?.type === 'shape' && selectedObject?.index === index);
+      const isSelected = selectedObjects.some(obj => obj.type === 'shape' && obj.index === index);
+      drawShape(shape, isSelected);
     });
   }
 
   // Draw checkpoints
   if (Array.isArray(editorMap.checkpoints)) {
     editorMap.checkpoints.forEach((checkpoint, index) => {
-      drawCheckpoint(checkpoint, selectedObject?.type === 'checkpoint' && selectedObject?.index === index);
+      const isSelected = selectedObjects.some(obj => obj.type === 'checkpoint' && obj.index === index);
+      drawCheckpoint(checkpoint, isSelected);
     });
   }
 
   // Draw area effects
   if (Array.isArray(editorMap.areaEffects)) {
     editorMap.areaEffects.forEach((area, index) => {
-      drawAreaEffect(area, selectedObject?.type === 'areaEffect' && selectedObject?.index === index);
+      const isSelected = selectedObjects.some(obj => obj.type === 'areaEffect' && obj.index === index);
+      drawAreaEffect(area, isSelected);
     });
   }
 
   // Draw dynamic objects
   if (Array.isArray(editorMap.dynamicObjects)) {
     editorMap.dynamicObjects.forEach((obj, index) => {
-      drawDynamicObject(obj, selectedObject?.type === 'dynamicObject' && selectedObject?.index === index);
+      const isSelected = selectedObjects.some(selectedObj => selectedObj.type === 'dynamicObject' && selectedObj.index === index);
+      drawDynamicObject(obj, isSelected);
     });
   }
 
@@ -617,6 +1276,21 @@ function renderEditor() {
   // Draw new shape being created
   if (creatingShape && newShapeVertices.length > 0) {
     drawNewShape();
+  }
+  
+  // Draw checkpoint being created
+  if (creatingCheckpoint && checkpointStartPoint) {
+    drawCheckpointPreview();
+  }
+  
+  // Draw dynamic object being created
+  if (creatingDynamic && dynamicStartPoint) {
+    drawDynamicPreview();
+  }
+  
+  // Draw area effect being created
+  if (creatingAreaEffect && areaEffectVertices.length > 0) {
+    drawNewAreaEffect();
   }
 
   editorCtx.restore();
@@ -830,14 +1504,45 @@ function drawStartArea(start) {
 }
 
 function drawNewShape() {
+  if (newShapeVertices.length === 0) return;
+  
+  // Draw filled preview if we have 3 or more vertices
+  if (newShapeVertices.length >= 3) {
+    editorCtx.fillStyle = 'rgba(128, 128, 128, 0.4)';
+    editorCtx.beginPath();
+    editorCtx.moveTo(newShapeVertices[0].x, -newShapeVertices[0].y);
+    for (let i = 1; i < newShapeVertices.length; i++) {
+      editorCtx.lineTo(newShapeVertices[i].x, -newShapeVertices[i].y);
+    }
+    editorCtx.closePath();
+    editorCtx.fill();
+  }
+  
+  // Draw outline
   editorCtx.strokeStyle = '#00ff00';
   editorCtx.lineWidth = 2 / zoom;
+  editorCtx.setLineDash([3 / zoom, 3 / zoom]);
+  
   editorCtx.beginPath();
   editorCtx.moveTo(newShapeVertices[0].x, -newShapeVertices[0].y);
   for (let i = 1; i < newShapeVertices.length; i++) {
     editorCtx.lineTo(newShapeVertices[i].x, -newShapeVertices[i].y);
   }
+  
+  // Draw preview line to close the shape if we have enough vertices
+  if (newShapeVertices.length >= 2) {
+    const mousePos = getMouseCanvasPos();
+    if (mousePos) {
+      editorCtx.lineTo(mousePos.x, -mousePos.y);
+      // Show closing line to first vertex
+      if (newShapeVertices.length >= 3) {
+        editorCtx.lineTo(newShapeVertices[0].x, -newShapeVertices[0].y);
+      }
+    }
+  }
+  
   editorCtx.stroke();
+  editorCtx.setLineDash([]);
 
   // Draw vertices being created
   drawVertices(newShapeVertices, '#00ff00');
@@ -854,10 +1559,213 @@ function drawVertices(vertices, color = '#ffff00') {
   });
 }
 
+function getMouseCanvasPos() {
+  // Get the current mouse position from the last known position
+  if (!lastMousePos) return null;
+  
+  const rect = editorCanvas.getBoundingClientRect();
+  const x = (lastMousePos.x - rect.left - editorCanvas.width / 2 - panX) / zoom;
+  const y = -(lastMousePos.y - rect.top - editorCanvas.height / 2 - panY) / zoom;
+  return { x, y };
+}
+
+function drawCheckpointPreview() {
+  const mousePos = getMouseCanvasPos();
+  if (!mousePos) return;
+  
+  // Calculate line direction and create a filled area perpendicular to it
+  const dx = mousePos.x - checkpointStartPoint.x;
+  const dy = mousePos.y - checkpointStartPoint.y;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  
+  if (length > 0) {
+    // Normalize the direction vector
+    const normalX = -dy / length; // Perpendicular direction
+    const normalY = dx / length;
+    
+    // Create a filled rectangular area showing the checkpoint zone
+    const thickness = 20; // Visual thickness of checkpoint zone
+    const offset = thickness / 2;
+    
+    // Calculate rectangle vertices
+    const p1x = checkpointStartPoint.x + normalX * offset;
+    const p1y = checkpointStartPoint.y + normalY * offset;
+    const p2x = checkpointStartPoint.x - normalX * offset;
+    const p2y = checkpointStartPoint.y - normalY * offset;
+    const p3x = mousePos.x - normalX * offset;
+    const p3y = mousePos.y - normalY * offset;
+    const p4x = mousePos.x + normalX * offset;
+    const p4y = mousePos.y + normalY * offset;
+    
+    // Draw filled area
+    editorCtx.fillStyle = 'rgba(0, 255, 0, 0.3)';
+    editorCtx.beginPath();
+    editorCtx.moveTo(p1x, -p1y);
+    editorCtx.lineTo(p2x, -p2y);
+    editorCtx.lineTo(p3x, -p3y);
+    editorCtx.lineTo(p4x, -p4y);
+    editorCtx.closePath();
+    editorCtx.fill();
+    
+    // Draw center line with dashed stroke
+    editorCtx.strokeStyle = '#00ff00';
+    editorCtx.lineWidth = 3 / zoom;
+    editorCtx.setLineDash([5 / zoom, 5 / zoom]);
+    
+    editorCtx.beginPath();
+    editorCtx.moveTo(checkpointStartPoint.x, -checkpointStartPoint.y);
+    editorCtx.lineTo(mousePos.x, -mousePos.y);
+    editorCtx.stroke();
+    
+    editorCtx.setLineDash([]);
+  }
+  
+  // Draw endpoints
+  editorCtx.fillStyle = '#00ff00';
+  editorCtx.beginPath();
+  editorCtx.arc(checkpointStartPoint.x, -checkpointStartPoint.y, 4 / zoom, 0, 2 * Math.PI);
+  editorCtx.fill();
+  
+  editorCtx.beginPath();
+  editorCtx.arc(mousePos.x, -mousePos.y, 4 / zoom, 0, 2 * Math.PI);
+  editorCtx.fill();
+}
+
+function drawDynamicPreview() {
+  const mousePos = getMouseCanvasPos();
+  if (!mousePos) return;
+  
+  const width = Math.abs(mousePos.x - dynamicStartPoint.x);
+  const height = Math.abs(mousePos.y - dynamicStartPoint.y);
+  const centerX = (dynamicStartPoint.x + mousePos.x) / 2;
+  const centerY = (dynamicStartPoint.y + mousePos.y) / 2;
+  
+  // Draw filled rectangle
+  editorCtx.fillStyle = 'rgba(139, 69, 19, 0.5)';
+  editorCtx.beginPath();
+  editorCtx.rect(centerX - width/2, -(centerY - height/2), width, -height);
+  editorCtx.fill();
+  
+  // Draw dashed border
+  editorCtx.strokeStyle = '#8b4513';
+  editorCtx.lineWidth = 2 / zoom;
+  editorCtx.setLineDash([5 / zoom, 5 / zoom]);
+  editorCtx.stroke();
+  editorCtx.setLineDash([]);
+  
+  // Draw dimensions text
+  editorCtx.fillStyle = '#8b4513';
+  editorCtx.font = `${12 / zoom}px Arial`;
+  editorCtx.textAlign = 'center';
+  const dimensionsText = `${width.toFixed(0)} × ${height.toFixed(0)}`;
+  editorCtx.fillText(dimensionsText, centerX, -(centerY - 8 / zoom));
+  
+  // Draw corner handles
+  editorCtx.fillStyle = '#8b4513';
+  const cornerSize = 6 / zoom;
+  
+  // Draw all four corners
+  const corners = [
+    [centerX - width/2, centerY - height/2],
+    [centerX + width/2, centerY - height/2],
+    [centerX + width/2, centerY + height/2],
+    [centerX - width/2, centerY + height/2]
+  ];
+  
+  corners.forEach(([x, y]) => {
+    editorCtx.fillRect(x - cornerSize/2, -y - cornerSize/2, cornerSize, cornerSize);
+  });
+  
+  // Draw center cross
+  editorCtx.strokeStyle = '#8b4513';
+  editorCtx.lineWidth = 1 / zoom;
+  editorCtx.beginPath();
+  editorCtx.moveTo(centerX - 8 / zoom, -centerY);
+  editorCtx.lineTo(centerX + 8 / zoom, -centerY);
+  editorCtx.moveTo(centerX, -(centerY - 8 / zoom));
+  editorCtx.lineTo(centerX, -(centerY + 8 / zoom));
+  editorCtx.stroke();
+}
+
+function drawNewAreaEffect() {
+  editorCtx.fillStyle = 'rgba(173, 216, 230, 0.5)';
+  editorCtx.strokeStyle = '#add8e6';
+  editorCtx.lineWidth = 2 / zoom;
+  editorCtx.setLineDash([3 / zoom, 3 / zoom]);
+  
+  if (areaEffectVertices.length > 2) {
+    // Draw filled polygon
+    editorCtx.beginPath();
+    editorCtx.moveTo(areaEffectVertices[0].x, -areaEffectVertices[0].y);
+    for (let i = 1; i < areaEffectVertices.length; i++) {
+      editorCtx.lineTo(areaEffectVertices[i].x, -areaEffectVertices[i].y);
+    }
+    editorCtx.closePath();
+    editorCtx.fill();
+    editorCtx.stroke();
+  } else {
+    // Draw line segments
+    editorCtx.beginPath();
+    editorCtx.moveTo(areaEffectVertices[0].x, -areaEffectVertices[0].y);
+    for (let i = 1; i < areaEffectVertices.length; i++) {
+      editorCtx.lineTo(areaEffectVertices[i].x, -areaEffectVertices[i].y);
+    }
+    editorCtx.stroke();
+  }
+  
+  editorCtx.setLineDash([]);
+  
+  // Draw vertices
+  drawVertices(areaEffectVertices, '#add8e6');
+}
+
 // Properties panel management
 function updatePropertiesPanel() {
   const panel = document.getElementById('propertiesPanel');
   
+  if (selectedObjects.length === 0) {
+    panel.innerHTML = '<p>Select an object to edit properties</p>';
+    return;
+  } else if (selectedObjects.length > 1) {
+    panel.innerHTML = `
+      <div class="property-form">
+        <h4>Multiple Objects Selected (${selectedObjects.length})</h4>
+        <p>Select a single object to edit properties</p>
+        
+        <div class="alignment-tools">
+          <h5>Alignment</h5>
+          <div class="alignment-buttons">
+            <button onclick="alignSelectedObjects('left')" title="Align Left">←</button>
+            <button onclick="alignSelectedObjects('centerH')" title="Center Horizontal">⊙</button>
+            <button onclick="alignSelectedObjects('right')" title="Align Right">→</button>
+          </div>
+          <div class="alignment-buttons">
+            <button onclick="alignSelectedObjects('top')" title="Align Top">↑</button>
+            <button onclick="alignSelectedObjects('centerV')" title="Center Vertical">⊕</button>
+            <button onclick="alignSelectedObjects('bottom')" title="Align Bottom">↓</button>
+          </div>
+          <div class="alignment-buttons">
+            <button onclick="alignToGrid()" title="Align to Grid">⊞</button>
+          </div>
+        </div>
+        
+        <div class="layer-tools">
+          <h5>Layer Order</h5>
+          <div class="layer-buttons">
+            <button onclick="moveToFront()" title="Bring to Front">⬆⬆</button>
+            <button onclick="moveUp()" title="Move Up">⬆</button>
+            <button onclick="moveDown()" title="Move Down">⬇</button>
+            <button onclick="moveToBack()" title="Send to Back">⬇⬇</button>
+          </div>
+        </div>
+        
+        <button onclick="deleteSelectedObjects()" class="delete-btn">Delete Selected</button>
+      </div>
+    `;
+    return;
+  }
+  
+  // Single selection - use existing logic
   if (!selectedObject) {
     panel.innerHTML = '<p>Select an object to edit properties</p>';
     return;
@@ -1329,6 +2237,10 @@ function createNewMap() {
     isNew: true 
   };
   
+  // Initialize history
+  historyStack = [JSON.parse(JSON.stringify(editorMap))];
+  historyIndex = 0;
+  
   updateUI();
   renderEditor();
 }
@@ -1344,6 +2256,10 @@ function loadMap(key) {
         directory: key.split('/')[0],
         isNew: false,
       };
+      // Initialize history
+      historyStack = [JSON.parse(JSON.stringify(editorMap))];
+      historyIndex = 0;
+      
       updateUI();
       renderEditor();
     })
@@ -1521,6 +2437,9 @@ function selectMapFromBrowser(key) {
   loadMap(key);
 }
 
+// Expose function globally for HTML onclick handlers
+window.selectMapFromBrowser = selectMapFromBrowser;
+
 function resizeEditorCanvas() {
   if (!editorCanvas) return;
   editorCanvas.width = window.innerWidth - 300; // Account for sidebar
@@ -1533,3 +2452,10 @@ window.initMapEditor = initMapEditor;
 window.selectObject = selectObject;
 window.closeSaveMapModal = closeSaveMapModal;
 window.confirmSaveMap = confirmSaveMap;
+window.deleteSelectedObjects = deleteSelectedObjects;
+window.alignSelectedObjects = alignSelectedObjects;
+window.alignToGrid = alignToGrid;
+window.moveToFront = moveToFront;
+window.moveToBack = moveToBack;
+window.moveUp = moveUp;
+window.moveDown = moveDown;
