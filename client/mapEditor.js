@@ -61,7 +61,7 @@ function initMapEditor() {
 function initEventListeners() {
   // Map operations
   document.getElementById('newMapButton').addEventListener('click', createNewMap);
-  document.getElementById('browseMapButton').addEventListener('click', showBrowseModal);
+  document.getElementById('mapEditorBrowseButton').addEventListener('click', showBrowseModal);
   document.getElementById('closeBrowseModal').addEventListener('click', hideBrowseModal);
   
   // Browse modal close handlers
@@ -2246,7 +2246,17 @@ function createNewMap() {
 }
 
 function loadMap(key) {
-  fetch(`/api/maps/${key}`)
+  // Parse category/key format and construct proper URL
+  let url;
+  if (key.includes('/')) {
+    // Key is in format "category/mapname", split it for the URL
+    url = `/api/maps/${key}`;
+  } else {
+    // Key is just the map name, assume official category
+    url = `/api/maps/official/${key}`;
+  }
+  
+  fetch(url)
     .then(res => res.json())
     .then(map => {
       editorMap = map;

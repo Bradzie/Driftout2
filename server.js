@@ -1311,7 +1311,17 @@ class Room {
     }
     this.currentDynamicBodies = []
 
-    const map = mapManager.getMap(mapKey)
+    // Parse category/key format if present
+    let keyToCheck = mapKey;
+    let categoryToCheck = null;
+    
+    if (mapKey && mapKey.includes('/')) {
+      const parts = mapKey.split('/');
+      categoryToCheck = parts[0];
+      keyToCheck = parts[1];
+    }
+
+    const map = mapManager.getMap(keyToCheck, categoryToCheck)
     const thickness = 10
     if (!map) return
 
