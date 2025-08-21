@@ -351,6 +351,28 @@ function findVertexAtPosition(pos, tolerance = 10) {
     }
   }
 
+  // Check dynamic objects
+  if (editorMap.dynamicObjects) {
+    for (let i = 0; i < editorMap.dynamicObjects.length; i++) {
+      const dynObj = editorMap.dynamicObjects[i];
+      if (dynObj.vertices && Array.isArray(dynObj.vertices)) {
+        for (let j = 0; j < dynObj.vertices.length; j++) {
+          const vertex = dynObj.vertices[j];
+          const distance = Math.sqrt(
+            Math.pow(pos.x - vertex.x, 2) + Math.pow(pos.y - vertex.y, 2)
+          );
+          if (distance <= scaledTolerance) {
+            return {
+              object: { type: 'dynamicObject', index: i, data: dynObj },
+              vertex: vertex,
+              vertexIndex: j
+            };
+          }
+        }
+      }
+    }
+  }
+
   return null;
 }
 
@@ -465,21 +487,24 @@ function isPointNearLine(point, lineStart, lineEnd, tolerance) {
   return Math.hypot(dx, dy) <= tolerance;
 }
 
-// Helper function: Point in dynamic object test
-function isPointInDynamicObject(point, obj, tolerance) {
-  if (!obj.position || !obj.size) return false;
-  
-  if (obj.shape === 'circle') {
-    const radius = Math.max(obj.size.width, obj.size.height) / 2;
-    const distance = Math.hypot(point.x - obj.position.x, point.y - obj.position.y);
-    return distance <= radius + tolerance;
-  } else {
-    // Rectangle (default)
-    const halfWidth = obj.size.width / 2 + tolerance;
-    const halfHeight = obj.size.height / 2 + tolerance;
-    return Math.abs(point.x - obj.position.x) <= halfWidth &&
-           Math.abs(point.y - obj.position.y) <= halfHeight;
+// Helper function: Point in polygon test
+function isPointInPolygon(point, vertices) {
+  let inside = false;
+  for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
+    if (((vertices[i].y > point.y) !== (vertices[j].y > point.y)) &&
+        (point.x < (vertices[j].x - vertices[i].x) * (point.y - vertices[i].y) / (vertices[j].y - vertices[i].y) + vertices[i].x)) {
+      inside = !inside;
+    }
   }
+  return inside;
+}
+
+// Helper function: Point in dynamic object test
+function isPointInDynamicObject(point, obj, tolerance = 0) {
+  if (!obj.vertices || !Array.isArray(obj.vertices)) return false;
+  
+  // For now, just use point-in-polygon test - tolerance can be added later if needed
+  return isPointInPolygon(point, obj.vertices);
 }
 
 function finishCreatingShape() {
@@ -745,18 +770,39 @@ function drawAreaEffect(area, isSelected) {
 }
 
 function drawDynamicObject(obj, isSelected) {
-  // Simple rectangle for now
-  const x = obj.position.x - obj.size.width / 2;
-  const y = -obj.position.y - obj.size.height / 2;
+  if (!obj.vertices || !Array.isArray(obj.vertices) || obj.vertices.length < 3) return;
   
+  // Draw the polygon shape
+  editorCtx.beginPath();
+  obj.vertices.forEach((v, i) => {
+    if (i === 0) {
+      editorCtx.moveTo(v.x, -v.y);
+    } else {
+      editorCtx.lineTo(v.x, -v.y);
+    }
+  });
+  editorCtx.closePath();
+  
+  // Fill
   editorCtx.fillStyle = obj.fillColor ? 
     `rgb(${obj.fillColor[0]},${obj.fillColor[1]},${obj.fillColor[2]})` : '#ff00ff';
-  editorCtx.fillRect(x, y, obj.size.width, obj.size.height);
+  editorCtx.fill();
+  
+  // Stroke
+  if (obj.strokeColor && Array.isArray(obj.strokeColor)) {
+    editorCtx.strokeStyle = `rgb(${obj.strokeColor[0]},${obj.strokeColor[1]},${obj.strokeColor[2]})`;
+    editorCtx.lineWidth = (obj.strokeWidth || 2) / zoom;
+    editorCtx.stroke();
+  }
 
+  // Selection outline
   if (isSelected) {
     editorCtx.strokeStyle = '#ffff00';
-    editorCtx.lineWidth = 2 / zoom;
-    editorCtx.strokeRect(x, y, obj.size.width, obj.size.height);
+    editorCtx.lineWidth = 3 / zoom;
+    editorCtx.stroke();
+    
+    // Draw vertices for manipulation
+    drawVertices(obj.vertices);
   }
 }
 
@@ -954,25 +1000,6 @@ function buildDynamicObjectProperties(obj, index) {
   
   // Basic Properties
   html += createTextInput('ID', obj.id, `dynamic_id_${index}`, 'Object identifier');
-  
-  // Position
-  html += '<div class="property-group"><h5>Position</h5>';
-  html += createNumberInput('X', obj.position?.x, `dynamic_x_${index}`, -10000, 10000, 1);
-  html += createNumberInput('Y', obj.position?.y, `dynamic_y_${index}`, -10000, 10000, 1);
-  html += '</div>';
-  
-  // Size
-  html += '<div class="property-group"><h5>Size</h5>';
-  html += createNumberInput('Width', obj.size?.width, `dynamic_width_${index}`, 1, 1000, 1);
-  html += createNumberInput('Height', obj.size?.height, `dynamic_height_${index}`, 1, 1000, 1);
-  html += '</div>';
-  
-  // Shape Type
-  const shapeOptions = [
-    { value: 'rectangle', label: 'Rectangle' },
-    { value: 'circle', label: 'Circle' }
-  ];
-  html += createSelectInput('Shape', obj.shape, `dynamic_shape_${index}`, shapeOptions);
   
   // Physics Properties
   html += '<div class="property-group"><h5>Physics</h5>';

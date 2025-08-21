@@ -187,15 +187,24 @@
   "dynamicObjects": [
     {
       "id": "metalBox1",
-      "position": {
-        "x": -300,
-        "y": 450
-      },
-      "size": {
-        "width": 25,
-        "height": 25
-      },
-      "shape": "rectangle",
+      "vertices": [
+        {
+          "x": -312.5,
+          "y": 437.5
+        },
+        {
+          "x": -287.5,
+          "y": 437.5
+        },
+        {
+          "x": -287.5,
+          "y": 462.5
+        },
+        {
+          "x": -312.5,
+          "y": 462.5
+        }
+      ],
       "isStatic": false,
       "density": 0.3,
       "friction": 0.3,
@@ -216,15 +225,24 @@
     },
     {
       "id": "woodBox1",
-      "position": {
-        "x": -200,
-        "y": 450
-      },
-      "size": {
-        "width": 25,
-        "height": 25
-      },
-      "shape": "rectangle",
+      "vertices": [
+        {
+          "x": -212.5,
+          "y": 437.5
+        },
+        {
+          "x": -187.5,
+          "y": 437.5
+        },
+        {
+          "x": -187.5,
+          "y": 462.5
+        },
+        {
+          "x": -212.5,
+          "y": 462.5
+        }
+      ],
       "isStatic": false,
       "density": 0.001,
       "friction": 0.3,
@@ -245,15 +263,24 @@
     },
     {
       "id": "woodBox2",
-      "position": {
-        "x": -100,
-        "y": 450
-      },
-      "size": {
-        "width": 25,
-        "height": 25
-      },
-      "shape": "rectangle",
+      "vertices": [
+        {
+          "x": -112.5,
+          "y": 437.5
+        },
+        {
+          "x": -87.5,
+          "y": 437.5
+        },
+        {
+          "x": -87.5,
+          "y": 462.5
+        },
+        {
+          "x": -112.5,
+          "y": 462.5
+        }
+      ],
       "isStatic": false,
       "density": 0.001,
       "friction": 0.3,
@@ -274,15 +301,24 @@
     },
     {
       "id": "woodBox3",
-      "position": {
-        "x": 0,
-        "y": 450
-      },
-      "size": {
-        "width": 25,
-        "height": 25
-      },
-      "shape": "rectangle",
+      "vertices": [
+        {
+          "x": -12.5,
+          "y": 437.5
+        },
+        {
+          "x": 12.5,
+          "y": 437.5
+        },
+        {
+          "x": 12.5,
+          "y": 462.5
+        },
+        {
+          "x": -12.5,
+          "y": 462.5
+        }
+      ],
       "isStatic": false,
       "density": 0.001,
       "friction": 0.3,
@@ -303,15 +339,24 @@
     },
     {
       "id": "woodBox4",
-      "position": {
-        "x": 100,
-        "y": 450
-      },
-      "size": {
-        "width": 25,
-        "height": 25
-      },
-      "shape": "rectangle",
+      "vertices": [
+        {
+          "x": 87.5,
+          "y": 437.5
+        },
+        {
+          "x": 112.5,
+          "y": 437.5
+        },
+        {
+          "x": 112.5,
+          "y": 462.5
+        },
+        {
+          "x": 87.5,
+          "y": 462.5
+        }
+      ],
       "isStatic": false,
       "density": 0.001,
       "friction": 0.3,

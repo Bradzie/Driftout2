@@ -1229,7 +1229,7 @@ class Room {
     // Create dynamic objects
     if (map.dynamicObjects) {
       for (const dynObj of map.dynamicObjects) {
-        if (!dynObj.position || typeof dynObj.position.x !== 'number' || typeof dynObj.position.y !== 'number') {
+        if (!dynObj.vertices || !Array.isArray(dynObj.vertices) || dynObj.vertices.length < 3) {
           continue
         }
 
@@ -1238,19 +1238,7 @@ class Room {
           label: `dynamic-${dynObj.id || 'object'}`
         }
         
-        let body
-        if (dynObj.shape === 'circle') {
-          body = Matter.Bodies.circle(dynObj.position.x, dynObj.position.y, dynObj.size.radius, bodyOptions)
-        } else {
-          // Default to rectangle
-          body = Matter.Bodies.rectangle(
-            dynObj.position.x, 
-            dynObj.position.y, 
-            dynObj.size.width, 
-            dynObj.size.height, 
-            bodyOptions
-          )
-        }
+        const body = Matter.Bodies.fromVertices(0, 0, [dynObj.vertices], bodyOptions)
         
         // Apply frictionAir if specified
         if (typeof dynObj.frictionAir === 'number') {

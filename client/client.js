@@ -67,6 +67,7 @@
   const topToolbar = document.getElementById('topToolbar');
   const toolbarHoverZone = document.getElementById('toolbarHoverZone');
   const toolbarPlayerName = document.getElementById('toolbarPlayerName');
+  const toolbarBackBtn = document.getElementById('toolbarBackBtn');
   const toolbarLogoutBtn = document.getElementById('toolbarLogoutBtn');
   const toolbarSettingsBtn = document.getElementById('toolbarSettingsBtn');
 
@@ -413,6 +414,18 @@
     }
   }
 
+  function handleBackToGame() {
+    // Hide map editor and show menu
+    mapEditorContainer.classList.add('hidden');
+    menu.classList.remove('hidden');
+    toolbarBackBtn.classList.add('hidden'); // Hide back button when leaving map editor
+    
+    // Connect to official room in spectator mode
+    if (!socket || !socket.connected) {
+      connectToRoom('official');
+    }
+  }
+
   // Authentication event listeners
   document.getElementById('showLoginBtn').addEventListener('click', showLoginForm);
   document.getElementById('showRegisterBtn').addEventListener('click', showRegisterForm);
@@ -447,6 +460,7 @@
 
 
   // Toolbar event listeners
+  toolbarBackBtn.addEventListener('click', handleBackToGame);
   toolbarLogoutBtn.addEventListener('click', handleLogout);
   toolbarSettingsBtn.addEventListener('click', openSettings);
 
@@ -597,6 +611,7 @@
     }
     menu.classList.add('hidden');
     mapEditorContainer.classList.remove('hidden');
+    toolbarBackBtn.classList.remove('hidden'); // Show back button in map editor
     if (typeof initMapEditor === 'function') {
       initMapEditor();
     }
@@ -2887,8 +2902,8 @@
         
         ctx.beginPath();
         obj.vertices.forEach((v, i) => {
-          const x = (obj.position.x + v.x - focusX) * scale;
-          const y = (obj.position.y + v.y - focusY) * scale;
+          const x = (v.x - focusX) * scale;
+          const y = (v.y - focusY) * scale;
           if (i === 0) ctx.moveTo(x, -y);
           else ctx.lineTo(x, -y);
         });
@@ -2930,8 +2945,13 @@
         
         // Draw health bar for dynamic objects
         if (obj.health !== undefined && obj.maxHealth !== undefined && obj.health < obj.maxHealth) {
-          const objScreenX = centerX + (obj.position.x - focusX) * scale;
-          const objScreenY = centerY - (obj.position.y - focusY) * scale;
+          // Calculate center from vertices
+          const centerVertex = obj.vertices.reduce((sum, v) => ({ x: sum.x + v.x, y: sum.y + v.y }), { x: 0, y: 0 });
+          centerVertex.x /= obj.vertices.length;
+          centerVertex.y /= obj.vertices.length;
+          
+          const objScreenX = centerX + (centerVertex.x - focusX) * scale;
+          const objScreenY = centerY - (centerVertex.y - focusY) * scale;
           
           const barWidth = 30 * scale;
           const barHeight = 4 * scale;
@@ -2965,8 +2985,8 @@
           
           ctx.beginPath();
           obj.vertices.forEach((v, i) => {
-            const x = (obj.position.x + v.x - focusX) * scale;
-            const y = (obj.position.y + v.y - focusY) * scale;
+            const x = (v.x - focusX) * scale;
+            const y = (v.y - focusY) * scale;
             if (i === 0) ctx.moveTo(x, -y);
             else ctx.lineTo(x, -y);
           });
