@@ -4,10 +4,17 @@ let editorMap = null;
 
 // State management
 let currentTool = 'select';
-let selectedObject = null;
+let selectedObjects = []; // Changed to array for multi-select
+let selectedObject = null; // Keep for backward compatibility
 let selectedVertex = null;
 let isDragging = false;
 let dragStartPos = null;
+let currentMapInfo = {
+  key: null,
+  name: null,
+  directory: null,
+  isNew: true,
+};
 
 // Grid settings
 let showGrid = true;
@@ -24,29 +31,51 @@ let lastMousePos = { x: 0, y: 0 };
 // Object creation state
 let creatingShape = false;
 let newShapeVertices = [];
+let creatingCheckpoint = false;
+let checkpointStartPoint = null;
+let creatingDynamic = false;
+let dynamicStartPoint = null;
+let creatingAreaEffect = false;
+let areaEffectVertices = [];
+
+// History management
+let historyStack = [];
+let historyIndex = -1;
+const MAX_HISTORY = 50;
+
+// Clipboard
+let clipboardObject = null;
 
 function initMapEditor() {
   editorCanvas = document.getElementById('mapEditorCanvas');
   editorCtx = editorCanvas.getContext('2d');
   resizeEditorCanvas();
 
-  // Load maps list
-  loadMapsList();
-  setTimeout(() => {
-    const select = document.getElementById('mapSelect');
-    if (select.options.length > 0) {
-      loadMap('square');
-    }
-  }, 100);
+  // Start with a new blank map
+  createNewMap();
 
   initEventListeners();
   updateUI();
 }
 
 function initEventListeners() {
-  // Map selection
-  document.getElementById('mapSelect').addEventListener('change', e => {
-    loadMap(e.target.value);
+  // Map operations
+  document.getElementById('newMapButton').addEventListener('click', createNewMap);
+  document.getElementById('mapEditorBrowseButton').addEventListener('click', showBrowseModal);
+  document.getElementById('closeBrowseModal').addEventListener('click', hideBrowseModal);
+  
+  // Browse modal close handlers
+  document.getElementById('browseMapModal').addEventListener('click', (e) => {
+    if (e.target.id === 'browseMapModal') {
+      hideBrowseModal();
+    }
+  });
+  
+  // ESC key to close browse modal
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !document.getElementById('browseMapModal').classList.contains('hidden')) {
+      hideBrowseModal();
+    }
   });
 
   // Tool selection
@@ -72,10 +101,8 @@ function initEventListeners() {
   });
 
   // File operations
-  document.getElementById('applyMapData').addEventListener('click', applyMapData);
-  document.getElementById('downloadMapData').addEventListener('click', downloadMapData);
-  document.getElementById('saveMapButton')?.addEventListener('click', saveMapToServer);
-  document.getElementById('uploadMapButton')?.addEventListener('click', uploadNewMap);
+  document.getElementById('saveMapButton')?.addEventListener('click', saveMap);
+  document.getElementById('saveAsMapButton')?.addEventListener('click', saveMapAs);
 
   // Canvas events
   editorCanvas.addEventListener('mousedown', handleMouseDown);
@@ -94,6 +121,18 @@ function selectTool(tool) {
   if (creatingShape) {
     creatingShape = false;
     newShapeVertices = [];
+  }
+  if (creatingCheckpoint) {
+    creatingCheckpoint = false;
+    checkpointStartPoint = null;
+  }
+  if (creatingDynamic) {
+    creatingDynamic = false;
+    dynamicStartPoint = null;
+  }
+  if (creatingAreaEffect) {
+    creatingAreaEffect = false;
+    areaEffectVertices = [];
   }
 
   currentTool = tool;
@@ -136,7 +175,7 @@ function handleMouseDown(e) {
   if (e.button === 0) { // Left mouse button
     switch (currentTool) {
       case 'select':
-        handleSelectMouseDown(mousePos);
+        handleSelectMouseDown(mousePos, e.ctrlKey);
         break;
       case 'createShape':
         handleCreateShapeMouseDown(mousePos);
@@ -166,12 +205,13 @@ function handleMouseMove(e) {
     renderEditor();
     return;
   }
+  
+  lastMousePos = { x: e.clientX, y: e.clientY };
 
   if (isDragging && selectedVertex) {
     const snappedPos = snapToGridPos(mousePos);
     selectedVertex.x = snappedPos.x;
     selectedVertex.y = snappedPos.y;
-    updateMapDataInput();
     renderEditor();
   }
 }
@@ -216,11 +256,17 @@ function handleKeyDown(e) {
         creatingShape = false;
         newShapeVertices = [];
         renderEditor();
+      } else if (creatingAreaEffect) {
+        creatingAreaEffect = false;
+        areaEffectVertices = [];
+        renderEditor();
       }
       break;
     case 'Enter':
       if (creatingShape && newShapeVertices.length > 2) {
         finishCreatingShape();
+      } else if (creatingAreaEffect && areaEffectVertices.length > 2) {
+        finishCreatingAreaEffect();
       }
       break;
     case 'g':
@@ -233,30 +279,160 @@ function handleKeyDown(e) {
     case 'S':
       if (e.ctrlKey) {
         e.preventDefault();
-        saveMapToServer();
+        saveMap();
       } else {
         document.getElementById('snapToGrid').checked = !snapToGrid;
         snapToGrid = !snapToGrid;
       }
       break;
+    case 'z':
+    case 'Z':
+      if (e.ctrlKey && e.shiftKey) {
+        e.preventDefault();
+        redo();
+      } else if (e.ctrlKey) {
+        e.preventDefault();
+        undo();
+      }
+      break;
+    case 'y':
+    case 'Y':
+      if (e.ctrlKey) {
+        e.preventDefault();
+        redo();
+      }
+      break;
+    case 'c':
+    case 'C':
+      if (e.ctrlKey) {
+        e.preventDefault();
+        copySelectedObject();
+      }
+      break;
+    case 'v':
+    case 'V':
+      if (e.ctrlKey) {
+        e.preventDefault();
+        pasteObject();
+      }
+      break;
+    case 'a':
+    case 'A':
+      if (e.ctrlKey) {
+        e.preventDefault();
+        selectAllObjects();
+      } else {
+        selectTool('areaEffect');
+      }
+      break;
+    case 'd':
+    case 'D':
+      if (e.ctrlKey) {
+        e.preventDefault();
+        duplicateSelectedObject();
+      } else {
+        selectTool('dynamic');
+      }
+      break;
+    case '1':
+      selectTool('select');
+      break;
+    case '2':
+      selectTool('createShape');
+      break;
+    case '3':
+      selectTool('checkpoint');
+      break;
+    case '4':
+      selectTool('dynamic');
+      break;
+    case '5':
+      selectTool('areaEffect');
+      break;
+    case 'ArrowLeft':
+      if (e.ctrlKey) {
+        e.preventDefault();
+        alignSelectedObjects('left');
+      }
+      break;
+    case 'ArrowRight':
+      if (e.ctrlKey) {
+        e.preventDefault();
+        alignSelectedObjects('right');
+      }
+      break;
+    case 'ArrowUp':
+      if (e.ctrlKey) {
+        e.preventDefault();
+        alignSelectedObjects('top');
+      }
+      break;
+    case 'ArrowDown':
+      if (e.ctrlKey) {
+        e.preventDefault();
+        alignSelectedObjects('bottom');
+      }
+      break;
+    case 'PageUp':
+      if (e.ctrlKey) {
+        e.preventDefault();
+        moveToFront();
+      } else {
+        moveUp();
+      }
+      break;
+    case 'PageDown':
+      if (e.ctrlKey) {
+        e.preventDefault();
+        moveToBack();
+      } else {
+        moveDown();
+      }
+      break;
   }
 }
 
-function handleSelectMouseDown(mousePos) {
+function handleSelectMouseDown(mousePos, ctrlKey = false) {
   const clickedVertex = findVertexAtPosition(mousePos);
   const clickedObject = findObjectAtPosition(mousePos);
 
   if (clickedVertex) {
+    // Vertex manipulation takes precedence
     selectedVertex = clickedVertex.vertex;
     selectedObject = clickedVertex.object;
+    selectedObjects = [clickedVertex.object];
     isDragging = true;
     dragStartPos = mousePos;
   } else if (clickedObject) {
-    selectedObject = clickedObject;
+    if (ctrlKey) {
+      // Multi-select mode
+      const objIndex = selectedObjects.findIndex(obj => 
+        obj.type === clickedObject.type && obj.index === clickedObject.index
+      );
+      
+      if (objIndex >= 0) {
+        // Deselect if already selected
+        selectedObjects.splice(objIndex, 1);
+      } else {
+        // Add to selection
+        selectedObjects.push(clickedObject);
+      }
+      
+      // Update single selection for properties panel
+      selectedObject = selectedObjects.length === 1 ? selectedObjects[0] : null;
+    } else {
+      // Single select mode
+      selectedObject = clickedObject;
+      selectedObjects = [clickedObject];
+    }
     selectedVertex = null;
   } else {
-    selectedObject = null;
-    selectedVertex = null;
+    // Clicked on empty space
+    if (!ctrlKey) {
+      selectedObject = null;
+      selectedObjects = [];
+      selectedVertex = null;
+    }
   }
 
   updatePropertiesPanel();
@@ -277,15 +453,471 @@ function handleCreateShapeMouseDown(mousePos) {
 }
 
 function handleCreateCheckpointMouseDown(mousePos) {
-  // TODO: Implement checkpoint creation
+  if (!creatingCheckpoint) {
+    // Start creating checkpoint - first click
+    creatingCheckpoint = true;
+    checkpointStartPoint = { ...mousePos };
+  } else {
+    // Finish creating checkpoint - second click
+    const checkpoint = {
+      type: "line",
+      vertices: [
+        checkpointStartPoint,
+        { ...mousePos }
+      ],
+      id: generateCheckpointId()
+    };
+    
+    saveToHistory();
+    editorMap.checkpoints.push(checkpoint);
+    creatingCheckpoint = false;
+    checkpointStartPoint = null;
+    updateUI();
+    renderEditor();
+  }
 }
 
 function handleCreateDynamicMouseDown(mousePos) {
-  // TODO: Implement dynamic object creation
+  if (!creatingDynamic) {
+    // Start creating dynamic object - first click
+    creatingDynamic = true;
+    dynamicStartPoint = { ...mousePos };
+  } else {
+    // Finish creating dynamic object - second click
+    const width = Math.abs(mousePos.x - dynamicStartPoint.x);
+    const height = Math.abs(mousePos.y - dynamicStartPoint.y);
+    const centerX = (dynamicStartPoint.x + mousePos.x) / 2;
+    const centerY = (dynamicStartPoint.y + mousePos.y) / 2;
+    
+    const dynamicObject = {
+      id: generateDynamicId(),
+      vertices: [
+        { x: centerX - width/2, y: centerY - height/2 },
+        { x: centerX + width/2, y: centerY - height/2 },
+        { x: centerX + width/2, y: centerY + height/2 },
+        { x: centerX - width/2, y: centerY + height/2 }
+      ],
+      isStatic: false,
+      density: 0.3,
+      friction: 0.3,
+      frictionAir: 0.2,
+      restitution: 0.1,
+      damageScale: 0,
+      fillColor: [139, 69, 19],
+      strokeColor: [101, 67, 33],
+      strokeWidth: 4
+    };
+    
+    saveToHistory();
+    editorMap.dynamicObjects.push(dynamicObject);
+    creatingDynamic = false;
+    dynamicStartPoint = null;
+    updateUI();
+    renderEditor();
+  }
 }
 
 function handleCreateAreaEffectMouseDown(mousePos) {
-  // TODO: Implement area effect creation
+  const snappedPos = snapToGridPos(mousePos);
+  
+  if (!creatingAreaEffect) {
+    creatingAreaEffect = true;
+    areaEffectVertices = [];
+  }
+  
+  areaEffectVertices.push({ x: snappedPos.x, y: snappedPos.y });
+  renderEditor();
+}
+
+function generateCheckpointId() {
+  let id = 1;
+  while (editorMap.checkpoints.find(cp => cp.id === `checkpoint-${id}`)) {
+    id++;
+  }
+  return `checkpoint-${id}`;
+}
+
+function generateDynamicId() {
+  let id = 1;
+  while (editorMap.dynamicObjects.find(obj => obj.id === `dynamicBox${id}`)) {
+    id++;
+  }
+  return `dynamicBox${id}`;
+}
+
+// History management functions
+function saveToHistory() {
+  if (!editorMap) return;
+  
+  // Remove any redo history when we make a new change
+  historyStack.splice(historyIndex + 1);
+  
+  // Add current state to history
+  historyStack.push(JSON.parse(JSON.stringify(editorMap)));
+  
+  // Limit history size and adjust index accordingly
+  if (historyStack.length > MAX_HISTORY) {
+    historyStack.shift();
+    // Index stays the same since we removed from beginning
+  } else {
+    historyIndex++;
+  }
+}
+
+function undo() {
+  if (historyIndex > 0) {
+    historyIndex--;
+    editorMap = JSON.parse(JSON.stringify(historyStack[historyIndex]));
+    selectedObject = null;
+    selectedObjects = [];
+    selectedVertex = null;
+    updateUI();
+    renderEditor();
+  }
+}
+
+function redo() {
+  if (historyIndex < historyStack.length - 1) {
+    historyIndex++;
+    editorMap = JSON.parse(JSON.stringify(historyStack[historyIndex]));
+    selectedObject = null;
+    selectedObjects = [];
+    selectedVertex = null;
+    updateUI();
+    renderEditor();
+  }
+}
+
+// Copy/Paste functions
+function copySelectedObject() {
+  if (!selectedObject) return;
+  
+  const objectData = getSelectedObjectData();
+  if (objectData) {
+    clipboardObject = {
+      type: selectedObject.type,
+      data: JSON.parse(JSON.stringify(objectData))
+    };
+    console.log('Object copied to clipboard');
+  }
+}
+
+function pasteObject() {
+  if (!clipboardObject) return;
+  
+  saveToHistory();
+  
+  // Clone the object data
+  const pastedData = JSON.parse(JSON.stringify(clipboardObject.data));
+  
+  // Offset the position slightly to avoid overlap
+  const offset = 25;
+  if (pastedData.vertices && Array.isArray(pastedData.vertices)) {
+    pastedData.vertices.forEach(vertex => {
+      vertex.x += offset;
+      vertex.y += offset;
+    });
+  }
+  
+  // Generate new ID for dynamic objects and checkpoints
+  if (clipboardObject.type === 'dynamicObject') {
+    pastedData.id = generateDynamicId();
+  } else if (clipboardObject.type === 'checkpoint') {
+    pastedData.id = generateCheckpointId();
+  }
+  
+  // Add to appropriate array
+  switch (clipboardObject.type) {
+    case 'shape':
+      if (!editorMap.shapes) editorMap.shapes = [];
+      editorMap.shapes.push(pastedData);
+      break;
+    case 'dynamicObject':
+      if (!editorMap.dynamicObjects) editorMap.dynamicObjects = [];
+      editorMap.dynamicObjects.push(pastedData);
+      break;
+    case 'checkpoint':
+      if (!editorMap.checkpoints) editorMap.checkpoints = [];
+      editorMap.checkpoints.push(pastedData);
+      break;
+    case 'areaEffect':
+      if (!editorMap.areaEffects) editorMap.areaEffects = [];
+      editorMap.areaEffects.push(pastedData);
+      break;
+  }
+  
+  updateUI();
+  renderEditor();
+  console.log('Object pasted');
+}
+
+function selectAllObjects() {
+  selectedObjects = [];
+  
+  // Add all objects to selection
+  if (editorMap.shapes) {
+    editorMap.shapes.forEach((shape, index) => {
+      selectedObjects.push({ type: 'shape', index, data: shape });
+    });
+  }
+  
+  if (editorMap.checkpoints) {
+    editorMap.checkpoints.forEach((checkpoint, index) => {
+      selectedObjects.push({ type: 'checkpoint', index, data: checkpoint });
+    });
+  }
+  
+  if (editorMap.areaEffects) {
+    editorMap.areaEffects.forEach((area, index) => {
+      selectedObjects.push({ type: 'areaEffect', index, data: area });
+    });
+  }
+  
+  if (editorMap.dynamicObjects) {
+    editorMap.dynamicObjects.forEach((obj, index) => {
+      selectedObjects.push({ type: 'dynamicObject', index, data: obj });
+    });
+  }
+  
+  selectedObject = null; // Clear single selection for multi-select mode
+  selectedVertex = null;
+  updatePropertiesPanel();
+  updateLayersPanel();
+  renderEditor();
+}
+
+function duplicateSelectedObject() {
+  if (!selectedObject) return;
+  
+  // Copy the object to clipboard and paste it
+  copySelectedObject();
+  pasteObject();
+}
+
+// Alignment functions
+function alignSelectedObjects(alignment) {
+  if (selectedObjects.length < 2) return;
+  
+  saveToHistory();
+  
+  // Calculate bounds for alignment
+  let minX = Infinity, maxX = -Infinity;
+  let minY = Infinity, maxY = -Infinity;
+  let centerX = 0, centerY = 0;
+  
+  selectedObjects.forEach(obj => {
+    const objectData = getObjectData(obj);
+    if (objectData && objectData.vertices) {
+      objectData.vertices.forEach(vertex => {
+        minX = Math.min(minX, vertex.x);
+        maxX = Math.max(maxX, vertex.x);
+        minY = Math.min(minY, vertex.y);
+        maxY = Math.max(maxY, vertex.y);
+        centerX += vertex.x;
+        centerY += vertex.y;
+      });
+    }
+  });
+  
+  const totalVertices = selectedObjects.reduce((sum, obj) => {
+    const objectData = getObjectData(obj);
+    return sum + (objectData && objectData.vertices ? objectData.vertices.length : 0);
+  }, 0);
+  
+  centerX /= totalVertices;
+  centerY /= totalVertices;
+  
+  // Apply alignment
+  selectedObjects.forEach(obj => {
+    const objectData = getObjectData(obj);
+    if (!objectData || !objectData.vertices) return;
+    
+    // Calculate object center
+    let objCenterX = 0, objCenterY = 0;
+    objectData.vertices.forEach(vertex => {
+      objCenterX += vertex.x;
+      objCenterY += vertex.y;
+    });
+    objCenterX /= objectData.vertices.length;
+    objCenterY /= objectData.vertices.length;
+    
+    let offsetX = 0, offsetY = 0;
+    
+    switch (alignment) {
+      case 'left':
+        offsetX = minX - objCenterX;
+        break;
+      case 'right':
+        offsetX = maxX - objCenterX;
+        break;
+      case 'top':
+        offsetY = minY - objCenterY;
+        break;
+      case 'bottom':
+        offsetY = maxY - objCenterY;
+        break;
+      case 'centerH':
+        offsetX = centerX - objCenterX;
+        break;
+      case 'centerV':
+        offsetY = centerY - objCenterY;
+        break;
+    }
+    
+    // Apply offset to all vertices
+    objectData.vertices.forEach(vertex => {
+      vertex.x += offsetX;
+      vertex.y += offsetY;
+    });
+  });
+  
+  renderEditor();
+  updatePropertiesPanel();
+}
+
+function alignToGrid() {
+  if (selectedObjects.length === 0) return;
+  
+  saveToHistory();
+  
+  selectedObjects.forEach(obj => {
+    const objectData = getObjectData(obj);
+    if (!objectData || !objectData.vertices) return;
+    
+    objectData.vertices.forEach(vertex => {
+      vertex.x = Math.round(vertex.x / gridSize) * gridSize;
+      vertex.y = Math.round(vertex.y / gridSize) * gridSize;
+    });
+  });
+  
+  renderEditor();
+  updatePropertiesPanel();
+}
+
+function getObjectData(obj) {
+  switch (obj.type) {
+    case 'shape':
+      return editorMap.shapes?.[obj.index];
+    case 'checkpoint':
+      return editorMap.checkpoints?.[obj.index];
+    case 'areaEffect':
+      return editorMap.areaEffects?.[obj.index];
+    case 'dynamicObject':
+      return editorMap.dynamicObjects?.[obj.index];
+    default:
+      return null;
+  }
+}
+
+// Layer ordering functions
+function moveToFront() {
+  if (selectedObjects.length === 0) return;
+  
+  saveToHistory();
+  
+  selectedObjects.forEach(obj => {
+    const array = getObjectArray(obj.type);
+    if (!array || obj.index >= array.length) return;
+    
+    // Remove from current position and add to end
+    const objData = array.splice(obj.index, 1)[0];
+    array.push(objData);
+  });
+  
+  // Update indices for selected objects
+  updateSelectedObjectIndices();
+  updateLayersPanel();
+  renderEditor();
+}
+
+function moveToBack() {
+  if (selectedObjects.length === 0) return;
+  
+  saveToHistory();
+  
+  // Sort by index to maintain order when moving
+  const sortedObjects = selectedObjects.slice().sort((a, b) => a.index - b.index);
+  
+  sortedObjects.forEach((obj, i) => {
+    const array = getObjectArray(obj.type);
+    if (!array || obj.index >= array.length) return;
+    
+    // Remove from current position and add to beginning
+    const objData = array.splice(obj.index - i, 1)[0]; // Subtract i to account for previous removals
+    array.unshift(objData);
+  });
+  
+  // Update indices for selected objects
+  updateSelectedObjectIndices();
+  updateLayersPanel();
+  renderEditor();
+}
+
+function moveUp() {
+  if (selectedObjects.length === 0) return;
+  
+  saveToHistory();
+  
+  selectedObjects.forEach(obj => {
+    const array = getObjectArray(obj.type);
+    if (!array || obj.index >= array.length - 1) return;
+    
+    // Swap with next item
+    [array[obj.index], array[obj.index + 1]] = [array[obj.index + 1], array[obj.index]];
+    obj.index++; // Update selected object index
+  });
+  
+  updateLayersPanel();
+  renderEditor();
+}
+
+function moveDown() {
+  if (selectedObjects.length === 0) return;
+  
+  saveToHistory();
+  
+  selectedObjects.forEach(obj => {
+    const array = getObjectArray(obj.type);
+    if (!array || obj.index <= 0) return;
+    
+    // Swap with previous item
+    [array[obj.index], array[obj.index - 1]] = [array[obj.index - 1], array[obj.index]];
+    obj.index--; // Update selected object index
+  });
+  
+  updateLayersPanel();
+  renderEditor();
+}
+
+function getObjectArray(type) {
+  switch (type) {
+    case 'shape':
+      return editorMap.shapes;
+    case 'checkpoint':
+      return editorMap.checkpoints;
+    case 'areaEffect':
+      return editorMap.areaEffects;
+    case 'dynamicObject':
+      return editorMap.dynamicObjects;
+    default:
+      return null;
+  }
+}
+
+function updateSelectedObjectIndices() {
+  // Update indices in selected objects after array manipulations
+  selectedObjects.forEach(obj => {
+    const array = getObjectArray(obj.type);
+    if (!array) return;
+    
+    // Find new index of the object data
+    for (let i = 0; i < array.length; i++) {
+      if (array[i] === obj.data) {
+        obj.index = i;
+        break;
+      }
+    }
+  });
 }
 
 function findVertexAtPosition(pos, tolerance = 10) {
@@ -351,12 +983,160 @@ function findVertexAtPosition(pos, tolerance = 10) {
     }
   }
 
+  // Check dynamic objects
+  if (editorMap.dynamicObjects) {
+    for (let i = 0; i < editorMap.dynamicObjects.length; i++) {
+      const dynObj = editorMap.dynamicObjects[i];
+      if (dynObj.vertices && Array.isArray(dynObj.vertices)) {
+        for (let j = 0; j < dynObj.vertices.length; j++) {
+          const vertex = dynObj.vertices[j];
+          const distance = Math.sqrt(
+            Math.pow(pos.x - vertex.x, 2) + Math.pow(pos.y - vertex.y, 2)
+          );
+          if (distance <= scaledTolerance) {
+            return {
+              object: { type: 'dynamicObject', index: i, data: dynObj },
+              vertex: vertex,
+              vertexIndex: j
+            };
+          }
+        }
+      }
+    }
+  }
+
   return null;
 }
 
 function findObjectAtPosition(pos) {
-  // TODO: Implement object selection logic
+  const tolerance = 10 / zoom; // Adjust tolerance based on zoom level
+
+  // Check dynamic objects first (they're on top)
+  if (editorMap.dynamicObjects) {
+    for (let i = editorMap.dynamicObjects.length - 1; i >= 0; i--) {
+      const obj = editorMap.dynamicObjects[i];
+      if (isPointInDynamicObject(pos, obj, tolerance)) {
+        return { type: 'dynamicObject', index: i, data: obj };
+      }
+    }
+  }
+
+  // Check area effects
+  if (editorMap.areaEffects) {
+    for (let i = editorMap.areaEffects.length - 1; i >= 0; i--) {
+      const area = editorMap.areaEffects[i];
+      if (isPointInPolygon(pos, area.vertices)) {
+        return { type: 'areaEffect', index: i, data: area };
+      }
+    }
+  }
+
+  // Check checkpoints
+  if (editorMap.checkpoints) {
+    for (let i = editorMap.checkpoints.length - 1; i >= 0; i--) {
+      const checkpoint = editorMap.checkpoints[i];
+      if (checkpoint.vertices.length === 2) {
+        // Line checkpoint - check distance to line
+        if (isPointNearLine(pos, checkpoint.vertices[0], checkpoint.vertices[1], tolerance)) {
+          return { type: 'checkpoint', index: i, data: checkpoint };
+        }
+      } else if (checkpoint.vertices.length > 2) {
+        // Polygon checkpoint
+        if (isPointInPolygon(pos, checkpoint.vertices)) {
+          return { type: 'checkpoint', index: i, data: checkpoint };
+        }
+      }
+    }
+  }
+
+  // Check shapes last (they're typically the background)
+  if (editorMap.shapes) {
+    for (let i = editorMap.shapes.length - 1; i >= 0; i--) {
+      const shape = editorMap.shapes[i];
+      if (isPointInPolygon(pos, shape.vertices)) {
+        return { type: 'shape', index: i, data: shape };
+      }
+    }
+  }
+
   return null;
+}
+
+// Helper function: Point in polygon test using ray casting
+function isPointInPolygon(point, vertices) {
+  if (!vertices || vertices.length < 3) return false;
+  
+  let inside = false;
+  let j = vertices.length - 1;
+  
+  for (let i = 0; i < vertices.length; i++) {
+    const xi = vertices[i].x;
+    const yi = vertices[i].y;
+    const xj = vertices[j].x;
+    const yj = vertices[j].y;
+    
+    if (((yi > point.y) !== (yj > point.y)) && 
+        (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+    j = i;
+  }
+  
+  return inside;
+}
+
+// Helper function: Point near line test
+function isPointNearLine(point, lineStart, lineEnd, tolerance) {
+  const A = point.x - lineStart.x;
+  const B = point.y - lineStart.y;
+  const C = lineEnd.x - lineStart.x;
+  const D = lineEnd.y - lineStart.y;
+
+  const dot = A * C + B * D;
+  const lenSq = C * C + D * D;
+  
+  if (lenSq === 0) {
+    // Line is actually a point
+    return Math.hypot(A, B) <= tolerance;
+  }
+  
+  let param = dot / lenSq;
+  
+  let xx, yy;
+  if (param < 0) {
+    xx = lineStart.x;
+    yy = lineStart.y;
+  } else if (param > 1) {
+    xx = lineEnd.x;
+    yy = lineEnd.y;
+  } else {
+    xx = lineStart.x + param * C;
+    yy = lineStart.y + param * D;
+  }
+
+  const dx = point.x - xx;
+  const dy = point.y - yy;
+  return Math.hypot(dx, dy) <= tolerance;
+}
+
+// Helper function: Point in polygon test
+function isPointInPolygon(point, vertices) {
+  let inside = false;
+  for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
+    if (((vertices[i].y > point.y) !== (vertices[j].y > point.y)) &&
+        (point.x < (vertices[j].x - vertices[i].x) * (point.y - vertices[i].y) / (vertices[j].y - vertices[i].y) + vertices[i].x)) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+// Helper function: Point in dynamic object test
+function isPointInDynamicObject(point, obj, tolerance = 0) {
+  if (!obj.vertices || !Array.isArray(obj.vertices)) return false;
+  
+  // For now, just use point-in-polygon test - tolerance can be added later if needed
+  return isPointInPolygon(point, obj.vertices);
 }
 
 function finishCreatingShape() {
@@ -364,13 +1144,13 @@ function finishCreatingShape() {
     if (!editorMap.shapes) {
       editorMap.shapes = [];
     }
+    saveToHistory();
     editorMap.shapes.push({
       vertices: newShapeVertices,
       fillColor: [128, 128, 128],
       borderColors: ['#ff4d4d', '#ffffff'],
       borderWidth: 20
     });
-    updateMapDataInput();
   }
   
   creatingShape = false;
@@ -379,27 +1159,59 @@ function finishCreatingShape() {
   renderEditor();
 }
 
-function deleteSelectedObject() {
-  if (!selectedObject) return;
-
-  switch (selectedObject.type) {
-    case 'shape':
-      editorMap.shapes.splice(selectedObject.index, 1);
-      break;
-    case 'checkpoint':
-      editorMap.checkpoints.splice(selectedObject.index, 1);
-      break;
-    case 'areaEffect':
-      editorMap.areaEffects.splice(selectedObject.index, 1);
-      break;
-    case 'dynamicObject':
-      editorMap.dynamicObjects.splice(selectedObject.index, 1);
-      break;
+function finishCreatingAreaEffect() {
+  if (areaEffectVertices.length > 2) {
+    if (!editorMap.areaEffects) {
+      editorMap.areaEffects = [];
+    }
+    saveToHistory();
+    editorMap.areaEffects.push({
+      vertices: areaEffectVertices,
+      effect: 'ice',
+      strength: 0.95,
+      fillColor: [173, 216, 230]
+    });
   }
+  
+  creatingAreaEffect = false;
+  areaEffectVertices = [];
+  selectTool('select');
+  renderEditor();
+}
+
+function deleteSelectedObject() {
+  if (selectedObjects.length === 0) return;
+  deleteSelectedObjects();
+}
+
+function deleteSelectedObjects() {
+  if (selectedObjects.length === 0) return;
+
+  saveToHistory();
+  
+  // Sort by index in reverse order to avoid index shifting issues
+  const sortedObjects = selectedObjects.slice().sort((a, b) => b.index - a.index);
+  
+  sortedObjects.forEach(obj => {
+    switch (obj.type) {
+      case 'shape':
+        editorMap.shapes.splice(obj.index, 1);
+        break;
+      case 'checkpoint':
+        editorMap.checkpoints.splice(obj.index, 1);
+        break;
+      case 'areaEffect':
+        editorMap.areaEffects.splice(obj.index, 1);
+        break;
+      case 'dynamicObject':
+        editorMap.dynamicObjects.splice(obj.index, 1);
+        break;
+    }
+  });
 
   selectedObject = null;
+  selectedObjects = [];
   selectedVertex = null;
-  updateMapDataInput();
   updatePropertiesPanel();
   updateLayersPanel();
   renderEditor();
@@ -427,28 +1239,32 @@ function renderEditor() {
   // Draw shapes
   if (Array.isArray(editorMap.shapes)) {
     editorMap.shapes.forEach((shape, index) => {
-      drawShape(shape, selectedObject?.type === 'shape' && selectedObject?.index === index);
+      const isSelected = selectedObjects.some(obj => obj.type === 'shape' && obj.index === index);
+      drawShape(shape, isSelected);
     });
   }
 
   // Draw checkpoints
   if (Array.isArray(editorMap.checkpoints)) {
     editorMap.checkpoints.forEach((checkpoint, index) => {
-      drawCheckpoint(checkpoint, selectedObject?.type === 'checkpoint' && selectedObject?.index === index);
+      const isSelected = selectedObjects.some(obj => obj.type === 'checkpoint' && obj.index === index);
+      drawCheckpoint(checkpoint, isSelected);
     });
   }
 
   // Draw area effects
   if (Array.isArray(editorMap.areaEffects)) {
     editorMap.areaEffects.forEach((area, index) => {
-      drawAreaEffect(area, selectedObject?.type === 'areaEffect' && selectedObject?.index === index);
+      const isSelected = selectedObjects.some(obj => obj.type === 'areaEffect' && obj.index === index);
+      drawAreaEffect(area, isSelected);
     });
   }
 
   // Draw dynamic objects
   if (Array.isArray(editorMap.dynamicObjects)) {
     editorMap.dynamicObjects.forEach((obj, index) => {
-      drawDynamicObject(obj, selectedObject?.type === 'dynamicObject' && selectedObject?.index === index);
+      const isSelected = selectedObjects.some(selectedObj => selectedObj.type === 'dynamicObject' && selectedObj.index === index);
+      drawDynamicObject(obj, isSelected);
     });
   }
 
@@ -460,6 +1276,21 @@ function renderEditor() {
   // Draw new shape being created
   if (creatingShape && newShapeVertices.length > 0) {
     drawNewShape();
+  }
+  
+  // Draw checkpoint being created
+  if (creatingCheckpoint && checkpointStartPoint) {
+    drawCheckpointPreview();
+  }
+  
+  // Draw dynamic object being created
+  if (creatingDynamic && dynamicStartPoint) {
+    drawDynamicPreview();
+  }
+  
+  // Draw area effect being created
+  if (creatingAreaEffect && areaEffectVertices.length > 0) {
+    drawNewAreaEffect();
   }
 
   editorCtx.restore();
@@ -514,7 +1345,57 @@ function drawShape(shape, isSelected) {
   }
   editorCtx.fill();
 
-  // Draw border if selected
+  // Draw border with alternating colors if available
+  if (Array.isArray(shape.borderColors) && shape.borderColors.length > 0 && shape.borderWidth > 0) {
+    const lineWidth = shape.borderWidth || 8;
+    const stripeLength = shape.stripeLength || shape.borderWidth * 1.8 || 25;
+    
+    for (let i = 0; i < shape.vertices.length; i++) {
+      const a = { x: shape.vertices[i].x, y: -shape.vertices[i].y };
+      const b = { x: shape.vertices[(i + 1) % shape.vertices.length].x, y: -shape.vertices[(i + 1) % shape.vertices.length].y };
+      
+      // Use different color for each side of the polygon
+      const sideColor = shape.borderColors[i % shape.borderColors.length];
+      
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const len = Math.hypot(dx, dy);
+      const steps = Math.max(1, Math.floor(len / stripeLength));
+      
+      const perpX = -dy / len;
+      const perpY = dx / len;
+      const offsetX = (perpX * lineWidth) / 2;
+      const offsetY = (perpY * lineWidth) / 2;
+      
+      for (let s = 0; s < steps; s++) {
+        const t0 = s / steps;
+        const t1 = (s + 1) / steps;
+        const x0 = a.x + dx * t0;
+        const y0 = a.y + dy * t0;
+        const x1 = a.x + dx * t1;
+        const y1 = a.y + dy * t1;
+        
+        editorCtx.beginPath();
+        editorCtx.moveTo(x0 + offsetX, y0 + offsetY);
+        editorCtx.lineTo(x1 + offsetX, y1 + offsetY);
+        editorCtx.lineTo(x1 - offsetX, y1 - offsetY);
+        editorCtx.lineTo(x0 - offsetX, y0 - offsetY);
+        editorCtx.closePath();
+        
+        editorCtx.fillStyle = sideColor;
+        editorCtx.fill();
+      }
+      
+      // Draw corner caps
+      const radius = lineWidth / 2;
+      editorCtx.beginPath();
+      editorCtx.arc(a.x, a.y, radius, 0, Math.PI * 2);
+      editorCtx.fillStyle = sideColor;
+      editorCtx.fill();
+    }
+  }
+
+  // Draw selection border if selected
   if (isSelected) {
     editorCtx.strokeStyle = '#ffff00';
     editorCtx.lineWidth = 2 / zoom;
@@ -572,18 +1453,39 @@ function drawAreaEffect(area, isSelected) {
 }
 
 function drawDynamicObject(obj, isSelected) {
-  // Simple rectangle for now
-  const x = obj.position.x - obj.size.width / 2;
-  const y = -obj.position.y - obj.size.height / 2;
+  if (!obj.vertices || !Array.isArray(obj.vertices) || obj.vertices.length < 3) return;
   
+  // Draw the polygon shape
+  editorCtx.beginPath();
+  obj.vertices.forEach((v, i) => {
+    if (i === 0) {
+      editorCtx.moveTo(v.x, -v.y);
+    } else {
+      editorCtx.lineTo(v.x, -v.y);
+    }
+  });
+  editorCtx.closePath();
+  
+  // Fill
   editorCtx.fillStyle = obj.fillColor ? 
     `rgb(${obj.fillColor[0]},${obj.fillColor[1]},${obj.fillColor[2]})` : '#ff00ff';
-  editorCtx.fillRect(x, y, obj.size.width, obj.size.height);
+  editorCtx.fill();
+  
+  // Stroke
+  if (obj.strokeColor && Array.isArray(obj.strokeColor)) {
+    editorCtx.strokeStyle = `rgb(${obj.strokeColor[0]},${obj.strokeColor[1]},${obj.strokeColor[2]})`;
+    editorCtx.lineWidth = obj.strokeWidth || 2;
+    editorCtx.stroke();
+  }
 
+  // Selection outline
   if (isSelected) {
     editorCtx.strokeStyle = '#ffff00';
-    editorCtx.lineWidth = 2 / zoom;
-    editorCtx.strokeRect(x, y, obj.size.width, obj.size.height);
+    editorCtx.lineWidth = 3 / zoom;
+    editorCtx.stroke();
+    
+    // Draw vertices for manipulation
+    drawVertices(obj.vertices);
   }
 }
 
@@ -602,14 +1504,45 @@ function drawStartArea(start) {
 }
 
 function drawNewShape() {
+  if (newShapeVertices.length === 0) return;
+  
+  // Draw filled preview if we have 3 or more vertices
+  if (newShapeVertices.length >= 3) {
+    editorCtx.fillStyle = 'rgba(128, 128, 128, 0.4)';
+    editorCtx.beginPath();
+    editorCtx.moveTo(newShapeVertices[0].x, -newShapeVertices[0].y);
+    for (let i = 1; i < newShapeVertices.length; i++) {
+      editorCtx.lineTo(newShapeVertices[i].x, -newShapeVertices[i].y);
+    }
+    editorCtx.closePath();
+    editorCtx.fill();
+  }
+  
+  // Draw outline
   editorCtx.strokeStyle = '#00ff00';
   editorCtx.lineWidth = 2 / zoom;
+  editorCtx.setLineDash([3 / zoom, 3 / zoom]);
+  
   editorCtx.beginPath();
   editorCtx.moveTo(newShapeVertices[0].x, -newShapeVertices[0].y);
   for (let i = 1; i < newShapeVertices.length; i++) {
     editorCtx.lineTo(newShapeVertices[i].x, -newShapeVertices[i].y);
   }
+  
+  // Draw preview line to close the shape if we have enough vertices
+  if (newShapeVertices.length >= 2) {
+    const mousePos = getMouseCanvasPos();
+    if (mousePos) {
+      editorCtx.lineTo(mousePos.x, -mousePos.y);
+      // Show closing line to first vertex
+      if (newShapeVertices.length >= 3) {
+        editorCtx.lineTo(newShapeVertices[0].x, -newShapeVertices[0].y);
+      }
+    }
+  }
+  
   editorCtx.stroke();
+  editorCtx.setLineDash([]);
 
   // Draw vertices being created
   drawVertices(newShapeVertices, '#00ff00');
@@ -626,17 +1559,592 @@ function drawVertices(vertices, color = '#ffff00') {
   });
 }
 
+function getMouseCanvasPos() {
+  // Get the current mouse position from the last known position
+  if (!lastMousePos) return null;
+  
+  const rect = editorCanvas.getBoundingClientRect();
+  const x = (lastMousePos.x - rect.left - editorCanvas.width / 2 - panX) / zoom;
+  const y = -(lastMousePos.y - rect.top - editorCanvas.height / 2 - panY) / zoom;
+  return { x, y };
+}
+
+function drawCheckpointPreview() {
+  const mousePos = getMouseCanvasPos();
+  if (!mousePos) return;
+  
+  // Calculate line direction and create a filled area perpendicular to it
+  const dx = mousePos.x - checkpointStartPoint.x;
+  const dy = mousePos.y - checkpointStartPoint.y;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  
+  if (length > 0) {
+    // Normalize the direction vector
+    const normalX = -dy / length; // Perpendicular direction
+    const normalY = dx / length;
+    
+    // Create a filled rectangular area showing the checkpoint zone
+    const thickness = 20; // Visual thickness of checkpoint zone
+    const offset = thickness / 2;
+    
+    // Calculate rectangle vertices
+    const p1x = checkpointStartPoint.x + normalX * offset;
+    const p1y = checkpointStartPoint.y + normalY * offset;
+    const p2x = checkpointStartPoint.x - normalX * offset;
+    const p2y = checkpointStartPoint.y - normalY * offset;
+    const p3x = mousePos.x - normalX * offset;
+    const p3y = mousePos.y - normalY * offset;
+    const p4x = mousePos.x + normalX * offset;
+    const p4y = mousePos.y + normalY * offset;
+    
+    // Draw filled area
+    editorCtx.fillStyle = 'rgba(0, 255, 0, 0.3)';
+    editorCtx.beginPath();
+    editorCtx.moveTo(p1x, -p1y);
+    editorCtx.lineTo(p2x, -p2y);
+    editorCtx.lineTo(p3x, -p3y);
+    editorCtx.lineTo(p4x, -p4y);
+    editorCtx.closePath();
+    editorCtx.fill();
+    
+    // Draw center line with dashed stroke
+    editorCtx.strokeStyle = '#00ff00';
+    editorCtx.lineWidth = 3 / zoom;
+    editorCtx.setLineDash([5 / zoom, 5 / zoom]);
+    
+    editorCtx.beginPath();
+    editorCtx.moveTo(checkpointStartPoint.x, -checkpointStartPoint.y);
+    editorCtx.lineTo(mousePos.x, -mousePos.y);
+    editorCtx.stroke();
+    
+    editorCtx.setLineDash([]);
+  }
+  
+  // Draw endpoints
+  editorCtx.fillStyle = '#00ff00';
+  editorCtx.beginPath();
+  editorCtx.arc(checkpointStartPoint.x, -checkpointStartPoint.y, 4 / zoom, 0, 2 * Math.PI);
+  editorCtx.fill();
+  
+  editorCtx.beginPath();
+  editorCtx.arc(mousePos.x, -mousePos.y, 4 / zoom, 0, 2 * Math.PI);
+  editorCtx.fill();
+}
+
+function drawDynamicPreview() {
+  const mousePos = getMouseCanvasPos();
+  if (!mousePos) return;
+  
+  const width = Math.abs(mousePos.x - dynamicStartPoint.x);
+  const height = Math.abs(mousePos.y - dynamicStartPoint.y);
+  const centerX = (dynamicStartPoint.x + mousePos.x) / 2;
+  const centerY = (dynamicStartPoint.y + mousePos.y) / 2;
+  
+  // Draw filled rectangle
+  editorCtx.fillStyle = 'rgba(139, 69, 19, 0.5)';
+  editorCtx.beginPath();
+  editorCtx.rect(centerX - width/2, -(centerY - height/2), width, -height);
+  editorCtx.fill();
+  
+  // Draw dashed border
+  editorCtx.strokeStyle = '#8b4513';
+  editorCtx.lineWidth = 2 / zoom;
+  editorCtx.setLineDash([5 / zoom, 5 / zoom]);
+  editorCtx.stroke();
+  editorCtx.setLineDash([]);
+  
+  // Draw dimensions text
+  editorCtx.fillStyle = '#8b4513';
+  editorCtx.font = `${12 / zoom}px Arial`;
+  editorCtx.textAlign = 'center';
+  const dimensionsText = `${width.toFixed(0)} × ${height.toFixed(0)}`;
+  editorCtx.fillText(dimensionsText, centerX, -(centerY - 8 / zoom));
+  
+  // Draw corner handles
+  editorCtx.fillStyle = '#8b4513';
+  const cornerSize = 6 / zoom;
+  
+  // Draw all four corners
+  const corners = [
+    [centerX - width/2, centerY - height/2],
+    [centerX + width/2, centerY - height/2],
+    [centerX + width/2, centerY + height/2],
+    [centerX - width/2, centerY + height/2]
+  ];
+  
+  corners.forEach(([x, y]) => {
+    editorCtx.fillRect(x - cornerSize/2, -y - cornerSize/2, cornerSize, cornerSize);
+  });
+  
+  // Draw center cross
+  editorCtx.strokeStyle = '#8b4513';
+  editorCtx.lineWidth = 1 / zoom;
+  editorCtx.beginPath();
+  editorCtx.moveTo(centerX - 8 / zoom, -centerY);
+  editorCtx.lineTo(centerX + 8 / zoom, -centerY);
+  editorCtx.moveTo(centerX, -(centerY - 8 / zoom));
+  editorCtx.lineTo(centerX, -(centerY + 8 / zoom));
+  editorCtx.stroke();
+}
+
+function drawNewAreaEffect() {
+  editorCtx.fillStyle = 'rgba(173, 216, 230, 0.5)';
+  editorCtx.strokeStyle = '#add8e6';
+  editorCtx.lineWidth = 2 / zoom;
+  editorCtx.setLineDash([3 / zoom, 3 / zoom]);
+  
+  if (areaEffectVertices.length > 2) {
+    // Draw filled polygon
+    editorCtx.beginPath();
+    editorCtx.moveTo(areaEffectVertices[0].x, -areaEffectVertices[0].y);
+    for (let i = 1; i < areaEffectVertices.length; i++) {
+      editorCtx.lineTo(areaEffectVertices[i].x, -areaEffectVertices[i].y);
+    }
+    editorCtx.closePath();
+    editorCtx.fill();
+    editorCtx.stroke();
+  } else {
+    // Draw line segments
+    editorCtx.beginPath();
+    editorCtx.moveTo(areaEffectVertices[0].x, -areaEffectVertices[0].y);
+    for (let i = 1; i < areaEffectVertices.length; i++) {
+      editorCtx.lineTo(areaEffectVertices[i].x, -areaEffectVertices[i].y);
+    }
+    editorCtx.stroke();
+  }
+  
+  editorCtx.setLineDash([]);
+  
+  // Draw vertices
+  drawVertices(areaEffectVertices, '#add8e6');
+}
+
 // Properties panel management
 function updatePropertiesPanel() {
   const panel = document.getElementById('propertiesPanel');
   
+  if (selectedObjects.length === 0) {
+    panel.innerHTML = '<p>Select an object to edit properties</p>';
+    return;
+  } else if (selectedObjects.length > 1) {
+    panel.innerHTML = `
+      <div class="property-form">
+        <h4>Multiple Objects Selected (${selectedObjects.length})</h4>
+        <p>Select a single object to edit properties</p>
+        
+        <div class="alignment-tools">
+          <h5>Alignment</h5>
+          <div class="alignment-buttons">
+            <button onclick="alignSelectedObjects('left')" title="Align Left">←</button>
+            <button onclick="alignSelectedObjects('centerH')" title="Center Horizontal">⊙</button>
+            <button onclick="alignSelectedObjects('right')" title="Align Right">→</button>
+          </div>
+          <div class="alignment-buttons">
+            <button onclick="alignSelectedObjects('top')" title="Align Top">↑</button>
+            <button onclick="alignSelectedObjects('centerV')" title="Center Vertical">⊕</button>
+            <button onclick="alignSelectedObjects('bottom')" title="Align Bottom">↓</button>
+          </div>
+          <div class="alignment-buttons">
+            <button onclick="alignToGrid()" title="Align to Grid">⊞</button>
+          </div>
+        </div>
+        
+        <div class="layer-tools">
+          <h5>Layer Order</h5>
+          <div class="layer-buttons">
+            <button onclick="moveToFront()" title="Bring to Front">⬆⬆</button>
+            <button onclick="moveUp()" title="Move Up">⬆</button>
+            <button onclick="moveDown()" title="Move Down">⬇</button>
+            <button onclick="moveToBack()" title="Send to Back">⬇⬇</button>
+          </div>
+        </div>
+        
+        <button onclick="deleteSelectedObjects()" class="delete-btn">Delete Selected</button>
+      </div>
+    `;
+    return;
+  }
+  
+  // Single selection - use existing logic
   if (!selectedObject) {
     panel.innerHTML = '<p>Select an object to edit properties</p>';
     return;
   }
 
-  // TODO: Generate property editor based on selected object type
-  panel.innerHTML = `<p>Selected: ${selectedObject.type} ${selectedObject.index}</p>`;
+  const objectData = getSelectedObjectData();
+  if (!objectData) {
+    panel.innerHTML = '<p>Object not found</p>';
+    return;
+  }
+
+  const propertyForm = generatePropertyForm(selectedObject.type, objectData, selectedObject.index);
+  panel.innerHTML = propertyForm;
+  attachPropertyEventListeners();
+}
+
+function getSelectedObjectData() {
+  if (!selectedObject || !editorMap) return null;
+
+  switch (selectedObject.type) {
+    case 'shape':
+      return editorMap.shapes?.[selectedObject.index];
+    case 'dynamicObject':
+      return editorMap.dynamicObjects?.[selectedObject.index];
+    case 'checkpoint':
+      return editorMap.checkpoints?.[selectedObject.index];
+    case 'areaEffect':
+      return editorMap.areaEffects?.[selectedObject.index];
+    default:
+      return null;
+  }
+}
+
+function generatePropertyForm(type, data, index) {
+  let html = `<div class="property-form">`;
+  html += `<h4>${type.charAt(0).toUpperCase() + type.slice(1)} ${index + 1}</h4>`;
+
+  switch (type) {
+    case 'shape':
+      html += buildShapeProperties(data, index);
+      break;
+    case 'dynamicObject':
+      html += buildDynamicObjectProperties(data, index);
+      break;
+    case 'checkpoint':
+      html += buildCheckpointProperties(data, index);
+      break;
+    case 'areaEffect':
+      html += buildAreaEffectProperties(data, index);
+      break;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
+// Property input component builders
+function createColorInput(label, value, id) {
+  const hexColor = Array.isArray(value) ? rgbToHex(value[0], value[1], value[2]) : '#888888';
+  return `
+    <div class="property-row">
+      <label class="property-label">${label}:</label>
+      <div class="color-input-group">
+        <input type="color" id="${id}" class="color-input" value="${hexColor}">
+        <span class="color-preview">${hexColor}</span>
+      </div>
+    </div>
+  `;
+}
+
+function createNumberInput(label, value, id, min = 0, max = 1000, step = 1) {
+  return `
+    <div class="property-row">
+      <label class="property-label">${label}:</label>
+      <input type="number" id="${id}" class="property-input" value="${value || 0}" 
+             min="${min}" max="${max}" step="${step}">
+    </div>
+  `;
+}
+
+function createTextInput(label, value, id, placeholder = '') {
+  return `
+    <div class="property-row">
+      <label class="property-label">${label}:</label>
+      <input type="text" id="${id}" class="property-input" value="${value || ''}" 
+             placeholder="${placeholder}">
+    </div>
+  `;
+}
+
+function createCheckboxInput(label, value, id) {
+  return `
+    <div class="property-row">
+      <label class="property-label">
+        <input type="checkbox" id="${id}" class="property-checkbox" ${value ? 'checked' : ''}>
+        ${label}
+      </label>
+    </div>
+  `;
+}
+
+function createSelectInput(label, value, id, options) {
+  let optionsHtml = options.map(option => 
+    `<option value="${option.value}" ${option.value === value ? 'selected' : ''}>${option.label}</option>`
+  ).join('');
+  
+  return `
+    <div class="property-row">
+      <label class="property-label">${label}:</label>
+      <select id="${id}" class="property-input">
+        ${optionsHtml}
+      </select>
+    </div>
+  `;
+}
+
+function createSliderInput(label, value, id, min = 0, max = 1, step = 0.01) {
+  return `
+    <div class="property-row">
+      <label class="property-label">${label}: <span id="${id}_value">${value}</span></label>
+      <input type="range" id="${id}" class="property-slider" value="${value || 0}" 
+             min="${min}" max="${max}" step="${step}">
+    </div>
+  `;
+}
+
+// Object-specific property builders
+function buildShapeProperties(shape, index) {
+  let html = '';
+  
+  // Fill Color
+  html += createColorInput('Fill Color', shape.fillColor, `shape_fillColor_${index}`);
+  
+  // Border Colors (multiple)
+  if (shape.borderColors) {
+    shape.borderColors.forEach((color, i) => {
+      html += createColorInput(`Border ${i + 1}`, hexToRgb(color), `shape_borderColor_${index}_${i}`);
+    });
+  }
+  
+  // Border Width
+  html += createNumberInput('Border Width', shape.borderWidth, `shape_borderWidth_${index}`, 0, 100, 1);
+  
+  return html;
+}
+
+function buildDynamicObjectProperties(obj, index) {
+  let html = '';
+  
+  // Basic Properties
+  html += createTextInput('ID', obj.id, `dynamic_id_${index}`, 'Object identifier');
+  
+  // Physics Properties
+  html += '<div class="property-group"><h5>Physics</h5>';
+  html += createCheckboxInput('Static', obj.isStatic, `dynamic_isStatic_${index}`);
+  html += createSliderInput('Density', obj.density, `dynamic_density_${index}`, 0, 5, 0.01);
+  html += createSliderInput('Friction', obj.friction, `dynamic_friction_${index}`, 0, 2, 0.01);
+  html += createSliderInput('Air Friction', obj.frictionAir, `dynamic_frictionAir_${index}`, 0, 1, 0.01);
+  html += createSliderInput('Restitution', obj.restitution, `dynamic_restitution_${index}`, 0, 2, 0.01);
+  html += createSliderInput('Damage Scale', obj.damageScale, `dynamic_damageScale_${index}`, 0, 5, 0.01);
+  html += '</div>';
+  
+  // Visual Properties
+  html += '<div class="property-group"><h5>Appearance</h5>';
+  html += createColorInput('Fill Color', obj.fillColor, `dynamic_fillColor_${index}`);
+  html += createColorInput('Stroke Color', obj.strokeColor, `dynamic_strokeColor_${index}`);
+  html += createNumberInput('Stroke Width', obj.strokeWidth, `dynamic_strokeWidth_${index}`, 0, 20, 1);
+  html += '</div>';
+  
+  return html;
+}
+
+function buildCheckpointProperties(checkpoint, index) {
+  let html = '';
+  
+  html += createTextInput('ID', checkpoint.id, `checkpoint_id_${index}`, 'checkpoint-1');
+  
+  const typeOptions = [
+    { value: 'line', label: 'Line' },
+    { value: 'polygon', label: 'Polygon' }
+  ];
+  html += createSelectInput('Type', checkpoint.type, `checkpoint_type_${index}`, typeOptions);
+  
+  return html;
+}
+
+function buildAreaEffectProperties(area, index) {
+  let html = '';
+  
+  const effectOptions = [
+    { value: 'ice', label: 'Ice (Reduces Friction)' },
+    { value: 'boost', label: 'Boost (Speed Up)' },
+    { value: 'damage', label: 'Damage Zone' },
+    { value: 'slow', label: 'Slow Zone' }
+  ];
+  html += createSelectInput('Effect Type', area.effect, `area_effect_${index}`, effectOptions);
+  
+  html += createSliderInput('Strength', area.strength, `area_strength_${index}`, 0, 2, 0.01);
+  html += createColorInput('Fill Color', area.fillColor, `area_fillColor_${index}`);
+  
+  return html;
+}
+
+// Utility functions
+function rgbToHex(r, g, b) {
+  return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+}
+
+function hexToRgb(hex) {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? [
+    parseInt(result[1], 16),
+    parseInt(result[2], 16),
+    parseInt(result[3], 16)
+  ] : [128, 128, 128];
+}
+
+// Event handler attachment
+function attachPropertyEventListeners() {
+  // Color inputs
+  document.querySelectorAll('.color-input').forEach(input => {
+    input.addEventListener('input', handleColorChange);
+  });
+  
+  // Number inputs
+  document.querySelectorAll('.property-input[type="number"]').forEach(input => {
+    input.addEventListener('input', handleNumberChange);
+  });
+  
+  // Text inputs
+  document.querySelectorAll('.property-input[type="text"]').forEach(input => {
+    input.addEventListener('input', handleTextChange);
+  });
+  
+  // Checkboxes
+  document.querySelectorAll('.property-checkbox').forEach(input => {
+    input.addEventListener('change', handleCheckboxChange);
+  });
+  
+  // Select dropdowns
+  document.querySelectorAll('.property-input[type=""], .property-input:not([type])').forEach(input => {
+    if (input.tagName === 'SELECT') {
+      input.addEventListener('change', handleSelectChange);
+    }
+  });
+  
+  // Sliders
+  document.querySelectorAll('.property-slider').forEach(input => {
+    input.addEventListener('input', handleSliderChange);
+  });
+}
+
+// Property change event handlers
+function handleColorChange(event) {
+  const input = event.target;
+  const rgb = hexToRgb(input.value);
+  const idParts = input.id.split('_');
+  const objectType = idParts[0];
+  const property = idParts[1];
+  const index = parseInt(idParts[2]);
+  
+  const objectData = getSelectedObjectData();
+  if (!objectData) return;
+  
+  if (objectType === 'shape' && property === 'borderColor') {
+    const colorIndex = parseInt(idParts[3]);
+    if (objectData.borderColors && objectData.borderColors[colorIndex]) {
+      objectData.borderColors[colorIndex] = input.value;
+    }
+  } else {
+    // Regular color properties (fillColor, strokeColor)
+    objectData[property] = rgb;
+  }
+  
+  // Update preview color display
+  const preview = input.nextElementSibling;
+  if (preview && preview.classList.contains('color-preview')) {
+    preview.textContent = input.value;
+  }
+  
+  updateMapAndRender();
+}
+
+function handleNumberChange(event) {
+  const input = event.target;
+  const value = parseFloat(input.value);
+  const idParts = input.id.split('_');
+  const objectType = idParts[0];
+  const property = idParts[1];
+  const index = parseInt(idParts[2]);
+  
+  const objectData = getSelectedObjectData();
+  if (!objectData) return;
+  
+  // Handle nested properties
+  if (property === 'x' && objectData.position) {
+    objectData.position.x = value;
+  } else if (property === 'y' && objectData.position) {
+    objectData.position.y = value;
+  } else if (property === 'width' && objectData.size) {
+    objectData.size.width = value;
+  } else if (property === 'height' && objectData.size) {
+    objectData.size.height = value;
+  } else {
+    objectData[property] = value;
+  }
+  
+  updateMapAndRender();
+}
+
+function handleTextChange(event) {
+  const input = event.target;
+  const value = input.value;
+  const idParts = input.id.split('_');
+  const objectType = idParts[0];
+  const property = idParts[1];
+  const index = parseInt(idParts[2]);
+  
+  const objectData = getSelectedObjectData();
+  if (!objectData) return;
+  
+  objectData[property] = value;
+  updateMapAndRender();
+}
+
+function handleCheckboxChange(event) {
+  const input = event.target;
+  const value = input.checked;
+  const idParts = input.id.split('_');
+  const objectType = idParts[0];
+  const property = idParts[1];
+  const index = parseInt(idParts[2]);
+  
+  const objectData = getSelectedObjectData();
+  if (!objectData) return;
+  
+  objectData[property] = value;
+  updateMapAndRender();
+}
+
+function handleSelectChange(event) {
+  const input = event.target;
+  const value = input.value;
+  const idParts = input.id.split('_');
+  const objectType = idParts[0];
+  const property = idParts[1];
+  const index = parseInt(idParts[2]);
+  
+  const objectData = getSelectedObjectData();
+  if (!objectData) return;
+  
+  objectData[property] = value;
+  updateMapAndRender();
+}
+
+function handleSliderChange(event) {
+  const input = event.target;
+  const value = parseFloat(input.value);
+  const idParts = input.id.split('_');
+  const objectType = idParts[0];
+  const property = idParts[1];
+  const index = parseInt(idParts[2]);
+  
+  const objectData = getSelectedObjectData();
+  if (!objectData) return;
+  
+  objectData[property] = value;
+  
+  // Update value display
+  const valueDisplay = document.getElementById(`${input.id}_value`);
+  if (valueDisplay) {
+    valueDisplay.textContent = value.toFixed(2);
+  }
+  
+  updateMapAndRender();
+}
+
+function updateMapAndRender() {
+  renderEditor();
 }
 
 // Layers panel management
@@ -698,19 +2206,70 @@ function updateUI() {
   updateLayersPanel();
 }
 
-function updateMapDataInput() {
-  if (editorMap) {
-    document.getElementById('mapDataInput').value = JSON.stringify(editorMap, null, 2);
-  }
+// File operations
+function createNewMap() {
+  // Create blank map template with start property
+  editorMap = {
+    "displayName": "New Map",
+    "scale": { 
+      "player": 0.002, 
+      "spectator": 0.0005 
+    },
+    "start": {
+      "type": "polygon",
+      "vertices": [
+        { "x": -50, "y": -10 },
+        { "x": 50, "y": -10 },
+        { "x": 50, "y": 10 },
+        { "x": -50, "y": 10 }
+      ]
+    },
+    "shapes": [],
+    "checkpoints": [], 
+    "areaEffects": [],
+    "dynamicObjects": []
+  };
+  
+  currentMapInfo = { 
+    key: null, 
+    name: "New Map", 
+    directory: null, 
+    isNew: true 
+  };
+  
+  // Initialize history
+  historyStack = [JSON.parse(JSON.stringify(editorMap))];
+  historyIndex = 0;
+  
+  updateUI();
+  renderEditor();
 }
 
-// File operations (keep existing functions)
 function loadMap(key) {
-  fetch(`/api/maps/${key}`)
+  // Parse category/key format and construct proper URL
+  let url;
+  if (key.includes('/')) {
+    // Key is in format "category/mapname", split it for the URL
+    url = `/api/maps/${key}`;
+  } else {
+    // Key is just the map name, assume official category
+    url = `/api/maps/official/${key}`;
+  }
+  
+  fetch(url)
     .then(res => res.json())
     .then(map => {
       editorMap = map;
-      updateMapDataInput();
+      currentMapInfo = {
+        key: key,
+        name: map.displayName || key.split('/').pop().replace('.json', ''),
+        directory: key.split('/')[0],
+        isNew: false,
+      };
+      // Initialize history
+      historyStack = [JSON.parse(JSON.stringify(editorMap))];
+      historyIndex = 0;
+      
       updateUI();
       renderEditor();
     })
@@ -719,54 +2278,118 @@ function loadMap(key) {
     });
 }
 
-function applyMapData() {
-  try {
-    const data = JSON.parse(document.getElementById('mapDataInput').value);
-    editorMap = data;
-    selectedObject = null;
-    selectedVertex = null;
-    updateUI();
-    renderEditor();
-  } catch (err) {
-    alert('Invalid JSON');
+function saveMap() {
+  if (currentMapInfo.isNew || !currentMapInfo.name) {
+    saveMapAs();
+  } else {
+    executeSave(currentMapInfo.name, currentMapInfo.directory, editorMap.author, currentMapInfo.key);
   }
 }
 
-function downloadMapData() {
-  if (!editorMap) return;
-  const blob = new Blob([JSON.stringify(editorMap, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'map.json';
-  a.click();
-  URL.revokeObjectURL(url);
+function saveMapAs() {
+  showSaveMapModal();
 }
 
-async function saveMapToServer() {
-  if (!editorMap) {
-    alert('No map data to save');
+let saveModalHandleEnter = null;
+
+function showSaveMapModal() {
+  const modal = document.getElementById('saveMapModal');
+  const mapNameInput = document.getElementById('saveMapName');
+  const authorInput = document.getElementById('saveMapAuthor');
+  
+  // Pre-fill form
+  mapNameInput.value = currentMapInfo.isNew ? '' : currentMapInfo.name;
+  authorInput.value = editorMap.author || 'Bradzie';
+  if (currentMapInfo.directory === 'official') {
+    document.getElementById('saveOfficial').checked = true;
+  } else {
+    document.getElementById('saveCommunity').checked = true;
+  }
+  
+  modal.classList.remove('hidden');
+  mapNameInput.focus();
+  
+  // Handle Enter key in form inputs
+  saveModalHandleEnter = (e) => {
+    if (e.key === 'Enter') {
+      confirmSaveMap();
+    }
+  };
+  
+  mapNameInput.addEventListener('keydown', saveModalHandleEnter);
+  authorInput.addEventListener('keydown', saveModalHandleEnter);
+}
+
+function closeSaveMapModal() {
+  const modal = document.getElementById('saveMapModal');
+  modal.classList.add('hidden');
+  
+  // Remove event listeners
+  if (saveModalHandleEnter) {
+    const mapNameInput = document.getElementById('saveMapName');
+    const authorInput = document.getElementById('saveMapAuthor');
+    mapNameInput.removeEventListener('keydown', saveModalHandleEnter);
+    authorInput.removeEventListener('keydown', saveModalHandleEnter);
+    saveModalHandleEnter = null;
+  }
+}
+
+function confirmSaveMap() {
+  const mapName = document.getElementById('saveMapName').value.trim();
+  const author = document.getElementById('saveMapAuthor').value.trim();
+  const directory = document.querySelector('input[name="saveDirectory"]:checked').value;
+  executeSave(mapName, directory, author);
+}
+
+async function executeSave(mapName, directory, author, key = null) {
+  if (!mapName) {
+    alert('Please enter a map name');
     return;
   }
-
-  const mapName = prompt('Enter map name:');
-  if (!mapName) return;
-
+  
+  if (!author) {
+    alert('Please enter an author name');
+    return;
+  }
+  
+  closeSaveMapModal();
+  
   try {
+    const enhancedMapData = {
+      ...editorMap,
+      displayName: mapName,
+      author: author,
+      created_at: editorMap.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    
+    const payload = { 
+      name: mapName,
+      directory: directory,
+      mapData: enhancedMapData 
+    };
+
+    if (key) {
+      payload.key = key;
+    }
+    
     const response = await fetch('/api/maps', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        name: mapName, 
-        mapData: editorMap 
-      })
+      body: JSON.stringify(payload)
     });
 
     const result = await response.json();
     
     if (result.success) {
-      alert('Map saved successfully!');
-      loadMapsList();
+      alert(`Map saved successfully to ${directory} directory!`);
+      currentMapInfo = {
+        key: result.key,
+        name: mapName,
+        directory: directory,
+        isNew: false,
+      };
+      loadMapsList(result.key);
     } else {
       alert('Failed to save map: ' + result.error);
     }
@@ -776,65 +2399,56 @@ async function saveMapToServer() {
   }
 }
 
-async function uploadNewMap() {
-  const fileInput = document.createElement('input');
-  fileInput.type = 'file';
-  fileInput.accept = '.json';
+function showBrowseModal() {
+  const modal = document.getElementById('browseMapModal');
+  modal.classList.remove('hidden');
   
-  fileInput.onchange = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    try {
-      const text = await file.text();
-      const mapData = JSON.parse(text);
-      
-      const mapName = prompt('Enter map name:', file.name.replace('.json', ''));
-      if (!mapName) return;
-
-      const response = await fetch('/api/maps', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          name: mapName, 
-          mapData: mapData 
-        })
-      });
-
-      const result = await response.json();
-      
-      if (result.success) {
-        alert('Map uploaded successfully!');
-        editorMap = mapData;
-        updateMapDataInput();
-        updateUI();
-        renderEditor();
-        loadMapsList();
-      } else {
-        alert('Failed to upload map: ' + result.error);
-      }
-    } catch (error) {
-      console.error('Upload map error:', error);
-      alert('Failed to upload map: Invalid JSON file');
-    }
-  };
-  
-  fileInput.click();
-}
-
-function loadMapsList() {
+  // Load and display maps
   fetch('/api/maps')
     .then(res => res.json())
     .then(maps => {
-      const select = document.getElementById('mapSelect');
-      select.innerHTML = maps.map(m => 
-        `<option value="${m.key}">${m.name} (${m.category})</option>`
-      ).join('');
+      displayMapsInBrowser(maps);
     })
     .catch(error => {
       console.error('Error loading maps:', error);
+      document.getElementById('mapsGrid').innerHTML = '<p>Error loading maps</p>';
     });
 }
+
+function hideBrowseModal() {
+  document.getElementById('browseMapModal').classList.add('hidden');
+}
+
+function displayMapsInBrowser(maps) {
+  const grid = document.getElementById('mapsGrid');
+  
+  grid.innerHTML = maps.map(map => {
+    const author = map.key.includes('official/') ? 'Official' : 'Community';
+    const category = map.category || author;
+    
+    return `
+      <div class="map-entry" data-map-key="${map.key}">
+        <div class="map-preview">
+          <div class="no-preview">No preview</div>
+        </div>
+        <div class="map-info">
+          <h4 class="map-name">${map.name}</h4>
+          <p class="map-author">Author: ${author}</p>
+          <p class="map-category">Category: ${category}</p>
+          <button class="select-map-btn" onclick="selectMapFromBrowser('${map.key}')">Select</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function selectMapFromBrowser(key) {
+  hideBrowseModal();
+  loadMap(key);
+}
+
+// Expose function globally for HTML onclick handlers
+window.selectMapFromBrowser = selectMapFromBrowser;
 
 function resizeEditorCanvas() {
   if (!editorCanvas) return;
@@ -846,3 +2460,12 @@ function resizeEditorCanvas() {
 // Expose global functions
 window.initMapEditor = initMapEditor;
 window.selectObject = selectObject;
+window.closeSaveMapModal = closeSaveMapModal;
+window.confirmSaveMap = confirmSaveMap;
+window.deleteSelectedObjects = deleteSelectedObjects;
+window.alignSelectedObjects = alignSelectedObjects;
+window.alignToGrid = alignToGrid;
+window.moveToFront = moveToFront;
+window.moveToBack = moveToBack;
+window.moveUp = moveUp;
+window.moveDown = moveDown;

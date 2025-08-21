@@ -14,7 +14,7 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 // Debug mode - toggle this to enable/disable admin panel
-const DEBUG_MODE = true;
+const DEBUG_MODE = false;
 
 // Initialize database
 const userDb = new UserDatabase();
@@ -49,7 +49,7 @@ app.get('/api/maps', (req, res) => {
   try {
     const maps = mapManager.getAllMaps();
     const mapList = maps.map(map => ({
-      key: map.key,
+      key: `${map.category}/${map.key}`,
       name: map.name,
       description: map.description || '',
       category: map.category,
@@ -63,10 +63,10 @@ app.get('/api/maps', (req, res) => {
 });
 
 // send full map data to client for editor
-app.get('/api/maps/:key', (req, res) => {
-  const key = req.params.key;
+app.get('/api/maps/:category/:key', (req, res) => {
+  const { category, key } = req.params;
   try {
-    const map = mapManager.getMap(key);
+    const map = mapManager.getMap(key, category);
     if (map) {
       res.json(map);
     } else {
@@ -80,56 +80,87 @@ app.get('/api/maps/:key', (req, res) => {
 
 // New map management endpoints
 
-// Upload a new community map (authenticated users only)
+// Upload a new community map or overwrite an existing one (authenticated users only)
 app.post('/api/maps', async (req, res) => {
   if (!req.session.userId) {
     return res.status(401).json({ error: 'Authentication required' });
   }
 
   try {
-    const { name, mapData } = req.body;
+    const { name, mapData, directory, key } = req.body;
     
     if (!name || !mapData) {
       return res.status(400).json({ error: 'Name and map data are required' });
     }
 
-    // Generate unique filename
-    const sanitizedName = name.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
-    const timestamp = Date.now();
-    const filename = `${req.session.userId}_${sanitizedName}_${timestamp}`;
+    let filename;
+    let targetDirectory;
+    let isNewMap = true;
+
+    if (key) {
+      // Overwriting an existing map
+      const keyParts = key.split('/');
+      targetDirectory = keyParts[0];
+      filename = keyParts.slice(1).join('/');
+      isNewMap = false;
+
+      if (!['official', 'community'].includes(targetDirectory)) {
+        return res.status(400).json({ error: 'Invalid directory in key.' });
+      }
+      
+    } else {
+      // Creating a new map
+      targetDirectory = directory || 'community';
+      if (!['official', 'community'].includes(targetDirectory)) {
+        return res.status(400).json({ error: 'Invalid directory. Must be "official" or "community"' });
+      }
+
+      if (targetDirectory === 'official') {
+        filename = name.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
+      } else {
+        const sanitizedName = name.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
+        const timestamp = Date.now();
+        filename = `${req.session.userId}_${sanitizedName}_${timestamp}`;
+      }
+    }
     
-    // Add metadata to map data
     const enhancedMapData = {
       ...mapData,
       displayName: name,
-      author: req.session.username,
+      author: mapData.author || req.session.username,
       author_id: req.session.userId,
-      created_at: new Date().toISOString(),
-      category: 'community'
+      created_at: isNewMap ? new Date().toISOString() : (mapData.created_at || new Date().toISOString()),
+      updated_at: new Date().toISOString(),
+      category: targetDirectory
     };
 
-    // Save map file
-    const saved = mapManager.saveMap(filename, 'community', enhancedMapData);
+    const saved = mapManager.saveMap(filename, targetDirectory, enhancedMapData);
     if (!saved) {
       return res.status(500).json({ error: 'Failed to save map' });
     }
 
-    // Add to database
-    const dbResult = userDb.addMap(name, req.session.userId, filename, 'community');
-    if (!dbResult.success) {
-      // Cleanup file if database insert failed
-      mapManager.deleteMap(filename, 'community');
-      return res.status(500).json({ error: dbResult.error });
+    if (isNewMap) {
+      const dbResult = userDb.addMap(name, req.session.userId, filename, targetDirectory);
+      if (!dbResult.success) {
+        mapManager.deleteMap(filename, targetDirectory);
+        return res.status(500).json({ error: dbResult.error });
+      }
+       res.json({ 
+        success: true, 
+        mapId: dbResult.mapId,
+        filename: filename,
+        key: `${targetDirectory}/${filename}`
+      });
+    } else {
+         res.json({ 
+            success: true, 
+            filename: filename,
+            key: `${targetDirectory}/${filename}`
+        });
     }
-
-    res.json({ 
-      success: true, 
-      mapId: dbResult.mapId,
-      filename: filename
-    });
   } catch (error) {
-    console.error('Map upload error:', error);
-    res.status(500).json({ error: 'Map upload failed' });
+    console.error('Map save error:', error);
+    res.status(500).json({ error: 'Map save failed' });
   }
 });
 
@@ -259,8 +290,20 @@ app.post('/api/rooms/create', express.json(), (req, res) => {
     if (name && name.length > 50) {
       return res.status(400).json({ error: 'Room name too long' });
     }
-    if (mapKey && !mapManager.mapExists(mapKey)) {
-      return res.status(400).json({ error: 'Invalid map' });
+    if (mapKey) {
+      // Parse category/key format if present
+      let keyToCheck = mapKey;
+      let categoryToCheck = null;
+      
+      if (mapKey.includes('/')) {
+        const parts = mapKey.split('/');
+        categoryToCheck = parts[0];
+        keyToCheck = parts[1];
+      }
+      
+      if (!mapManager.mapExists(keyToCheck, categoryToCheck)) {
+        return res.status(400).json({ error: 'Invalid map' });
+      }
     }
     if (maxPlayers && (maxPlayers < 1 || maxPlayers > 16)) {
       return res.status(400).json({ error: 'Invalid max players (1-16)' });
@@ -631,14 +674,73 @@ class Car {
       ...(def.bodyOptions || {}),
       label: `car-${this.id}`
     }
-  if (def.shape && def.shape.vertices.length > 2) {
-    this.body = Matter.Bodies.fromVertices(
-      startPos.x,
-      startPos.y,
-      [def.shape.vertices],
-      bodyOpts,
-      false
-    )
+  if (def.shapes && def.shapes.length > 0) {
+    if (def.shapes.length === 1) {
+      // Single shape - use simple body
+      const shape = def.shapes[0]
+      const shapeBodyOpts = {
+        ...bodyOpts,
+        ...(shape.bodyOptions || {})
+      }
+      this.body = Matter.Bodies.fromVertices(
+        startPos.x,
+        startPos.y,
+        [shape.vertices],
+        shapeBodyOpts,
+        false
+      )
+    } else {
+      // Multiple shapes - create compound body
+      // First, calculate the overall center of mass for all shapes combined
+      let totalArea = 0;
+      let centerX = 0;
+      let centerY = 0;
+      
+      def.shapes.forEach(shape => {
+        // Calculate centroid of this shape
+        const centroid = Matter.Vertices.centre(shape.vertices);
+        // Rough area calculation for weighting (using bounding box area)
+        const bounds = Matter.Bounds.create(shape.vertices);
+        const area = (bounds.max.x - bounds.min.x) * (bounds.max.y - bounds.min.y);
+        
+        centerX += centroid.x * area;
+        centerY += centroid.y * area;
+        totalArea += area;
+      });
+      
+      // Overall center of mass
+      const overallCenter = { x: centerX / totalArea, y: centerY / totalArea };
+      const bodies = def.shapes.map((shape, index) => {
+        // Calculate where this shape should be positioned relative to the overall center
+        const shapeCentroid = Matter.Vertices.centre(shape.vertices);
+        const offsetX = shapeCentroid.x - overallCenter.x;
+        const offsetY = shapeCentroid.y - overallCenter.y;
+        
+        const shapePosition = {
+          x: startPos.x + offsetX,
+          y: startPos.y + offsetY
+        };
+        
+        const shapeBodyOpts = {
+          ...bodyOpts,
+          ...(shape.bodyOptions || {}),
+          label: `car-${this.id}-shape-${index}`
+        }
+        return Matter.Bodies.fromVertices(
+          shapePosition.x,
+          shapePosition.y,
+          [shape.vertices],
+          shapeBodyOpts,
+          false
+        )
+      })
+      this.body = Matter.Body.create({
+        parts: bodies,
+        ...bodyOpts,
+        label: `car-${this.id}`
+      })
+      
+    }
     this.displaySize = 15 // used for rendering hud around car (health bars, etc.)
   }
     Matter.Body.setAngle(this.body, 0);
@@ -953,11 +1055,37 @@ class Room {
     
         const isCarA = bodyA.label?.startsWith?.('car-')
         const isCarB = bodyB.label?.startsWith?.('car-')
+        
         const isSpikeA = bodyA.label === 'spike-trap'
         const isSpikeB = bodyB.label === 'spike-trap'
     
-        const carA = isCarA ? [...this.players.values()].find(c => c.body === bodyA) : null
-        const carB = isCarB ? [...this.players.values()].find(c => c.body === bodyB) : null
+        // For compound bodies, we need to find the main car body from shape parts
+        const findCarFromBody = (body) => {
+          // First try direct match
+          let car = [...this.players.values()].find(c => c.body === body)
+          if (car) {
+            return car
+          }
+          
+          // If not found, check if this is a shape part of a compound body
+          if (body.label?.includes('car-') && body.label?.includes('shape-')) {
+            // Extract car ID from shape label (e.g., "car-d0a4f375-7638-49d7-a851-c0b8e8bed711-shape-0")
+            // Remove "car-" prefix and "-shape-X" suffix to get the full UUID
+            const match = body.label.match(/^car-(.+)-shape-\d+$/)
+            if (match) {
+              const carId = match[1]
+              car = [...this.players.values()].find(c => c.id.toString() === carId)
+              if (car) {
+                return car
+              }
+            }
+          }
+          
+          return null
+        }
+    
+        const carA = isCarA ? findCarFromBody(bodyA) : null
+        const carB = isCarB ? findCarFromBody(bodyB) : null
     
         // Handle spike trap collisions (ignore owner completely)
         if (isSpikeA && carB) {
@@ -980,9 +1108,14 @@ class Room {
         // Handle collisions (only if not ghost and not spike traps)
         if (!isSpikeA && !isSpikeB) {
           // Calculate relative velocity for velocity-based damage
-          const relativeVelocityX = bodyA.velocity.x - bodyB.velocity.x;
-          const relativeVelocityY = bodyA.velocity.y - bodyB.velocity.y;
+          // For compound bodies, use the main car body velocity instead of shape part velocity
+          const bodyAVel = carA ? carA.body.velocity : bodyA.velocity;
+          const bodyBVel = carB ? carB.body.velocity : bodyB.velocity;
+          
+          const relativeVelocityX = bodyAVel.x - bodyBVel.x;
+          const relativeVelocityY = bodyAVel.y - bodyBVel.y;
           const relativeSpeed = Math.sqrt(relativeVelocityX * relativeVelocityX + relativeVelocityY * relativeVelocityY);
+          
           
           // Apply mutual collision damage with overflow mechanics
           if (carA && carB && !carA.isGhost && !carB.isGhost) {
@@ -1178,7 +1311,17 @@ class Room {
     }
     this.currentDynamicBodies = []
 
-    const map = mapManager.getMap(mapKey)
+    // Parse category/key format if present
+    let keyToCheck = mapKey;
+    let categoryToCheck = null;
+    
+    if (mapKey && mapKey.includes('/')) {
+      const parts = mapKey.split('/');
+      categoryToCheck = parts[0];
+      keyToCheck = parts[1];
+    }
+
+    const map = mapManager.getMap(keyToCheck, categoryToCheck)
     const thickness = 10
     if (!map) return
 
@@ -1215,7 +1358,7 @@ class Room {
     // Create dynamic objects
     if (map.dynamicObjects) {
       for (const dynObj of map.dynamicObjects) {
-        if (!dynObj.position || typeof dynObj.position.x !== 'number' || typeof dynObj.position.y !== 'number') {
+        if (!dynObj.vertices || !Array.isArray(dynObj.vertices) || dynObj.vertices.length < 3) {
           continue
         }
 
@@ -1224,19 +1367,7 @@ class Room {
           label: `dynamic-${dynObj.id || 'object'}`
         }
         
-        let body
-        if (dynObj.shape === 'circle') {
-          body = Matter.Bodies.circle(dynObj.position.x, dynObj.position.y, dynObj.size.radius, bodyOptions)
-        } else {
-          // Default to rectangle
-          body = Matter.Bodies.rectangle(
-            dynObj.position.x, 
-            dynObj.position.y, 
-            dynObj.size.width, 
-            dynObj.size.height, 
-            bodyOptions
-          )
-        }
+        const body = Matter.Bodies.fromVertices(0, 0, [dynObj.vertices], bodyOptions)
         
         // Apply frictionAir if specified
         if (typeof dynObj.frictionAir === 'number') {
@@ -1395,14 +1526,16 @@ class Room {
         maxLaps: car.maxLaps,
         upgradePoints: car.upgradePoints,
         upgradeUsage: car.upgradeUsage,
-        color: CAR_TYPES[car.type].color,
-        shape: CAR_TYPES[car.type].shape,
         name: car.name,
         checkpointsVisited: Array.from(car.checkpointsVisited),
-        vertices: car.body.vertices.map(v => ({
-          x: v.x - pos.x,
-          y: v.y - pos.y
-        })),
+        // Only send vertices and color for single-shape cars (backward compatibility)
+        ...((CAR_TYPES[car.type]?.shapes?.length === 1) ? {
+          color: CAR_TYPES[car.type].color,
+          vertices: car.body.vertices.map(v => ({
+            x: v.x - pos.x,
+            y: v.y - pos.y
+          }))
+        } : {}),
         abilityCooldownReduction: car.abilityCooldownReduction || 0,
         crashed: car.justCrashed || false,
         crashedAt: car.crashedAt || null,

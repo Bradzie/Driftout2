@@ -1,5 +1,5 @@
 {
-  "displayName": "Square",
+  "displayName": "squareTwo",
   "scale": {
     "player": 0.002,
     "spectator": 0.0005
@@ -57,12 +57,12 @@
           "y": 800
         },
         {
-          "x": -400,
-          "y": 750
+          "x": -825,
+          "y": 800
         },
         {
           "x": -600,
-          "y": 600
+          "y": 450
         }
       ],
       "fillColor": [
@@ -414,7 +414,7 @@
         },
         {
           "x": 0,
-          "y": 770
+          "y": 750
         }
       ],
       "id": "checkpoint-3"
@@ -459,5 +459,7 @@
   ],
   "author": "Bradzie",
   "created_at": "2025-08-20T13:04:58.845Z",
-  "category": "official"
+  "category": "official",
+  "updated_at": "2025-08-21T13:00:58.420Z",
+  "author_id": 1
 }

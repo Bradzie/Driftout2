@@ -67,6 +67,7 @@
   const topToolbar = document.getElementById('topToolbar');
   const toolbarHoverZone = document.getElementById('toolbarHoverZone');
   const toolbarPlayerName = document.getElementById('toolbarPlayerName');
+  const toolbarBackBtn = document.getElementById('toolbarBackBtn');
   const toolbarLogoutBtn = document.getElementById('toolbarLogoutBtn');
   const toolbarSettingsBtn = document.getElementById('toolbarSettingsBtn');
 
@@ -132,7 +133,8 @@
   const createRoomModal = document.getElementById('createRoomModal');
   const createRoomCloseBtn = document.getElementById('createRoomCloseBtn');
   const createRoomName = document.getElementById('createRoomName');
-  const createRoomMap = document.getElementById('createRoomMap');
+  const selectedMapDisplay = document.getElementById('selectedMapDisplay');
+  const browseMapButton = document.getElementById('browseMapButton');
   const createRoomMaxPlayers = document.getElementById('createRoomMaxPlayers');
 
   // Map editor elements
@@ -145,7 +147,7 @@
   // Get references to car card template elements
   const carRadioInput = document.querySelector('input[name="car"]');
   const carName = document.getElementById('carName');
-  const carPolygon = document.getElementById('carPolygon');
+  const carShape = document.getElementById('carShape');
   const speedFill = document.getElementById('speedFill');
   const healthFill = document.getElementById('healthFill');
   const handlingFill = document.getElementById('handlingFill');
@@ -413,6 +415,28 @@
     }
   }
 
+  function handleBackToGame() {
+    // Hide map editor and show menu
+    mapEditorContainer.classList.add('hidden');
+    menu.classList.remove('hidden');
+    toolbarBackBtn.classList.add('hidden'); // Hide back button when leaving map editor
+    
+    // Always attempt to connect to official room when returning from map editor
+    try {
+      // Disconnect current connection if it exists
+      if (socket && socket.connected) {
+        socket.disconnect();
+      }
+      
+      // Connect to official room in spectator mode
+      connectToRoom('official');
+    } catch (error) {
+      console.error('Failed to reconnect to official room:', error);
+      // Show disconnect warning if connection fails
+      showMenuDisconnectionWarning();
+    }
+  }
+
   // Authentication event listeners
   document.getElementById('showLoginBtn').addEventListener('click', showLoginForm);
   document.getElementById('showRegisterBtn').addEventListener('click', showRegisterForm);
@@ -447,6 +471,7 @@
 
 
   // Toolbar event listeners
+  toolbarBackBtn.addEventListener('click', handleBackToGame);
   toolbarLogoutBtn.addEventListener('click', handleLogout);
   toolbarSettingsBtn.addEventListener('click', openSettings);
 
@@ -589,6 +614,7 @@
   // Create room modal event listeners
   createRoomCloseBtn.addEventListener('click', closeCreateRoomModal);
   createRoomButton.addEventListener('click', handleCreateRoom);
+  browseMapButton.addEventListener('click', openMapBrowserForRoom);
 
   // Map editor button
   mapEditorButton.addEventListener('click', () => {
@@ -597,6 +623,7 @@
     }
     menu.classList.add('hidden');
     mapEditorContainer.classList.remove('hidden');
+    toolbarBackBtn.classList.remove('hidden'); // Show back button in map editor
     if (typeof initMapEditor === 'function') {
       initMapEditor();
     }
@@ -615,6 +642,28 @@
       closeCreateRoomModal();
     }
   });
+  
+  // Close browse map modal when clicking outside or ESC
+  const browseMapModal = document.getElementById('browseMapModal');
+  const closeBrowseModalBtn = document.getElementById('closeBrowseModal');
+  
+  if (browseMapModal && closeBrowseModalBtn) {
+    closeBrowseModalBtn.addEventListener('click', () => {
+      browseMapModal.classList.add('hidden');
+    });
+    
+    browseMapModal.addEventListener('click', (e) => {
+      if (e.target === browseMapModal) {
+        browseMapModal.classList.add('hidden');
+      }
+    });
+    
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !browseMapModal.classList.contains('hidden')) {
+        browseMapModal.classList.add('hidden');
+      }
+    });
+  }
   
   // Update max players value display
   createRoomMaxPlayers.addEventListener('input', (e) => {
@@ -1121,11 +1170,11 @@
   let roomsRefreshInterval = null;
   let availableMaps = [];
   let availableRooms = [];
+  let selectedMapForRoom = null; // Track selected map for room creation
   
   // Room browser functions
   function openRoomBrowser() {
     roomBrowserModal.classList.remove('hidden');
-    loadMaps();
     loadRooms();
     
     // Start auto-refresh
@@ -1148,7 +1197,9 @@
   // Create room modal functions
   function openCreateRoomModal() {
     createRoomModal.classList.remove('hidden');
-    loadMaps(); // Load maps when opening create room modal
+    // Reset selected map
+    selectedMapForRoom = null;
+    updateSelectedMapDisplay();
     document.getElementById('createRoomName').focus();
   }
   
@@ -1156,33 +1207,75 @@
     createRoomModal.classList.add('hidden');
   }
   
-  async function loadMaps() {
-    try {
-      const response = await fetch('/api/maps');
-      if (!response.ok) throw new Error('Failed to load maps');
-      
-      availableMaps = await response.json();
-      
-      // Populate map dropdown
-      createRoomMap.innerHTML = '';
-      availableMaps.forEach(map => {
-        const option = document.createElement('option');
-        option.value = map.key;
-        option.textContent = map.name || map.key;
-        if (map.description) {
-          option.title = map.description;
-        }
-        createRoomMap.appendChild(option);
+  function openMapBrowserForRoom() {
+    const modal = document.getElementById('browseMapModal');
+    modal.classList.remove('hidden');
+    
+    // Load and display maps for room creation
+    fetch('/api/maps')
+      .then(res => res.json())
+      .then(maps => {
+        displayMapsForRoomCreation(maps);
+      })
+      .catch(error => {
+        console.error('Error loading maps:', error);
+        document.getElementById('mapsGrid').innerHTML = '<p>Error loading maps</p>';
       });
+  }
+  
+  function displayMapsForRoomCreation(maps) {
+    const grid = document.getElementById('mapsGrid');
+    
+    grid.innerHTML = maps.map(map => {
+      const author = map.key.includes('official/') ? 'Official' : 'Community';
+      const category = map.category || author;
       
-      // Select first map by default
-      if (availableMaps.length > 0) {
-        createRoomMap.value = availableMaps[0].key;
-      }
-    } catch (error) {
-      console.error('Failed to load maps:', error);
+      return `
+        <div class="map-entry" data-map-key="${map.key}">
+          <div class="map-preview">
+            <div class="no-preview">No preview</div>
+          </div>
+          <div class="map-info">
+            <h4 class="map-name">${map.name}</h4>
+            <p class="map-author">Author: ${author}</p>
+            <p class="map-category">Category: ${category}</p>
+            <button class="select-map-btn" onclick="selectMapForRoom('${map.key}', '${map.name}')">Select</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+  
+  function selectMapForRoom(key, name) {
+    selectedMapForRoom = { key, name };
+    updateSelectedMapDisplay();
+    
+    // Close the browse modal
+    document.getElementById('browseMapModal').classList.add('hidden');
+  }
+  
+  function updateSelectedMapDisplay() {
+    if (selectedMapForRoom) {
+      selectedMapDisplay.innerHTML = `
+        <div class="selected-map-info">
+          <span class="selected-map-name">${selectedMapForRoom.name}</span>
+          <button type="button" class="clear-map-btn" onclick="clearSelectedMap()">×</button>
+        </div>
+      `;
+    } else {
+      selectedMapDisplay.innerHTML = '<span class="no-map-selected">No map selected</span>';
     }
   }
+  
+  function clearSelectedMap() {
+    selectedMapForRoom = null;
+    updateSelectedMapDisplay();
+  }
+  
+  // Expose functions globally for HTML onclick handlers
+  window.selectMapForRoom = selectMapForRoom;
+  window.clearSelectedMap = clearSelectedMap;
+  
   
   async function loadRooms() {
     try {
@@ -1260,13 +1353,18 @@
   
   async function handleCreateRoom() {
     const roomName = createRoomName.value.trim();
-    const mapKey = createRoomMap.value;
+    const mapKey = selectedMapForRoom?.key;
     const maxPlayers = parseInt(createRoomMaxPlayers.value);
     const isPrivate = createRoomPrivate.checked;
     
     // Validation
     if (!roomName) {
       alert('Please enter a room name');
+      return;
+    }
+    
+    if (!selectedMapForRoom) {
+      alert('Please select a map');
       return;
     }
     
@@ -1307,6 +1405,8 @@
       
       // Clear form
       createRoomName.value = '';
+      selectedMapForRoom = null;
+      updateSelectedMapDisplay();
       createRoomMaxPlayers.value = 8;
       maxPlayersValue.textContent = '8';
       createRoomPrivate.checked = false;
@@ -1454,12 +1554,20 @@
     carRadioInput.value = carType;
     carName.textContent = car.displayName || carType;
     
-    // Update car visual
-    const points = car.shape.vertices.map(v => `${v.x * 1.5},${-v.y * 1.5}`).join(' ');
-    carPolygon.setAttribute('points', points);
-    carPolygon.setAttribute('fill', `rgb(${car.color.fill.join(',')})`);
-    carPolygon.setAttribute('stroke', `rgb(${car.color.stroke.join(',')})`);
-    carPolygon.setAttribute('stroke-width', car.color.strokeWidth || 2);
+    // Update car visual - clear existing shapes and add new ones
+    carShape.innerHTML = '';
+    car.shapes.forEach((shape, index) => {
+      const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      const points = shape.vertices.map(v => `${v.x * 1.5},${-v.y * 1.5}`).join(' ');
+      const shapeColor = shape.color || car.color;
+      
+      polygon.setAttribute('points', points);
+      polygon.setAttribute('fill', `rgb(${shapeColor.fill.join(',')})`);
+      polygon.setAttribute('stroke', `rgb(${shapeColor.stroke.join(',')})`);
+      polygon.setAttribute('stroke-width', shapeColor.strokeWidth || 2);
+      
+      carShape.appendChild(polygon);
+    });
     
     // Update stat bars
     speedFill.style.width = `${car.displaySpeed}%`;
@@ -2472,6 +2580,8 @@
     carCard.style.display = 'none';
     switchButton.style.display = 'none';
     joinButton.style.display = 'none';
+    roomBrowserButton.style.display = 'none'; // Hide Browse Rooms button
+    mapEditorButton.style.display = 'none'; // Hide Map Editor button
     
     // Show the menu disconnection warning template
     menuDisconnectionWarning.classList.remove('hidden');
@@ -2482,6 +2592,8 @@
     carCard.style.display = 'block';
     switchButton.style.display = 'block';
     joinButton.style.display = 'block';
+    roomBrowserButton.style.display = 'block'; // Show Browse Rooms button
+    mapEditorButton.style.display = 'block'; // Show Map Editor button
     
     // Hide the warning template
     menuDisconnectionWarning.classList.add('hidden');
@@ -2883,14 +2995,28 @@
     dynamicObjects.forEach((obj) => {
       if (obj.vertices && obj.vertices.length) {
         ctx.save();
-        ctx.translate(centerX, centerY);
         
+        const objX = obj.position.x;
+        const objY = obj.position.y;
+
         ctx.beginPath();
         obj.vertices.forEach((v, i) => {
-          const x = (obj.position.x + v.x - focusX) * scale;
-          const y = (obj.position.y + v.y - focusY) * scale;
-          if (i === 0) ctx.moveTo(x, -y);
-          else ctx.lineTo(x, -y);
+            const cos = Math.cos(obj.angle);
+            const sin = Math.sin(obj.angle);
+            const rotatedX = v.x * cos - v.y * sin;
+            const rotatedY = v.x * sin + v.y * cos;
+
+            const worldX = objX + rotatedX;
+            const worldY = objY + rotatedY;
+
+            const screenX = centerX + (worldX - focusX) * scale;
+            const screenY = centerY - (worldY - focusY) * scale;
+
+            if (i === 0) {
+                ctx.moveTo(screenX, screenY);
+            } else {
+                ctx.lineTo(screenX, screenY);
+            }
         });
         ctx.closePath();
         
@@ -2930,8 +3056,8 @@
         
         // Draw health bar for dynamic objects
         if (obj.health !== undefined && obj.maxHealth !== undefined && obj.health < obj.maxHealth) {
-          const objScreenX = centerX + (obj.position.x - focusX) * scale;
-          const objScreenY = centerY - (obj.position.y - focusY) * scale;
+          const objScreenX = centerX + (objX - focusX) * scale;
+          const objScreenY = centerY - (objY - focusY) * scale;
           
           const barWidth = 30 * scale;
           const barHeight = 4 * scale;
@@ -2961,14 +3087,28 @@
       abilityObjects.forEach((obj) => {
         if (obj.type === 'spike_trap' && obj.vertices && obj.vertices.length) {
           ctx.save();
-          ctx.translate(centerX, centerY);
           
+          const objX = obj.position.x;
+          const objY = obj.position.y;
+
           ctx.beginPath();
           obj.vertices.forEach((v, i) => {
-            const x = (obj.position.x + v.x - focusX) * scale;
-            const y = (obj.position.y + v.y - focusY) * scale;
-            if (i === 0) ctx.moveTo(x, -y);
-            else ctx.lineTo(x, -y);
+              const cos = Math.cos(obj.angle);
+              const sin = Math.sin(obj.angle);
+              const rotatedX = v.x * cos - v.y * sin;
+              const rotatedY = v.x * sin + v.y * cos;
+
+              const worldX = objX + rotatedX;
+              const worldY = objY + rotatedY;
+
+              const screenX = centerX + (worldX - focusX) * scale;
+              const screenY = centerY - (worldY - focusY) * scale;
+
+              if (i === 0) {
+                  ctx.moveTo(screenX, screenY);
+              } else {
+                  ctx.lineTo(screenX, screenY);
+              }
           });
           ctx.closePath();
           
@@ -3027,51 +3167,81 @@
         }
       }
       
-      // Get vertices - either from player object or look up from CAR_TYPES
-      let vertices = p.vertices;
-      if (!vertices && p.type && CAR_TYPES[p.type]) {
-        vertices = CAR_TYPES[p.type].shape.vertices;
-      }
-      
-      if (vertices && vertices.length) {
-        ctx.beginPath();
+      // Get car type definition
+      const carDef = CAR_TYPES[p.type];
+      if (!carDef) return;
+
+      // Check if this is a multi-shape car (always use CAR_TYPES rendering for multi-shape)
+      const isMultiShape = carDef.shapes && carDef.shapes.length > 1;
+      const useCAR_TYPESRendering = isMultiShape || !p.vertices || !p.vertices.length;
+
+      if (!useCAR_TYPESRendering) {
+        // Single-shape player mode - use server-provided rotated vertices
+        ctx.fillStyle = `rgb(${p.color.fill[0]},${p.color.fill[1]},${p.color.fill[2]})`;
+        ctx.strokeStyle = `rgb(${p.color.stroke[0]}, ${p.color.stroke[1]}, ${p.color.stroke[2]})`;
+        ctx.lineWidth = (p.color.strokeWidth || 2) * scale;
         
-        vertices.forEach((v, i) => {
-          // In spectator mode, vertices are from CAR_TYPES and need manual rotation
-          // In player mode, vertices are from body.vertices and are already rotated by Matter.js
-          let rotatedX, rotatedY;
-          if (mode === 'spectator' && p.angle !== undefined) {
-            // Apply manual rotation for spectator mode
-            const cos = Math.cos(p.angle);
-            const sin = Math.sin(p.angle);
-            rotatedX = v.x * cos - v.y * sin;
-            rotatedY = v.x * sin + v.y * cos;
-          } else {
-            // Use vertices as-is (already rotated by Matter.js in player mode)
-            rotatedX = v.x;
-            rotatedY = v.y;
-          }
-          
-          const x = (p.x + rotatedX - focusX) * scale;
-          const y = (p.y + rotatedY - focusY) * scale;
+        ctx.beginPath();
+        p.vertices.forEach((v, i) => {
+          const x = (p.x + v.x - focusX) * scale;
+          const y = (p.y + v.y - focusY) * scale;
           if (i === 0) ctx.moveTo(centerX + x, centerY - y);
           else ctx.lineTo(centerX + x, centerY - y);
         });
         ctx.closePath();
-        ctx.fillStyle = `rgb(${p.color.fill[0]},${p.color.fill[1]},${p.color.fill[2]})`;
         ctx.fill();
-      } else if (p.radius) {
-        ctx.beginPath();
-        ctx.arc(screenX, screenY, p.radius * scale, 0, 2 * Math.PI);
-        ctx.fillStyle = `rgb(${p.color.fill[0]},${p.color.fill[1]},${p.color.fill[2]})`;
-        ctx.fill();
-      }
-
-      if (p.color && p.color.stroke) {
-        ctx.strokeStyle = `rgb(${p.color.stroke[0]}, ${p.color.stroke[1]}, ${p.color.stroke[2]})`;
-        ctx.lineWidth = (p.color.strokeWidth || 2) * scale;
-        ctx.lineJoin = 'round';
-        ctx.stroke();
+        
+        if (p.color && p.color.stroke) {
+          ctx.lineJoin = 'round';
+          ctx.stroke();
+        }
+      } else {
+        // Multi-shape or spectator mode - use CAR_TYPES and manual rotation
+        // Render each shape directly using original vertices (server handles positioning)
+        carDef.shapes.forEach((shape, shapeIndex) => {
+          // Use shape-specific color if available, otherwise use car default
+          const shapeColor = shape.color || carDef.color;
+          
+          ctx.fillStyle = `rgba(${shapeColor.fill.join(',')}, ${ctx.globalAlpha || 1})`;
+          ctx.strokeStyle = `rgba(${shapeColor.stroke.join(',')}, ${ctx.globalAlpha || 1})`;
+          ctx.lineWidth = shapeColor.strokeWidth || 2;
+          
+          const vertices = shape.vertices;
+          if (vertices && vertices.length) {
+            ctx.beginPath();
+            
+            vertices.forEach((v, i) => {
+              // Flip X coordinate to correct mirrored rendering for multi-shape cars
+              const flippedX = -v.x;
+              const originalY = v.y;
+              
+              // Apply rotation to flipped coordinates
+              let rotatedX, rotatedY;
+              if (p.angle !== undefined) {
+                const cos = Math.cos(p.angle);
+                const sin = Math.sin(p.angle);
+                rotatedX = flippedX * cos - originalY * sin;
+                rotatedY = flippedX * sin + originalY * cos;
+              } else {
+                rotatedX = flippedX;
+                rotatedY = originalY;
+              }
+            
+              const x = (p.x + rotatedX - focusX) * scale;
+              const y = (p.y + rotatedY - focusY) * scale;
+              if (i === 0) ctx.moveTo(centerX + x, centerY - y);
+              else ctx.lineTo(centerX + x, centerY - y);
+            });
+            ctx.closePath();
+            ctx.fill();
+            
+            // Apply stroke for this shape
+            if (shapeColor.stroke) {
+              ctx.lineJoin = 'round';
+              ctx.stroke();
+            }
+          }
+        });
       }
 
       ctx.restore();
