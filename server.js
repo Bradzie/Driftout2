@@ -1466,21 +1466,25 @@ class Room {
   
   // User membership management
   addMember(socket, state = Room.USER_STATES.SPECTATING) {
-    if (this.availableSlots <= 0) {
+    const isExistingMember = this.allMembers.has(socket.id);
+    
+    // Only check capacity for NEW members, not state changes
+    if (!isExistingMember && this.availableSlots <= 0) {
       throw new Error('Room is full');
     }
     
     this.allMembers.set(socket.id, {
       socket: socket,
       state: state,
-      joinedAt: Date.now()
+      joinedAt: isExistingMember ? this.allMembers.get(socket.id).joinedAt : Date.now()
     });
     
     if (state === Room.USER_STATES.SPECTATING) {
       this.spectators.set(socket.id, socket);
     }
     
-    console.log(`User ${socket.id} joined room ${this.name} as ${state}. Occupancy: ${this.totalOccupancy}/${this.maxPlayers}`);
+    const action = isExistingMember ? 'changed state to' : 'joined room as';
+    console.log(`User ${socket.id} ${action} ${state} in room ${this.name}. Occupancy: ${this.totalOccupancy}/${this.maxPlayers}`);
   }
   
   removeMember(socketId) {
@@ -2033,10 +2037,17 @@ io.on('connection', (socket) => {
         socket.emit('joinError', { error: 'Room not found' });
         return;
       }
-      if (!targetRoom.isJoinable) {
+      
+      // Check if user is already a member of this room (spectator -> player transition)
+      const isAlreadyMember = targetRoom.hasMember(socket.id);
+      
+      if (!isAlreadyMember && !targetRoom.isJoinable) {
+        // Only check capacity if user is NOT already in the room
         socket.emit('joinError', { error: 'Room is full' });
         return;
       }
+      
+      console.log(`🎮 User ${socket.id} joining room ${targetRoom.name}: ${isAlreadyMember ? 'spectator->player transition' : 'new member'}`);
     } else {
       // Auto-assign room (backwards compatibility)
       targetRoom = assignRoom();

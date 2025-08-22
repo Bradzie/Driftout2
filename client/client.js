@@ -242,13 +242,8 @@
       const data = await response.json();
       
       if (data.authenticated) {
-        // Check if current user is a guest - if so, make them re-authenticate
-        if (data.user.isGuest && currentUser) {
-          console.log('Guest user session expired - requiring re-authentication');
-          currentUser = null;
-          showAuthScreen();
-          return false;
-        }
+        // Session is valid - update current user data
+        currentUser = data.user;
         return true;
       } else {
         currentUser = null;
@@ -490,12 +485,7 @@
   // Update kill feed position on window resize
   window.addEventListener('resize', updateKillFeedPosition);
 
-  // Periodic session validation for guest users (every 5 minutes)
-  setInterval(() => {
-    if (currentUser && currentUser.isGuest) {
-      validateCurrentSession();
-    }
-  }, 5 * 60 * 1000);
+  // Session validation removed - let server handle session expiration naturally
 
   // Toolbar functionality
   let toolbarVisible = false;
