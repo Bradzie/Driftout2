@@ -275,6 +275,7 @@ app.get('/api/rooms', (req, res) => {
     totalOccupancy: room.totalOccupancy,
     maxPlayers: room.maxPlayers,
     isPrivate: room.isPrivate,
+    isOfficial: room.isOfficial,
     isJoinable: room.isJoinable,
     // Legacy field for backward compatibility
     playerCount: room.activePlayerCount
@@ -328,6 +329,7 @@ app.post('/api/rooms/create', express.json(), (req, res) => {
       totalOccupancy: room.totalOccupancy,
       maxPlayers: room.maxPlayers,
       isPrivate: room.isPrivate,
+      isOfficial: room.isOfficial,
       isJoinable: room.isJoinable,
       // Legacy field for backward compatibility
       playerCount: room.activePlayerCount
@@ -1000,7 +1002,7 @@ class Car {
 }
 
 class Room {
-  constructor(id, mapKey = null) {
+  constructor(id, mapKey = null, isOfficial = false) {
     this.id = id;
     this.name = `Room ${id.substring(0, 8)}`; // Default name using first 8 chars of UUID
     this.players = new Map(); // socket.id -> Car (active players)
@@ -1009,6 +1011,7 @@ class Room {
     this.sockets = new Map();
     this.maxPlayers = 8;
     this.isPrivate = false;
+    this.isOfficial = isOfficial;
     
     // Room-specific physics engine
     this.engine = Matter.Engine.create();
@@ -1072,6 +1075,30 @@ class Room {
   
   get isEmpty() {
     return this.totalOccupancy === 0;
+  }
+  
+  // Calculate room activity score for smart assignment (higher = better)
+  get activityScore() {
+    if (!this.isJoinable) return -1;
+    if (!this.isOfficial) return -1; // Never auto-assign to non-official rooms
+    
+    const occupancyPercent = (this.totalOccupancy / this.maxPlayers) * 100;
+    const idealPercent = 50; // Target 50% capacity for good activity
+    
+    // Score based on how close to ideal capacity (0-100 scale)
+    let score = Math.max(0, 100 - Math.abs(occupancyPercent - idealPercent) * 2);
+    
+    // Bonus for rooms with active players (not just spectators)
+    if (this.activePlayerCount > 0) {
+      score += 20;
+    }
+    
+    // Penalty for very empty rooms (less than 10% capacity)
+    if (occupancyPercent < 10) {
+      score -= 30;
+    }
+    
+    return Math.max(0, score);
   }
   
   setupCollisionDetection() {
@@ -1661,15 +1688,42 @@ function getRandomMapKey() {
   return selectedKey;
 }
 
+// Helper function to create an official room
+function createOfficialRoom() {
+  const randomMapKey = getRandomMapKey();
+  const roomId = uuidv4();
+  const room = new Room(roomId, randomMapKey, true); // isOfficial = true
+  
+  // Count existing official rooms for naming
+  const officialRoomCount = rooms.filter(r => r.isOfficial).length;
+  room.name = `Official Room ${officialRoomCount + 1}`;
+  
+  rooms.push(room);
+  console.log(`🏛️ Created official room: ${room.name} (${room.id.substring(0, 8)}) with map: ${randomMapKey}`);
+  return room;
+}
+
+// Find the best official room based on activity score
+function findBestOfficialRoom() {
+  const officialRooms = rooms.filter(room => room.isOfficial && room.isJoinable);
+  
+  if (officialRooms.length === 0) {
+    return null;
+  }
+  
+  // Sort by activity score (highest first)
+  officialRooms.sort((a, b) => b.activityScore - a.activityScore);
+  
+  const bestRoom = officialRooms[0];
+  
+  return bestRoom;
+}
+
 // Create initial room
 function initializeRooms() {
   if (rooms.length === 0) {
-    const randomMapKey = getRandomMapKey();
-    const defaultRoom = new Room(uuidv4(), randomMapKey);
-    defaultRoom.name = 'Official Room';
-    const mapData = mapManager.getMap(randomMapKey);
-    console.log(`Initial room created with random map: ${mapData?.displayName || randomMapKey}`);
-    rooms.push(defaultRoom);
+    console.log('🏛️ Initializing with official room');
+    createOfficialRoom();
   }
 }
 
@@ -1746,67 +1800,69 @@ function createDeltaState(socketId, currentState) {
 }
 
 function assignRoom() {
-  // Ensure we have at least one room
-  if (rooms.length === 0) {
-    initializeRooms();
+  // Smart room assignment: only assign to official rooms
+  console.log(`🤖 Smart room assignment started`);
+  
+  // Try to find the best official room first
+  let room = findBestOfficialRoom();
+  
+  if (room) {
+    console.log(`✅ Assigned to existing official room: ${room.name}`);
+    return room;
   }
   
-  // Try to find an existing room with space (using new occupancy logic)
-  for (const room of rooms) {
-    if (room.isJoinable) return room;
-  }
-  
-  // If no room available, create a new one
-  const randomMapKey = getRandomMapKey();
-  const newRoom = new Room(uuidv4(), randomMapKey);
-  newRoom.name = `Room ${rooms.length + 1}`;
-  const mapData = mapManager.getMap(randomMapKey);
-  console.log(`Auto-assigned room created with random map: ${mapData?.displayName || randomMapKey}`);
-  rooms.push(newRoom);
-  return newRoom;
+  // No suitable official room found, create a new one
+  room = createOfficialRoom();
+  console.log(`🆕 Created new official room for assignment: ${room.name}`);
+  return room;
 }
 
-// Ensure we always have at least one joinable room
+// Ensure we always have at least one joinable official room
 function ensureDefaultRoom() {
   if (rooms.length === 0) {
     initializeRooms();
     return;
   }
   
-  const joinableRooms = rooms.filter(room => room.isJoinable);
+  const joinableOfficialRooms = rooms.filter(room => room.isJoinable && room.isOfficial);
   
-  if (joinableRooms.length === 0) {
-    console.log('Creating default room - no joinable rooms available');
-    const randomMapKey = getRandomMapKey();
-    const defaultRoom = new Room(uuidv4(), randomMapKey);
-    defaultRoom.name = 'Main Room';
-    const mapData = mapManager.getMap(randomMapKey);
-    console.log(`Default room created with random map: ${mapData?.displayName || randomMapKey}`);
-    rooms.push(defaultRoom);
-    
-    // Room created successfully - now using room-specific worlds
+  if (joinableOfficialRooms.length === 0) {
+    console.log('🏛️ Creating official room - no joinable official rooms available');
+    createOfficialRoom();
   }
 }
 
-// Clean up empty rooms (but always keep at least one)
+// Enhanced room cleanup with official room protection
 function cleanupEmptyRooms() {
   const nonEmptyRooms = rooms.filter(room => !room.isEmpty);
   const emptyRooms = rooms.filter(room => room.isEmpty);
+  const emptyOfficialRooms = emptyRooms.filter(room => room.isOfficial);
+  const emptyNonOfficialRooms = emptyRooms.filter(room => !room.isOfficial);
   
-  // Keep at least one room (preferably non-private)
-  if (nonEmptyRooms.length === 0 && emptyRooms.length > 1) {
-    // Keep the first non-private room, or just the first room
-    const roomToKeep = emptyRooms.find(room => !room.isPrivate) || emptyRooms[0];
-    const roomsToRemove = emptyRooms.filter(room => room !== roomToKeep);
+  // Always remove empty non-official rooms (user-created rooms)
+  for (const room of emptyNonOfficialRooms) {
+    const index = rooms.indexOf(room);
+    if (index > -1) {
+      console.log(`🧹 Cleaning up empty user-created room: ${room.name} (${room.id})`);
+      rooms.splice(index, 1);
+    }
+  }
+  
+  // For official rooms, only clean up if we have more than 2 empty official rooms
+  if (emptyOfficialRooms.length > 2) {
+    const roomsToRemove = emptyOfficialRooms.slice(2); // Keep at least 2 official rooms
     
     for (const room of roomsToRemove) {
       const index = rooms.indexOf(room);
       if (index > -1) {
-        console.log(`Cleaning up empty room: ${room.name} (${room.id}) - was ${room.totalOccupancy}/${room.maxPlayers}`);
+        console.log(`🧹 Cleaning up excess empty official room: ${room.name} (${room.id})`);
         rooms.splice(index, 1);
       }
     }
   }
+  
+  // Ensure we always have at least one official room
+  ensureDefaultRoom();
 }
 
 io.on('connection', (socket) => {
@@ -1865,13 +1921,16 @@ io.on('connection', (socket) => {
       initializeRooms();
     }
     
-    // Find target room or use first available
+    // Find target room or use smart assignment
     let targetRoom = null;
     if (roomId) {
       targetRoom = rooms.find(room => room.id === roomId);
+      console.log(`🎯 Looking for specific room ${roomId}:`, targetRoom ? 'Found' : 'Not found');
     }
     if (!targetRoom) {
-      targetRoom = rooms[0]; // Default to first room if none specified
+      // Use smart room assignment for automatic assignment
+      targetRoom = assignRoom();
+      console.log(`🤖 Smart assignment selected room: ${targetRoom.name}`);
     }
     
     try {
