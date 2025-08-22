@@ -175,6 +175,7 @@
           refreshSocketSession();
           showMainMenu();
           updatePlayerInfo();
+          updateToolbarVisibility(); // Update toolbar for auth state change
         }
       } else {
         showAuthScreen();
@@ -258,6 +259,7 @@
       console.error('Session validation failed:', error);
       currentUser = null;
       showAuthScreen();
+      updateToolbarVisibility(); // Update toolbar for auth state change
       return false;
     }
   }
@@ -335,6 +337,7 @@
         refreshSocketSession();
         showMainMenu();
         updatePlayerInfo();
+        updateToolbarVisibility(); // Update toolbar for auth state change
       } else {
         showLoginForm();
         showError('loginError', data.error);
@@ -363,6 +366,7 @@
         refreshSocketSession();
         showMainMenu();
         updatePlayerInfo();
+        updateToolbarVisibility(); // Update toolbar for auth state change
       } else {
         showRegisterForm();
         showError('registerError', data.error);
@@ -391,6 +395,7 @@
         refreshSocketSession();
         showMainMenu();
         updatePlayerInfo();
+        updateToolbarVisibility(); // Update toolbar for auth state change
       } else {
         showAuthSelection();
         showError('quickPlayError', data.error);
@@ -407,11 +412,13 @@
       await fetch('/api/auth/logout', { method: 'POST' });
       currentUser = null;
       showAuthScreen();
+      updateToolbarVisibility(); // Update toolbar for auth state change
     } catch (error) {
       console.error('Logout failed:', error);
       // Still show auth screen even if logout request failed
       currentUser = null;
       showAuthScreen();
+      updateToolbarVisibility(); // Update toolbar for auth state change
     }
   }
 
@@ -507,13 +514,51 @@
     }
   }
 
+  function updateToolbarVisibility() {
+    // Safety check - ensure variables are initialized
+    if (typeof toolbarVisible === 'undefined' || !topToolbar || !performanceOverlay || !miniLeaderboard) {
+      return;
+    }
+    
+    const shouldAlwaysShow = currentUser && currentUser.username && isSpectating;
+    
+    if (shouldAlwaysShow) {
+      // Always show for authenticated spectators
+      toolbarVisible = true;
+      topToolbar.classList.add('visible', 'always-visible');
+      performanceOverlay.classList.add('below-toolbar');
+      miniLeaderboard.classList.add('below-toolbar');
+      if (toolbarTimeout) {
+        clearTimeout(toolbarTimeout);
+        toolbarTimeout = null;
+      }
+    } else {
+      // Revert to hover behavior for active players
+      topToolbar.classList.remove('always-visible');
+      performanceOverlay.classList.remove('below-toolbar');
+      miniLeaderboard.classList.remove('below-toolbar');
+      // Hide toolbar if not currently being hovered
+      const rect = topToolbar.getBoundingClientRect();
+      const isHovering = rect.bottom > 0; // Simple check if toolbar is visible and could be hovered
+      if (!isHovering) {
+        toolbarVisible = false;
+        topToolbar.classList.remove('visible');
+      }
+    }
+  }
+
   function hideToolbar() {
+    // Don't hide if toolbar should always be visible for authenticated spectators
+    if (currentUser && currentUser.username && isSpectating) {
+      return;
+    }
+    
     // Set a delay before hiding to prevent flickering
     if (toolbarTimeout) {
       clearTimeout(toolbarTimeout);
     }
     toolbarTimeout = setTimeout(() => {
-      if (toolbarVisible) {
+      if (toolbarVisible && !(currentUser && currentUser.username && isSpectating)) {
         toolbarVisible = false;
         topToolbar.classList.remove('visible');
       }
@@ -551,6 +596,9 @@
     }, 100);
   });
 
+  // Initialize toolbar visibility after all variables are ready
+  updateToolbarVisibility();
+
   // Settings event listeners
   settingsCloseBtn.addEventListener('click', closeSettings);
   
@@ -567,6 +615,7 @@
       settings[settingKey] = e.target.checked;
       saveSettings();
       updatePerformanceOverlay();
+      updateToolbarVisibility();
     };
   }
   
@@ -1550,6 +1599,7 @@
       socket.emit('requestSpectator', spectatorData);
       resizeSpectatorCanvas();
       console.log('Started spectating mode', roomId || currentRoomId ? `in room ${roomId || currentRoomId}` : '');
+      updateToolbarVisibility(); // Update toolbar for spectator state
     }
   }
   
@@ -1557,6 +1607,7 @@
     isSpectating = false;
     spectatorState = null;
     spectatorCtx.clearRect(0, 0, spectatorCanvas.width, spectatorCanvas.height);
+    updateToolbarVisibility(); // Update toolbar when leaving spectator mode
   }
   
   function resizeSpectatorCanvas() {

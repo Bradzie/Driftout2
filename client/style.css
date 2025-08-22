@@ -1361,6 +1361,11 @@ input[type="number"]:focus {
   flex-direction: column;
   gap: 8px;
   pointer-events: none;
+  transition: top 0.3s ease-out;
+}
+
+.performance-overlay.below-toolbar {
+  top: 80px;
 }
 
 .fps-display,
@@ -1946,6 +1951,11 @@ input[type="number"]:focus {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   font-size: 12px;
   color: #ffffff;
+  transition: top 0.3s ease-out;
+}
+
+.mini-leaderboard.below-toolbar {
+  top: 80px;
 }
 
 .mini-leaderboard-header {
@@ -2561,6 +2571,11 @@ input[type="number"]:focus {
 
 .top-toolbar.visible {
   transform: translateY(0);
+}
+
+.top-toolbar.always-visible {
+  transform: translateY(0);
+  pointer-events: auto;
 }
 
 .toolbar-left {
