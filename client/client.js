@@ -2752,6 +2752,139 @@
     }
   });
 
+  // AFK Warning System
+  let afkWarningActive = false;
+  let afkWarningElement = null;
+  let afkCountdownInterval = null;
+
+  // Create AFK warning overlay
+  function createAFKWarningOverlay() {
+    const overlay = document.createElement('div');
+    overlay.id = 'afkWarning';
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 10000;
+      font-family: Arial, sans-serif;
+    `;
+    
+    const content = document.createElement('div');
+    content.style.cssText = `
+      background: #ff4444;
+      color: white;
+      padding: 30px;
+      border-radius: 15px;
+      text-align: center;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      max-width: 400px;
+      border: 3px solid #ff6666;
+    `;
+    
+    content.innerHTML = `
+      <div style="font-size: 32px; margin-bottom: 15px;">⚠️</div>
+      <div style="font-size: 24px; font-weight: bold; margin-bottom: 10px;">AFK WARNING</div>
+      <div id="afkReason" style="font-size: 16px; margin-bottom: 15px;">You appear to be inactive</div>
+      <div style="font-size: 48px; font-weight: bold; color: #ffff00;" id="afkCountdown">5</div>
+      <div style="font-size: 14px; margin-top: 10px;">Move or interact to stay connected</div>
+    `;
+    
+    overlay.appendChild(content);
+    return overlay;
+  }
+
+  // Show AFK warning
+  function showAFKWarning(reason, countdown) {
+    if (afkWarningActive) return;
+    
+    afkWarningActive = true;
+    afkWarningElement = createAFKWarningOverlay();
+    document.body.appendChild(afkWarningElement);
+    
+    // Set the reason
+    const reasonElement = afkWarningElement.querySelector('#afkReason');
+    if (reasonElement) {
+      reasonElement.textContent = reason;
+    }
+    
+    // Start countdown
+    let timeLeft = countdown;
+    const countdownElement = afkWarningElement.querySelector('#afkCountdown');
+    
+    afkCountdownInterval = setInterval(() => {
+      timeLeft--;
+      if (countdownElement) {
+        countdownElement.textContent = timeLeft;
+      }
+      
+      if (timeLeft <= 0) {
+        clearInterval(afkCountdownInterval);
+      }
+    }, 1000);
+    
+    // Send activity ping on any user interaction to dismiss warning
+    const dismissWarning = () => {
+      socket.emit('activityPing');
+      hideAFKWarning();
+    };
+    
+    // Add event listeners for user activity
+    document.addEventListener('keydown', dismissWarning, { once: true });
+    document.addEventListener('mousedown', dismissWarning, { once: true });
+    document.addEventListener('mousemove', dismissWarning, { once: true });
+    document.addEventListener('touchstart', dismissWarning, { once: true });
+  }
+
+  // Hide AFK warning
+  function hideAFKWarning() {
+    if (!afkWarningActive) return;
+    
+    afkWarningActive = false;
+    
+    if (afkCountdownInterval) {
+      clearInterval(afkCountdownInterval);
+      afkCountdownInterval = null;
+    }
+    
+    if (afkWarningElement) {
+      document.body.removeChild(afkWarningElement);
+      afkWarningElement = null;
+    }
+  }
+
+  // Handle AFK warning from server
+  socket.on('afkWarning', (data) => {
+    console.log('⚠️ AFK Warning received:', data);
+    showAFKWarning(data.reason, data.countdown);
+  });
+
+  // Handle force disconnect from server
+  socket.on('forceDisconnect', (data) => {
+    console.log('🚫 Force disconnect:', data.reason);
+    
+    // Hide any existing warnings
+    hideAFKWarning();
+    
+    // Show disconnect message to user
+    alert(`You have been disconnected: ${data.reason}`);
+    
+    // The socket will be disconnected by the server
+    // The existing disconnect handlers will take care of cleanup
+  });
+
+  // Send periodic activity pings when spectating (for menu interactions)
+  setInterval(() => {
+    if (isSpectating && socket.connected) {
+      socket.emit('activityPing');
+    }
+  }, 30000); // Every 30 seconds when spectating
+
   // Spectator rendering function
   function drawSpectatorView() {
     if (!spectatorState || !isSpectating) {

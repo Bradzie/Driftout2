@@ -1476,7 +1476,9 @@ class Room {
     this.allMembers.set(socket.id, {
       socket: socket,
       state: state,
-      joinedAt: isExistingMember ? this.allMembers.get(socket.id).joinedAt : Date.now()
+      joinedAt: isExistingMember ? this.allMembers.get(socket.id).joinedAt : Date.now(),
+      lastActivityTime: Date.now(),
+      afkWarningGiven: false
     });
     
     if (state === Room.USER_STATES.SPECTATING) {
@@ -1573,6 +1575,53 @@ class Room {
   canRejoinAsPlayer(socketId) {
     const member = this.allMembers.get(socketId);
     return member && member.state === Room.USER_STATES.SPECTATING;
+  }
+  
+  // Update member activity timestamp
+  updateMemberActivity(socketId) {
+    const member = this.allMembers.get(socketId);
+    if (member) {
+      member.lastActivityTime = Date.now();
+      member.afkWarningGiven = false; // Reset warning if user becomes active
+    }
+  }
+  
+  // Check for AFK members and handle warnings/disconnections
+  checkAFKMembers() {
+    const now = Date.now();
+    const PLAYER_AFK_THRESHOLD = 30 * 1000; // 30 seconds for players
+    const SPECTATOR_AFK_THRESHOLD = 5 * 60 * 1000; // 5 minutes for spectators
+    const WARNING_TIME = 5 * 1000; // 5 seconds warning before disconnect
+    
+    for (const [socketId, member] of this.allMembers) {
+      const timeSinceActivity = now - member.lastActivityTime;
+      const isPlayer = member.state === Room.USER_STATES.PLAYING;
+      const threshold = isPlayer ? PLAYER_AFK_THRESHOLD : SPECTATOR_AFK_THRESHOLD;
+      
+      // Check if user has exceeded AFK threshold
+      if (timeSinceActivity > threshold) {
+        if (!member.afkWarningGiven) {
+          // Send warning
+          console.log(`⚠️ Sending AFK warning to ${socketId} in room ${this.name} (${isPlayer ? 'player' : 'spectator'}, ${Math.round(timeSinceActivity/1000)}s inactive)`);
+          member.socket.emit('afkWarning', {
+            countdown: 5,
+            reason: isPlayer ? 'No input detected for 30 seconds' : 'No activity for 5 minutes'
+          });
+          member.afkWarningGiven = true;
+        } else if (timeSinceActivity > threshold + WARNING_TIME) {
+          // Time to disconnect
+          console.log(`🚫 Disconnecting AFK user ${socketId} from room ${this.name} (${Math.round(timeSinceActivity/1000)}s inactive)`);
+          const disconnectReason = isPlayer 
+            ? 'Disconnected due to inactivity (no input for 30+ seconds)'
+            : 'Disconnected due to inactivity (no activity for 5+ minutes)';
+          
+          member.socket.emit('forceDisconnect', { reason: disconnectReason });
+          member.socket.disconnect(true);
+          
+          // Clean up will be handled by the disconnect event
+        }
+      }
+    }
   }
   
   addPlayer(socket, carType, name) {
@@ -1913,6 +1962,14 @@ io.on('connection', (socket) => {
   socket.on('requestSpectator', (data = {}) => {
     const { roomId } = data;
     
+    // Update activity timestamp for AFK tracking
+    for (const room of rooms) {
+      if (room.hasMember(socket.id)) {
+        room.updateMemberActivity(socket.id);
+        break;
+      }
+    }
+    
     // Clean up from other rooms first
     for (const room of rooms) {
       if (room.hasMember(socket.id)) {
@@ -2194,6 +2251,11 @@ io.on('connection', (socket) => {
   socket.on('binaryInput', (buffer) => {
     if (!myCar) return;
     
+    // Update activity timestamp for AFK tracking
+    if (currentRoom) {
+      currentRoom.updateMemberActivity(socket.id);
+    }
+    
     // Ignore input from crashed cars
     if (myCar.crashedAt) return;
     
@@ -2232,6 +2294,11 @@ io.on('connection', (socket) => {
   
   socket.on('input', (data) => {
     if (!myCar) return;
+    
+    // Update activity timestamp for AFK tracking
+    if (currentRoom) {
+      currentRoom.updateMemberActivity(socket.id);
+    }
     
     // Ignore input from crashed cars
     if (myCar.crashedAt) return;
@@ -2321,6 +2388,17 @@ io.on('connection', (socket) => {
   // Ping handler for latency measurement
   socket.on('ping', (timestamp, callback) => {
     if (callback) callback(Date.now());
+  });
+  
+  // Activity ping handler for AFK tracking
+  socket.on('activityPing', () => {
+    // Update activity for spectators and other non-game interactions
+    for (const room of rooms) {
+      if (room.hasMember(socket.id)) {
+        room.updateMemberActivity(socket.id);
+        break;
+      }
+    }
   });
 
   // Debug event handlers (only available when DEBUG_MODE is true)
@@ -2424,6 +2502,9 @@ io.on('connection', (socket) => {
   // Chat message handler
   socket.on('chatMessage', (data) => {
     if (!currentRoom || !myCar) return;
+    
+    // Update activity timestamp for AFK tracking
+    currentRoom.updateMemberActivity(socket.id);
     
     // Validate message
     if (!data.message || typeof data.message !== 'string') return;
@@ -2815,11 +2896,16 @@ function broadcastToSpectators() {
 
 let broadcastTick = 0;
 
-// Room maintenance interval - run every 30 seconds
+// Room maintenance interval - run every 15 seconds
 setInterval(() => {
+  // Check for AFK members in all rooms
+  for (const room of rooms) {
+    room.checkAFKMembers();
+  }
+  
   cleanupEmptyRooms();
   ensureDefaultRoom();
-}, 30000);
+}, 15000);
 
 // Run initial room maintenance
 ensureDefaultRoom();
