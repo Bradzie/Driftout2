@@ -275,6 +275,7 @@ app.get('/api/rooms', (req, res) => {
     totalOccupancy: room.totalOccupancy,
     maxPlayers: room.maxPlayers,
     isPrivate: room.isPrivate,
+    isOfficial: room.isOfficial,
     isJoinable: room.isJoinable,
     // Legacy field for backward compatibility
     playerCount: room.activePlayerCount
@@ -328,6 +329,7 @@ app.post('/api/rooms/create', express.json(), (req, res) => {
       totalOccupancy: room.totalOccupancy,
       maxPlayers: room.maxPlayers,
       isPrivate: room.isPrivate,
+      isOfficial: room.isOfficial,
       isJoinable: room.isJoinable,
       // Legacy field for backward compatibility
       playerCount: room.activePlayerCount
@@ -518,7 +520,15 @@ function pointInPolygon(x, y, vertices) {
 }
 
 function applyAreaEffects(room) {
-  const map = mapManager.getMap(room.currentMapKey);
+  // Handle currentMapKey that might include category prefix
+  let keyToGet = room.currentMapKey;
+  let categoryToGet = null;
+  if (keyToGet && keyToGet.includes('/')) {
+    const parts = keyToGet.split('/');
+    categoryToGet = parts[0];
+    keyToGet = parts[1];
+  }
+  const map = mapManager.getMap(keyToGet, categoryToGet);
   if (!map || !map.areaEffects) return;
 
   for (const [sid, car] of room.players.entries()) {
@@ -584,7 +594,6 @@ function applyCurrentEffects(car, currentEffects) {
   // Apply effects
   if (maxIceStrength > 0) {
     const newFriction = originalFriction * (1 - maxIceStrength);
-    console.log(`Applying ice effect: original=${originalFriction}, strength=${maxIceStrength}, new=${newFriction}`);
     car.body.frictionAir = newFriction;
     car._activeAreaEffects.add(`ice_${maxIceStrength}`);
   } else {
@@ -631,10 +640,11 @@ class Car {
     this.upgradePoints = 0;
     this.upgradeUsage = {}; // Track how many times each upgrade has been used
     
-    // Player statistics for leaderboard
-    this.kills = 0;
-    this.deaths = 0;
-    this.bestLapTime = null;
+    // Player statistics for leaderboard (restore from map stats if available)
+    const mapStats = room?.mapStats?.get(socketId);
+    this.kills = mapStats?.kills || 0;
+    this.deaths = mapStats?.deaths || 0;
+    this.bestLapTime = mapStats?.bestLapTime || null;
     this.currentLapStartTime = 0;
     this.prevFinishCheck = null; // used for lap crossing on square track
     this.cursor = { x: 0, y: 0 }; // direction and intensity from client
@@ -917,8 +927,9 @@ class Car {
     this.prevFinishCheck = null;
     this.upgradeUsage = {};
     
-    // Reset lap timing (keep kill/death stats across respawns)
-    this.bestLapTime = null;
+    // Reset lap timing (preserve bestLapTime from map stats if available)
+    const mapStats = this.room?.mapStats?.get(this.socketId);
+    this.bestLapTime = mapStats?.bestLapTime || null;
     this.currentLapStartTime = 0;
     
     // Restore boost on new life
@@ -977,10 +988,21 @@ class Car {
     const roomGameState = this.room ? this.room.gameState : (gameState || this.room?.gameState);
     return this.ability.activate(this, roomWorld, roomGameState);
   }
+  
+  // Save current statistics to room's per-map stats
+  saveStatsToRoom() {
+    if (this.room && this.socketId) {
+      this.room.mapStats.set(this.socketId, {
+        kills: this.kills,
+        deaths: this.deaths,
+        bestLapTime: this.bestLapTime
+      });
+    }
+  }
 }
 
 class Room {
-  constructor(id, mapKey = null) {
+  constructor(id, mapKey = null, isOfficial = false) {
     this.id = id;
     this.name = `Room ${id.substring(0, 8)}`; // Default name using first 8 chars of UUID
     this.players = new Map(); // socket.id -> Car (active players)
@@ -989,6 +1011,7 @@ class Room {
     this.sockets = new Map();
     this.maxPlayers = 8;
     this.isPrivate = false;
+    this.isOfficial = isOfficial;
     
     // Room-specific physics engine
     this.engine = Matter.Engine.create();
@@ -1008,6 +1031,12 @@ class Room {
     this.currentMapKey = mapKey || mapKeys[this.currentMapIndex] || 'square';
     this.currentTrackBodies = [];
     this.currentDynamicBodies = [];
+    
+    // Race state flags
+    this.winMessageSent = false;
+    
+    // Per-map statistics tracking (preserved until map changes)
+    this.mapStats = new Map(); // socketId -> { kills, deaths, bestLapTime }
     
     // Set up collision detection for this room's physics world
     this.setupCollisionDetection();
@@ -1046,6 +1075,30 @@ class Room {
   
   get isEmpty() {
     return this.totalOccupancy === 0;
+  }
+  
+  // Calculate room activity score for smart assignment (higher = better)
+  get activityScore() {
+    if (!this.isJoinable) return -1;
+    if (!this.isOfficial) return -1; // Never auto-assign to non-official rooms
+    
+    const occupancyPercent = (this.totalOccupancy / this.maxPlayers) * 100;
+    const idealPercent = 50; // Target 50% capacity for good activity
+    
+    // Score based on how close to ideal capacity (0-100 scale)
+    let score = Math.max(0, 100 - Math.abs(occupancyPercent - idealPercent) * 2);
+    
+    // Bonus for rooms with active players (not just spectators)
+    if (this.activePlayerCount > 0) {
+      score += 20;
+    }
+    
+    // Penalty for very empty rooms (less than 10% capacity)
+    if (occupancyPercent < 10) {
+      score -= 30;
+    }
+    
+    return Math.max(0, score);
   }
   
   setupCollisionDetection() {
@@ -1209,6 +1262,8 @@ class Room {
       carB.upgradePoints += 1;
       carB.kills += 1; // Track kill
       carA.deaths += 1; // Track death
+      carB.saveStatsToRoom();
+      carA.saveStatsToRoom();
       
       // Broadcast kill feed message to this room
       this.broadcastKillFeedMessage(`${carB.name} crashed ${carA.name}!`, 'crash');
@@ -1217,6 +1272,8 @@ class Room {
       carA.upgradePoints += 1;
       carA.kills += 1; // Track kill
       carB.deaths += 1; // Track death
+      carA.saveStatsToRoom();
+      carB.saveStatsToRoom();
       
       // Broadcast kill feed message to this room
       this.broadcastKillFeedMessage(`${carA.name} crashed ${carB.name}!`, 'crash');
@@ -1224,6 +1281,8 @@ class Room {
       // Both crashed - mutual destruction (both get a death, no kills)
       carA.deaths += 1;
       carB.deaths += 1;
+      carA.saveStatsToRoom();
+      carB.saveStatsToRoom();
       this.broadcastKillFeedMessage(`${carA.name} and ${carB.name} crashed!`, 'crash');
     }
   }
@@ -1299,6 +1358,9 @@ class Room {
   }
   
   setTrackBodies(mapKey) {
+    // Reset per-map statistics when changing maps
+    this.mapStats.clear();
+    
     // Remove old static bodies
     for (const body of this.currentTrackBodies) {
       Matter.World.remove(this.world, body)
@@ -1362,12 +1424,25 @@ class Room {
           continue
         }
 
+        // Calculate centroid of the vertices
+        const centroid = {
+          x: dynObj.vertices.reduce((sum, v) => sum + v.x, 0) / dynObj.vertices.length,
+          y: dynObj.vertices.reduce((sum, v) => sum + v.y, 0) / dynObj.vertices.length
+        }
+        
+        // Create vertices relative to centroid
+        const relativeVertices = dynObj.vertices.map(v => ({
+          x: v.x - centroid.x,
+          y: v.y - centroid.y
+        }))
+
         const bodyOptions = {
           ...HELPERS.getBodyOptionsFromShape(dynObj),
           label: `dynamic-${dynObj.id || 'object'}`
         }
         
-        const body = Matter.Bodies.fromVertices(0, 0, [dynObj.vertices], bodyOptions)
+        // Create body at the centroid position with relative vertices
+        const body = Matter.Bodies.fromVertices(centroid.x, centroid.y, [relativeVertices], bodyOptions)
         
         // Apply frictionAir if specified
         if (typeof dynObj.frictionAir === 'number') {
@@ -1391,21 +1466,27 @@ class Room {
   
   // User membership management
   addMember(socket, state = Room.USER_STATES.SPECTATING) {
-    if (this.availableSlots <= 0) {
+    const isExistingMember = this.allMembers.has(socket.id);
+    
+    // Only check capacity for NEW members, not state changes
+    if (!isExistingMember && this.availableSlots <= 0) {
       throw new Error('Room is full');
     }
     
     this.allMembers.set(socket.id, {
       socket: socket,
       state: state,
-      joinedAt: Date.now()
+      joinedAt: isExistingMember ? this.allMembers.get(socket.id).joinedAt : Date.now(),
+      lastActivityTime: Date.now(),
+      afkWarningGiven: false
     });
     
     if (state === Room.USER_STATES.SPECTATING) {
       this.spectators.set(socket.id, socket);
     }
     
-    console.log(`User ${socket.id} joined room ${this.name} as ${state}. Occupancy: ${this.totalOccupancy}/${this.maxPlayers}`);
+    const action = isExistingMember ? 'changed state to' : 'joined room as';
+    console.log(`User ${socket.id} ${action} ${state} in room ${this.name}. Occupancy: ${this.totalOccupancy}/${this.maxPlayers}`);
   }
   
   removeMember(socketId) {
@@ -1496,6 +1577,53 @@ class Room {
     return member && member.state === Room.USER_STATES.SPECTATING;
   }
   
+  // Update member activity timestamp
+  updateMemberActivity(socketId) {
+    const member = this.allMembers.get(socketId);
+    if (member) {
+      member.lastActivityTime = Date.now();
+      member.afkWarningGiven = false; // Reset warning if user becomes active
+    }
+  }
+  
+  // Check for AFK members and handle warnings/disconnections
+  checkAFKMembers() {
+    const now = Date.now();
+    const PLAYER_AFK_THRESHOLD = 30 * 1000; // 30 seconds for players
+    const SPECTATOR_AFK_THRESHOLD = 5 * 60 * 1000; // 5 minutes for spectators
+    const WARNING_TIME = 5 * 1000; // 5 seconds warning before disconnect
+    
+    for (const [socketId, member] of this.allMembers) {
+      const timeSinceActivity = now - member.lastActivityTime;
+      const isPlayer = member.state === Room.USER_STATES.PLAYING;
+      const threshold = isPlayer ? PLAYER_AFK_THRESHOLD : SPECTATOR_AFK_THRESHOLD;
+      
+      // Check if user has exceeded AFK threshold
+      if (timeSinceActivity > threshold) {
+        if (!member.afkWarningGiven) {
+          // Send warning
+          console.log(`⚠️ Sending AFK warning to ${socketId} in room ${this.name} (${isPlayer ? 'player' : 'spectator'}, ${Math.round(timeSinceActivity/1000)}s inactive)`);
+          member.socket.emit('afkWarning', {
+            countdown: 5,
+            reason: isPlayer ? 'No input detected for 30 seconds' : 'No activity for 5 minutes'
+          });
+          member.afkWarningGiven = true;
+        } else if (timeSinceActivity > threshold + WARNING_TIME) {
+          // Time to disconnect
+          console.log(`🚫 Disconnecting AFK user ${socketId} from room ${this.name} (${Math.round(timeSinceActivity/1000)}s inactive)`);
+          const disconnectReason = isPlayer 
+            ? 'Disconnected due to inactivity (no input for 30+ seconds)'
+            : 'Disconnected due to inactivity (no activity for 5+ minutes)';
+          
+          member.socket.emit('forceDisconnect', { reason: disconnectReason });
+          member.socket.disconnect(true);
+          
+          // Clean up will be handled by the disconnect event
+        }
+      }
+    }
+  }
+  
   addPlayer(socket, carType, name) {
     const carId = uuidv4();
     const car = new Car(carId, carType, this.id, socket.id, name, this);
@@ -1555,6 +1683,51 @@ class Room {
       car.resetCar();
       car.upgradePoints = 0;
     }
+    // Reset race state flags
+    this.winMessageSent = false;
+  }
+  
+  // Get all room members with their status for leaderboard display
+  getRoomMembersData() {
+    const members = [];
+    
+    // Add all members from allMembers map
+    for (const [socketId, member] of this.allMembers.entries()) {
+      const socket = member.socket;
+      const session = socket?.request?.session;
+      
+      let name = 'Connecting...';
+      let isAuthenticated = false;
+      
+      if (session?.username) {
+        name = session.isGuest ? session.username : session.username;
+        isAuthenticated = !session.isGuest;
+        
+        // For spectators, show "in lobby" status
+        if (member.state === Room.USER_STATES.SPECTATING) {
+          name = `${session.username} in lobby...`;
+        }
+      }
+      
+      // For players, get name from Car object which may have client-provided name
+      if (member.state === Room.USER_STATES.PLAYING) {
+        const car = this.players.get(socketId);
+        if (car && car.name) {
+          name = car.name;
+          isAuthenticated = true; // Players are considered authenticated
+        }
+      }
+      
+      members.push({
+        socketId: socketId,
+        name: name,
+        state: member.state,
+        isAuthenticated: isAuthenticated,
+        joinedAt: member.joinedAt
+      });
+    }
+    
+    return members;
   }
 }
 
@@ -1564,19 +1737,46 @@ const rooms = [];
 // Helper function to get a random map key
 function getRandomMapKey() {
   const mapKeys = mapManager.getAllMapKeys();
-  return mapKeys[Math.floor(Math.random() * mapKeys.length)] || 'square';
+  const selectedKey = mapKeys[Math.floor(Math.random() * mapKeys.length)] || 'square';
+  return selectedKey;
+}
+
+// Helper function to create an official room
+function createOfficialRoom() {
+  const randomMapKey = getRandomMapKey();
+  const roomId = uuidv4();
+  const room = new Room(roomId, randomMapKey, true); // isOfficial = true
+  
+  // Count existing official rooms for naming
+  const officialRoomCount = rooms.filter(r => r.isOfficial).length;
+  room.name = `Official Room ${officialRoomCount + 1}`;
+  
+  rooms.push(room);
+  console.log(`🏛️ Created official room: ${room.name} (${room.id.substring(0, 8)}) with map: ${randomMapKey}`);
+  return room;
+}
+
+// Find the best official room based on activity score
+function findBestOfficialRoom() {
+  const officialRooms = rooms.filter(room => room.isOfficial && room.isJoinable);
+  
+  if (officialRooms.length === 0) {
+    return null;
+  }
+  
+  // Sort by activity score (highest first)
+  officialRooms.sort((a, b) => b.activityScore - a.activityScore);
+  
+  const bestRoom = officialRooms[0];
+  
+  return bestRoom;
 }
 
 // Create initial room
 function initializeRooms() {
   if (rooms.length === 0) {
-    console.log('Creating initial default room');
-    const randomMapKey = getRandomMapKey();
-    const defaultRoom = new Room(uuidv4(), randomMapKey);
-    defaultRoom.name = 'Official Room';
-    const mapData = mapManager.getMap(randomMapKey);
-    console.log(`Initial room created with random map: ${mapData?.displayName || randomMapKey}`);
-    rooms.push(defaultRoom);
+    console.log('🏛️ Initializing with official room');
+    createOfficialRoom();
   }
 }
 
@@ -1653,67 +1853,69 @@ function createDeltaState(socketId, currentState) {
 }
 
 function assignRoom() {
-  // Ensure we have at least one room
-  if (rooms.length === 0) {
-    initializeRooms();
+  // Smart room assignment: only assign to official rooms
+  console.log(`🤖 Smart room assignment started`);
+  
+  // Try to find the best official room first
+  let room = findBestOfficialRoom();
+  
+  if (room) {
+    console.log(`✅ Assigned to existing official room: ${room.name}`);
+    return room;
   }
   
-  // Try to find an existing room with space (using new occupancy logic)
-  for (const room of rooms) {
-    if (room.isJoinable) return room;
-  }
-  
-  // If no room available, create a new one
-  const randomMapKey = getRandomMapKey();
-  const newRoom = new Room(uuidv4(), randomMapKey);
-  newRoom.name = `Room ${rooms.length + 1}`;
-  const mapData = mapManager.getMap(randomMapKey);
-  console.log(`Auto-assigned room created with random map: ${mapData?.displayName || randomMapKey}`);
-  rooms.push(newRoom);
-  return newRoom;
+  // No suitable official room found, create a new one
+  room = createOfficialRoom();
+  console.log(`🆕 Created new official room for assignment: ${room.name}`);
+  return room;
 }
 
-// Ensure we always have at least one joinable room
+// Ensure we always have at least one joinable official room
 function ensureDefaultRoom() {
   if (rooms.length === 0) {
     initializeRooms();
     return;
   }
   
-  const joinableRooms = rooms.filter(room => room.isJoinable);
+  const joinableOfficialRooms = rooms.filter(room => room.isJoinable && room.isOfficial);
   
-  if (joinableRooms.length === 0) {
-    console.log('Creating default room - no joinable rooms available');
-    const randomMapKey = getRandomMapKey();
-    const defaultRoom = new Room(uuidv4(), randomMapKey);
-    defaultRoom.name = 'Main Room';
-    const mapData = mapManager.getMap(randomMapKey);
-    console.log(`Default room created with random map: ${mapData?.displayName || randomMapKey}`);
-    rooms.push(defaultRoom);
-    
-    // Room created successfully - now using room-specific worlds
+  if (joinableOfficialRooms.length === 0) {
+    console.log('🏛️ Creating official room - no joinable official rooms available');
+    createOfficialRoom();
   }
 }
 
-// Clean up empty rooms (but always keep at least one)
+// Enhanced room cleanup with official room protection
 function cleanupEmptyRooms() {
   const nonEmptyRooms = rooms.filter(room => !room.isEmpty);
   const emptyRooms = rooms.filter(room => room.isEmpty);
+  const emptyOfficialRooms = emptyRooms.filter(room => room.isOfficial);
+  const emptyNonOfficialRooms = emptyRooms.filter(room => !room.isOfficial);
   
-  // Keep at least one room (preferably non-private)
-  if (nonEmptyRooms.length === 0 && emptyRooms.length > 1) {
-    // Keep the first non-private room, or just the first room
-    const roomToKeep = emptyRooms.find(room => !room.isPrivate) || emptyRooms[0];
-    const roomsToRemove = emptyRooms.filter(room => room !== roomToKeep);
+  // Always remove empty non-official rooms (user-created rooms)
+  for (const room of emptyNonOfficialRooms) {
+    const index = rooms.indexOf(room);
+    if (index > -1) {
+      console.log(`🧹 Cleaning up empty user-created room: ${room.name} (${room.id})`);
+      rooms.splice(index, 1);
+    }
+  }
+  
+  // For official rooms, only clean up if we have more than 2 empty official rooms
+  if (emptyOfficialRooms.length > 2) {
+    const roomsToRemove = emptyOfficialRooms.slice(2); // Keep at least 2 official rooms
     
     for (const room of roomsToRemove) {
       const index = rooms.indexOf(room);
       if (index > -1) {
-        console.log(`Cleaning up empty room: ${room.name} (${room.id}) - was ${room.totalOccupancy}/${room.maxPlayers}`);
+        console.log(`🧹 Cleaning up excess empty official room: ${room.name} (${room.id})`);
         rooms.splice(index, 1);
       }
     }
   }
+  
+  // Ensure we always have at least one official room
+  ensureDefaultRoom();
 }
 
 io.on('connection', (socket) => {
@@ -1759,6 +1961,15 @@ io.on('connection', (socket) => {
   // Handle spectator requests (with room support)
   socket.on('requestSpectator', (data = {}) => {
     const { roomId } = data;
+    
+    // Update activity timestamp for AFK tracking
+    for (const room of rooms) {
+      if (room.hasMember(socket.id)) {
+        room.updateMemberActivity(socket.id);
+        break;
+      }
+    }
+    
     // Clean up from other rooms first
     for (const room of rooms) {
       if (room.hasMember(socket.id)) {
@@ -1771,29 +1982,58 @@ io.on('connection', (socket) => {
       initializeRooms();
     }
     
-    // Find target room or use first available
+    // Find target room or use smart assignment
     let targetRoom = null;
     if (roomId) {
       targetRoom = rooms.find(room => room.id === roomId);
+      console.log(`🎯 Looking for specific room ${roomId}:`, targetRoom ? 'Found' : 'Not found');
     }
     if (!targetRoom) {
-      targetRoom = rooms[0]; // Default to first room if none specified
+      // Use smart room assignment for automatic assignment
+      targetRoom = assignRoom();
+      console.log(`🤖 Smart assignment selected room: ${targetRoom.name}`);
     }
     
     try {
-      if (targetRoom.isJoinable) {
+      if (targetRoom && targetRoom.isJoinable) {
         targetRoom.addMember(socket, Room.USER_STATES.SPECTATING);
         currentRoom = targetRoom;
-        console.log(`User ${socket.id} started spectating room ${targetRoom.name}`);
+        
+        // Send immediate spectator state for the new room to avoid delay
+        // Handle currentMapKey that might include category prefix
+        let keyToGet = targetRoom.currentMapKey;
+        let categoryToGet = null;
+        if (keyToGet && keyToGet.includes('/')) {
+          const parts = keyToGet.split('/');
+          categoryToGet = parts[0];
+          keyToGet = parts[1];
+        }
+        const mapData = mapManager.getMap(keyToGet, categoryToGet);
+        console.log(`🗺️ Map retrieval:`, {
+          roomId: targetRoom.id,
+          currentMapKey: targetRoom.currentMapKey,
+          mapData: !!mapData,
+          mapShapes: mapData?.shapes?.length,
+          mapName: mapData?.name
+        });
+        
+        const immediateSpectatorState = {
+          players: [],
+          roomMembers: targetRoom.getRoomMembersData(),
+          abilityObjects: [],
+          dynamicObjects: [],
+          map: mapData,
+          roomId: targetRoom.id,
+          timestamp: Date.now()
+        };
+        socket.emit('spectatorState', immediateSpectatorState);
       } else {
         // Still add to global spectators for backward compatibility
         spectators.set(socket.id, socket);
-        console.log(`User ${socket.id} spectating globally (room full)`);
       }
     } catch (error) {
       // Fallback to global spectators
       spectators.set(socket.id, socket);
-      console.log(`User ${socket.id} spectating globally (fallback)`);
     }
   });
   
@@ -1854,10 +2094,17 @@ io.on('connection', (socket) => {
         socket.emit('joinError', { error: 'Room not found' });
         return;
       }
-      if (!targetRoom.isJoinable) {
+      
+      // Check if user is already a member of this room (spectator -> player transition)
+      const isAlreadyMember = targetRoom.hasMember(socket.id);
+      
+      if (!isAlreadyMember && !targetRoom.isJoinable) {
+        // Only check capacity if user is NOT already in the room
         socket.emit('joinError', { error: 'Room is full' });
         return;
       }
+      
+      console.log(`🎮 User ${socket.id} joining room ${targetRoom.name}: ${isAlreadyMember ? 'spectator->player transition' : 'new member'}`);
     } else {
       // Auto-assign room (backwards compatibility)
       targetRoom = assignRoom();
@@ -2004,6 +2251,11 @@ io.on('connection', (socket) => {
   socket.on('binaryInput', (buffer) => {
     if (!myCar) return;
     
+    // Update activity timestamp for AFK tracking
+    if (currentRoom) {
+      currentRoom.updateMemberActivity(socket.id);
+    }
+    
     // Ignore input from crashed cars
     if (myCar.crashedAt) return;
     
@@ -2042,6 +2294,11 @@ io.on('connection', (socket) => {
   
   socket.on('input', (data) => {
     if (!myCar) return;
+    
+    // Update activity timestamp for AFK tracking
+    if (currentRoom) {
+      currentRoom.updateMemberActivity(socket.id);
+    }
     
     // Ignore input from crashed cars
     if (myCar.crashedAt) return;
@@ -2131,6 +2388,17 @@ io.on('connection', (socket) => {
   // Ping handler for latency measurement
   socket.on('ping', (timestamp, callback) => {
     if (callback) callback(Date.now());
+  });
+  
+  // Activity ping handler for AFK tracking
+  socket.on('activityPing', () => {
+    // Update activity for spectators and other non-game interactions
+    for (const room of rooms) {
+      if (room.hasMember(socket.id)) {
+        room.updateMemberActivity(socket.id);
+        break;
+      }
+    }
   });
 
   // Debug event handlers (only available when DEBUG_MODE is true)
@@ -2235,6 +2503,9 @@ io.on('connection', (socket) => {
   socket.on('chatMessage', (data) => {
     if (!currentRoom || !myCar) return;
     
+    // Update activity timestamp for AFK tracking
+    currentRoom.updateMemberActivity(socket.id);
+    
     // Validate message
     if (!data.message || typeof data.message !== 'string') return;
     const message = data.message.trim();
@@ -2323,10 +2594,10 @@ function gameLoop() {
           roundWinner = car;
         }
       }
-        if (roundWinner) {
+        if (roundWinner && !room.winMessageSent) {
           const winnerName = roundWinner.name;
           
-          // Broadcast win message to kill feed
+          // Broadcast win message to kill feed (only once per race)
           for (const [sid, car] of room.players.entries()) {
             const sock = io.sockets.sockets.get(sid);
             if (sock) {
@@ -2336,6 +2607,9 @@ function gameLoop() {
               });
             }
           }
+          
+          // Mark that win message has been sent for this race
+          room.winMessageSent = true;
           
           // Short delay to let the kill feed message display before returning to menu
           setTimeout(() => {
@@ -2366,6 +2640,7 @@ function gameLoop() {
             if (!car.crashedByPlayer && !car.killFeedSent) {
               // Track death for solo crash
               car.deaths += 1;
+              car.saveStatsToRoom();
               
               // Broadcast solo crash message to kill feed (send once to each player)
               for (const [socketId, otherCar] of room.players.entries()) {
@@ -2383,7 +2658,6 @@ function gameLoop() {
             
             // Mark the crash timestamp for delayed cleanup
             if (!car.crashedAt) {
-              console.log(`crashed`)
               car.crashedAt = Date.now();
               // Stop the car from moving
               Matter.Body.setVelocity(car.body, { x: 0, y: 0 });
@@ -2399,13 +2673,11 @@ function gameLoop() {
       // Clean up cars that have been crashed for longer than fade duration
       for (const [sid, car] of [...room.players.entries()]) {
         if (car.crashedAt && Date.now() - car.crashedAt > 300) { //500ms
-          console.log(`Cleaning up crashed car ${car.name} (${sid}) after ${Date.now() - car.crashedAt}ms`);
           
           // Demote crashed player to spectator instead of removing entirely
           const wasPlayer = room.players.has(sid);
           if (wasPlayer) {
             room.demoteToSpectator(sid);
-            console.log(`Player ${car.name} (${sid}) demoted to spectator after crash`);
           }
         }
       }
@@ -2433,7 +2705,15 @@ setInterval(() => {
     for (const socketId of allSocketIds) {
       const socket = io.sockets.sockets.get(socketId);
       if (socket) {
-        const map = mapManager.getMap(room.currentMapKey);
+        // Handle currentMapKey that might include category prefix
+        let keyToGet = room.currentMapKey;
+        let categoryToGet = null;
+        if (keyToGet && keyToGet.includes('/')) {
+          const parts = keyToGet.split('/');
+          categoryToGet = parts[0];
+          keyToGet = parts[1];
+        }
+        const map = mapManager.getMap(keyToGet, categoryToGet);
         const clientAbilityObjects = room.gameState.abilityObjects.map(obj => ({
           id: obj.id,
           type: obj.type,
@@ -2467,6 +2747,7 @@ setInterval(() => {
 
         const fullState = {
           players: state,
+          roomMembers: room.getRoomMembersData(),
           mySocketId: socketId,
           map: map,
           abilityObjects: clientAbilityObjects,
@@ -2480,6 +2761,7 @@ setInterval(() => {
           // Send delta update
           socket.emit('delta', {
             ...deltaState,
+            roomMembers: room.getRoomMembersData(),
             mySocketId: socketId,
             abilityObjects: clientAbilityObjects,
             dynamicObjects: clientDynamicObjects,
@@ -2556,6 +2838,16 @@ function broadcastToSpectators() {
     });
     
     // Create spectator-optimized state (always include map, even with no players)
+    // Handle currentMapKey that might include category prefix
+    let keyToGet = room.currentMapKey;
+    let categoryToGet = null;
+    if (keyToGet && keyToGet.includes('/')) {
+      const parts = keyToGet.split('/');
+      categoryToGet = parts[0];
+      keyToGet = parts[1];
+    }
+    const roomMapData = mapManager.getMap(keyToGet, categoryToGet);
+    
     const spectatorState = {
       players: room && room.players.size > 0 ? Array.from(room.players.values())
         .filter(car => !car.crashedAt) // Exclude crashed cars from spectator view
@@ -2572,9 +2864,11 @@ function broadcastToSpectators() {
         maxLaps: car.maxLaps,
         color: CAR_TYPES[car.type].color
       })) : [],
+      roomMembers: room ? room.getRoomMembersData() : [],
       abilityObjects: clientAbilityObjects,
       dynamicObjects: clientDynamicObjects,
-      map: mapManager.getMap(room.currentMapKey), // Always send current map
+      map: roomMapData, // Always send current map
+      roomId: room ? room.id : null,
       timestamp: Date.now()
     };
     
@@ -2602,15 +2896,20 @@ function broadcastToSpectators() {
 
 let broadcastTick = 0;
 
-// Room maintenance interval - run every 30 seconds
+// Room maintenance interval - run every 15 seconds
 setInterval(() => {
+  // Check for AFK members in all rooms
+  for (const room of rooms) {
+    room.checkAFKMembers();
+  }
+  
   cleanupEmptyRooms();
   ensureDefaultRoom();
-}, 30000);
+}, 15000);
 
 // Run initial room maintenance
 ensureDefaultRoom();
 
 server.listen(PORT, () => {
-  console.log(`Driftout2 server listening on port ${PORT}`);
+  console.log(`Driftz.IO server listening on port ${PORT}`);
 });

@@ -175,6 +175,7 @@
           refreshSocketSession();
           showMainMenu();
           updatePlayerInfo();
+          updateToolbarVisibility(); // Update toolbar for auth state change
         }
       } else {
         showAuthScreen();
@@ -241,13 +242,8 @@
       const data = await response.json();
       
       if (data.authenticated) {
-        // Check if current user is a guest - if so, make them re-authenticate
-        if (data.user.isGuest && currentUser) {
-          console.log('Guest user session expired - requiring re-authentication');
-          currentUser = null;
-          showAuthScreen();
-          return false;
-        }
+        // Session is valid - update current user data
+        currentUser = data.user;
         return true;
       } else {
         currentUser = null;
@@ -258,6 +254,7 @@
       console.error('Session validation failed:', error);
       currentUser = null;
       showAuthScreen();
+      updateToolbarVisibility(); // Update toolbar for auth state change
       return false;
     }
   }
@@ -308,7 +305,6 @@
       
       // Also set the player name for chat
       playerName = currentUser.username;
-      console.log('Player name set from currentUser:', playerName);
       
       // Show chat when authenticated
       chatContainer.classList.remove('hidden');
@@ -335,6 +331,7 @@
         refreshSocketSession();
         showMainMenu();
         updatePlayerInfo();
+        updateToolbarVisibility(); // Update toolbar for auth state change
       } else {
         showLoginForm();
         showError('loginError', data.error);
@@ -363,6 +360,7 @@
         refreshSocketSession();
         showMainMenu();
         updatePlayerInfo();
+        updateToolbarVisibility(); // Update toolbar for auth state change
       } else {
         showRegisterForm();
         showError('registerError', data.error);
@@ -391,6 +389,7 @@
         refreshSocketSession();
         showMainMenu();
         updatePlayerInfo();
+        updateToolbarVisibility(); // Update toolbar for auth state change
       } else {
         showAuthSelection();
         showError('quickPlayError', data.error);
@@ -407,11 +406,13 @@
       await fetch('/api/auth/logout', { method: 'POST' });
       currentUser = null;
       showAuthScreen();
+      updateToolbarVisibility(); // Update toolbar for auth state change
     } catch (error) {
       console.error('Logout failed:', error);
       // Still show auth screen even if logout request failed
       currentUser = null;
       showAuthScreen();
+      updateToolbarVisibility(); // Update toolbar for auth state change
     }
   }
 
@@ -484,12 +485,7 @@
   // Update kill feed position on window resize
   window.addEventListener('resize', updateKillFeedPosition);
 
-  // Periodic session validation for guest users (every 5 minutes)
-  setInterval(() => {
-    if (currentUser && currentUser.isGuest) {
-      validateCurrentSession();
-    }
-  }, 5 * 60 * 1000);
+  // Session validation removed - let server handle session expiration naturally
 
   // Toolbar functionality
   let toolbarVisible = false;
@@ -507,13 +503,51 @@
     }
   }
 
+  function updateToolbarVisibility() {
+    // Safety check - ensure variables are initialized
+    if (typeof toolbarVisible === 'undefined' || !topToolbar || !performanceOverlay || !miniLeaderboard) {
+      return;
+    }
+    
+    const shouldAlwaysShow = currentUser && currentUser.username && isSpectating;
+    
+    if (shouldAlwaysShow) {
+      // Always show for authenticated spectators
+      toolbarVisible = true;
+      topToolbar.classList.add('visible', 'always-visible');
+      performanceOverlay.classList.add('below-toolbar');
+      miniLeaderboard.classList.add('below-toolbar');
+      if (toolbarTimeout) {
+        clearTimeout(toolbarTimeout);
+        toolbarTimeout = null;
+      }
+    } else {
+      // Revert to hover behavior for active players
+      topToolbar.classList.remove('always-visible');
+      performanceOverlay.classList.remove('below-toolbar');
+      miniLeaderboard.classList.remove('below-toolbar');
+      // Hide toolbar if not currently being hovered
+      const rect = topToolbar.getBoundingClientRect();
+      const isHovering = rect.bottom > 0; // Simple check if toolbar is visible and could be hovered
+      if (!isHovering) {
+        toolbarVisible = false;
+        topToolbar.classList.remove('visible');
+      }
+    }
+  }
+
   function hideToolbar() {
+    // Don't hide if toolbar should always be visible for authenticated spectators
+    if (currentUser && currentUser.username && isSpectating) {
+      return;
+    }
+    
     // Set a delay before hiding to prevent flickering
     if (toolbarTimeout) {
       clearTimeout(toolbarTimeout);
     }
     toolbarTimeout = setTimeout(() => {
-      if (toolbarVisible) {
+      if (toolbarVisible && !(currentUser && currentUser.username && isSpectating)) {
         toolbarVisible = false;
         topToolbar.classList.remove('visible');
       }
@@ -551,6 +585,9 @@
     }, 100);
   });
 
+  // Initialize toolbar visibility after all variables are ready
+  updateToolbarVisibility();
+
   // Settings event listeners
   settingsCloseBtn.addEventListener('click', closeSettings);
   
@@ -567,6 +604,7 @@
       settings[settingKey] = e.target.checked;
       saveSettings();
       updatePerformanceOverlay();
+      updateToolbarVisibility();
     };
   }
   
@@ -832,6 +870,12 @@
   let killFeedMessages = [];
   let messageIdCounter = 0;
   
+  // Leaderboard TAB hold state
+  let isTabHeld = false;
+  
+  // Per-map statistics tracking
+  let currentMapKey = null;
+  
   // Spectator state management
   let spectatorState = null;
   let isSpectating = false;
@@ -851,7 +895,6 @@
     const myPlayer = currentPlayers.find(p => p.socketId === mySocketId);
     if (myPlayer && myPlayer.crashed && !playerCrashTime) {
       playerCrashTime = now;
-      console.log('Player crashed, starting fade timer');
       
       // Don't stop input interval here - we need it for the fade detection
       // Just zero out the cursor to stop car movement
@@ -895,12 +938,10 @@
     if (playerCrashTime && (now - playerCrashTime) > CRASH_FADE_DURATION) {
       returnToMenuAfterCrash();
     }
-    //console.log(`detecting crashes`)
   }
   
   // Handle returning to menu after player crash fade
   function returnToMenu() {
-    console.log('Returning to menu');
     clearInterval(sendInputInterval);
     sendInputInterval = null;
     menu.style.display = 'flex';
@@ -921,11 +962,9 @@
     myAbility = null;
     lastAbilityUse = 0;
     
-    // Reset lap timer state
+    // Reset lap timer state (preserve bestLapTime for per-map persistence)
     currentLapStartTime = 0;
     previousLapCount = 0;
-    bestLapTime = null;
-    bestLapTimeSpan.textContent = '';
     
     // Reset the first state flag so next game waits for server data
     hasReceivedFirstState = false;
@@ -947,7 +986,6 @@
   }
 
   function returnToMenuAfterCrash() {
-    console.log('Crash fade completed, returning to menu');
     returnToMenu();
   }
 
@@ -993,66 +1031,111 @@
     `).join('');
   }
 
-  function updateDetailedLeaderboard(players) {
-    if (!players || players.length === 0) {
-      leaderboardTableBody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: rgba(255,255,255,0.5);">No players in game</td></tr>';
+  function updateDetailedLeaderboard(players, roomMembers) {
+    // Combine players and room members for comprehensive display
+    const allEntries = [];
+    const playerSocketIds = new Set();
+    
+    // Add active players first
+    if (players && players.length > 0) {
+      const sortedPlayers = [...players].sort((a, b) => {
+        if (a.laps !== b.laps) return b.laps - a.laps;
+        if (a.bestLapTime && b.bestLapTime) return a.bestLapTime - b.bestLapTime;
+        if (a.bestLapTime && !b.bestLapTime) return -1;
+        if (!a.bestLapTime && b.bestLapTime) return 1;
+        return 0;
+      });
+      
+      sortedPlayers.forEach((player, index) => {
+        playerSocketIds.add(player.socketId);
+        allEntries.push({
+          type: 'player',
+          rank: index + 1,
+          player: player
+        });
+      });
+    }
+    
+    // Add non-playing room members (spectators)
+    if (roomMembers && roomMembers.length > 0) {
+      const spectators = roomMembers
+        .filter(member => member.state === 'spectating' && !playerSocketIds.has(member.socketId))
+        .sort((a, b) => a.joinedAt - b.joinedAt); // Sort by join time
+      
+      spectators.forEach(member => {
+        allEntries.push({
+          type: 'spectator',
+          member: member
+        });
+      });
+    }
+    
+    if (allEntries.length === 0) {
+      leaderboardTableBody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: rgba(255,255,255,0.5);">No one in room</td></tr>';
       return;
     }
 
-    // Sort players by laps (descending), then by best lap time (ascending)
-    const sortedPlayers = [...players].sort((a, b) => {
-      if (a.laps !== b.laps) return b.laps - a.laps;
-      if (a.bestLapTime && b.bestLapTime) return a.bestLapTime - b.bestLapTime;
-      if (a.bestLapTime && !b.bestLapTime) return -1;
-      if (!a.bestLapTime && b.bestLapTime) return 1;
-      return 0;
-    });
+    leaderboardTableBody.innerHTML = allEntries.map((entry) => {
+      if (entry.type === 'player') {
+        const player = entry.player;
+        const rank = entry.rank;
+        const kdr = player.kdr;
+        let kdrText = '--';
+        let kdrClass = '';
+        
+        if (player.deaths === 0 && player.kills > 0) {
+          kdrText = '∞';
+          kdrClass = 'stat-kdr-perfect';
+        } else if (player.deaths === 0) {
+          kdrText = '0.00';
+        } else {
+          kdrText = kdr.toFixed(2);
+          if (kdr >= 2.0) kdrClass = 'stat-kdr-high';
+        }
 
-    leaderboardTableBody.innerHTML = sortedPlayers.map((player, index) => {
-      const rank = index + 1;
-      const kdr = player.kdr;
-      let kdrText = '--';
-      let kdrClass = '';
-      
-      if (player.deaths === 0 && player.kills > 0) {
-        kdrText = '∞';
-        kdrClass = 'stat-kdr-perfect';
-      } else if (player.deaths === 0) {
-        kdrText = '0.00';
-      } else {
-        kdrText = kdr.toFixed(2);
-        if (kdr >= 2.0) kdrClass = 'stat-kdr-high';
+        const bestLapText = player.bestLapTime ? formatTime(player.bestLapTime) : '--';
+        const rankClass = rank === 1 ? 'rank-1' : rank === 2 ? 'rank-2' : rank === 3 ? 'rank-3' : '';
+
+        return `
+          <tr>
+            <td class="${rankClass}">#${rank}</td>
+            <td>
+              <div class="leaderboard-player-cell">
+                <div class="leaderboard-player-color" style="background-color: ${player.color}"></div>
+                <div class="leaderboard-player-name">${player.name || 'Unnamed'}</div>
+              </div>
+            </td>
+            <td>${player.laps}/${player.maxLaps || 3}</td>
+            <td class="stat-kills">${player.kills || 0}</td>
+            <td class="stat-deaths">${player.deaths || 0}</td>
+            <td class="${kdrClass}">${kdrText}</td>
+            <td class="stat-best-lap">${bestLapText}</td>
+          </tr>
+        `;
+      } else if (entry.type === 'spectator') {
+        const member = entry.member;
+        return `
+          <tr class="spectator-row">
+            <td>--</td>
+            <td>
+              <div class="leaderboard-player-cell">
+                <div class="leaderboard-player-color spectator-indicator"></div>
+                <div class="leaderboard-player-name spectator-name">${member.name}</div>
+              </div>
+            </td>
+            <td colspan="5" class="spectator-status">Spectating</td>
+          </tr>
+        `;
       }
-
-      const bestLapText = player.bestLapTime ? formatTime(player.bestLapTime) : '--';
-      const rankClass = rank === 1 ? 'rank-1' : rank === 2 ? 'rank-2' : rank === 3 ? 'rank-3' : '';
-
-      return `
-        <tr>
-          <td class="${rankClass}">#${rank}</td>
-          <td>
-            <div class="leaderboard-player-cell">
-              <div class="leaderboard-player-color" style="background-color: ${player.color}"></div>
-              <div class="leaderboard-player-name">${player.name || 'Unnamed'}</div>
-            </div>
-          </td>
-          <td>${player.laps}/${player.maxLaps || 3}</td>
-          <td class="stat-kills">${player.kills || 0}</td>
-          <td class="stat-deaths">${player.deaths || 0}</td>
-          <td class="${kdrClass}">${kdrText}</td>
-          <td class="stat-best-lap">${bestLapText}</td>
-        </tr>
-      `;
     }).join('');
   }
 
-  function toggleDetailedLeaderboard() {
-    const isHidden = detailedLeaderboard.classList.contains('hidden');
-    if (isHidden) {
-      detailedLeaderboard.classList.remove('hidden');
-    } else {
-      detailedLeaderboard.classList.add('hidden');
-    }
+  function showDetailedLeaderboard() {
+    detailedLeaderboard.classList.remove('hidden');
+  }
+  
+  function hideDetailedLeaderboard() {
+    detailedLeaderboard.classList.add('hidden');
   }
 
   // Settings system functions
@@ -1344,8 +1427,12 @@
   function joinSpecificRoom(roomId) {
     closeRoomBrowser();
     
-    // Track the room we're joining for crash handling
+    // Store old room ID for comparison
+    const oldRoomId = currentRoomId;
+    
+    // Update room ID FIRST, before any operations that depend on it
     currentRoomId = roomId;
+    currentMapKey = null; // Force next spectator state to be treated as map change
     
     // Start spectating the specific room
     socket.emit('requestSpectator', { roomId });
@@ -1496,11 +1583,18 @@
   function startSpectating(roomId) {
     if (!isSpectating) {
       isSpectating = true;
+      
+      // Update current room ID if switching
+      const targetRoomId = roomId || currentRoomId;
+      if (targetRoomId) {
+        currentRoomId = targetRoomId;
+      }
+      
       // Use provided roomId or currentRoomId, or no roomId for default room
-      const spectatorData = roomId || currentRoomId ? { roomId: roomId || currentRoomId } : {};
+      const spectatorData = targetRoomId ? { roomId: targetRoomId } : {};
       socket.emit('requestSpectator', spectatorData);
       resizeSpectatorCanvas();
-      console.log('Started spectating mode', roomId || currentRoomId ? `in room ${roomId || currentRoomId}` : '');
+      updateToolbarVisibility(); // Update toolbar for spectator state
     }
   }
   
@@ -1508,6 +1602,7 @@
     isSpectating = false;
     spectatorState = null;
     spectatorCtx.clearRect(0, 0, spectatorCanvas.width, spectatorCanvas.height);
+    updateToolbarVisibility(); // Update toolbar when leaving spectator mode
   }
   
   function resizeSpectatorCanvas() {
@@ -1600,7 +1695,6 @@
   }
 
   joinButton.addEventListener('click', () => {
-    console.log('Join button clicked', { currentUser, currentRoomId });
     
     // Check if user is authenticated
     if (!currentUser || !currentUser.username) {
@@ -1612,8 +1706,7 @@
     const selected = document.querySelector('input[name="car"]:checked');
     const carType = selected ? selected.value : 'Speedster';
     const name = currentUser.username;
-    
-    console.log('Emitting joinGame', { carType, name, roomId: currentRoomId });
+
     socket.emit('joinGame', { carType, name, roomId: currentRoomId });
   });
 
@@ -1623,7 +1716,6 @@
   });
 
   socket.on('joined', (data) => {
-    console.log('Successfully joined game:', data);
     stopSpectating(); // Stop spectating when joining game
     
     // Track the current room ID for crash handling
@@ -1645,7 +1737,6 @@
         const myPlayer = latestState.players.find(p => p.socketId === mySocketId);
         if (myPlayer && myPlayer.name) {
           playerName = myPlayer.name;
-          console.log('Player name set for chat:', playerName);
         }
       }
     }, 100);
@@ -1746,11 +1837,24 @@
     gameStates = gameStates.filter(state => (now - state.timestamp) < 1000);
 
     // Update current map immediately (doesn't need interpolation)
-    currentMap = data.map || currentMap;
+    if (data.map) {
+      // Use proper map key generation with room context (same as spectator state handler)
+      const newMapKey = `${currentRoomId}_${generateMapKey(data.map)}`;
+      
+      if (newMapKey !== currentMapKey) {
+        // Map has changed - reset per-map statistics
+        currentMapKey = newMapKey;
+        bestLapTime = null;
+        bestLapTimeSpan.textContent = '';
+      }
+      
+      // Always use fresh map data from server
+      currentMap = data.map;
+    }
     
     // Update leaderboards with latest player data
     updateMiniLeaderboard(data.players);
-    updateDetailedLeaderboard(data.players);
+    updateDetailedLeaderboard(data.players, data.roomMembers);
     
     // Update player name for chat if not already set
     if (!playerName && data.players) {
@@ -1758,7 +1862,6 @@
       const myPlayer = data.players.find(p => p.socketId === mySocketId);
       if (myPlayer && myPlayer.name) {
         playerName = myPlayer.name;
-        console.log('Player name updated from state:', playerName);
       }
     }
   });
@@ -1809,7 +1912,7 @@
       
       // Update leaderboards with latest player data
       updateMiniLeaderboard(data.players);
-      updateDetailedLeaderboard(data.players);
+      updateDetailedLeaderboard(data.players, data.roomMembers);
       
     } catch (error) {
       console.error('Error handling binary state:', error);
@@ -1878,7 +1981,7 @@
     
     // Update leaderboards with latest player data
     updateMiniLeaderboard(newPlayers);
-    updateDetailedLeaderboard(newPlayers);
+    updateDetailedLeaderboard(newPlayers, data.roomMembers);
   });
 
   // Handle heartbeat (no data changed)
@@ -1905,9 +2008,31 @@
   socket.on('spectatorState', (data) => {
     spectatorState = data;
     
+    // Update current room ID from spectator state
+    if (data.roomId && data.roomId !== currentRoomId) {
+      console.log(`🏠 Room ID updated from spectatorState: ${currentRoomId} -> ${data.roomId}`);
+      currentRoomId = data.roomId;
+    }
+    
+    // Always update currentMap when we have new map data
+    if (data.map) {
+      // Use proper map key generation with room context
+      const newMapKey = `${currentRoomId}_${generateMapKey(data.map)}`;
+      
+      if (newMapKey !== currentMapKey) {
+        // Map has actually changed - reset per-map statistics
+        currentMapKey = newMapKey;
+        bestLapTime = null;
+        bestLapTimeSpan.textContent = '';
+      }
+      
+      // Always use fresh map data from server
+      currentMap = data.map;
+    }
+    
     // Update leaderboards with spectator data
     updateMiniLeaderboard(data.players);
-    updateDetailedLeaderboard(data.players);
+    updateDetailedLeaderboard(data.players, data.roomMembers);
   });
 
   socket.on('returnToMenu', ({ winner, crashed }) => {
@@ -1933,11 +2058,9 @@
     myAbility = null;
     lastAbilityUse = 0;
     
-    // Reset lap timer state
+    // Reset lap timer state (preserve bestLapTime for per-map persistence)
     currentLapStartTime = 0;
     previousLapCount = 0;
-    bestLapTime = null;
-    bestLapTimeSpan.textContent = '';
     
     // Reset the first state flag so next game waits for server data
     hasReceivedFirstState = false;
@@ -1997,7 +2120,6 @@
 
   function sendChatMessage() {
     const message = chatInput.value.trim();
-    console.log('Attempting to send chat message:', { message, playerName, hasMessage: !!message, hasPlayerName: !!playerName });
     
     if (!message) {
       console.log('Chat message blocked: empty message');
@@ -2021,7 +2143,6 @@
           const myPlayer = latestState.players.find(p => p.socketId === mySocketId);
           if (myPlayer && myPlayer.name) {
             playerName = myPlayer.name;
-            console.log('Retrieved player name from game state:', playerName);
           }
         }
       }
@@ -2112,13 +2233,10 @@
       return;
     }
 
-    // Handle ESC key for chat and leaderboard
+    // Handle ESC key for chat
     if (e.code === 'Escape') {
       if (isChatFocused) {
         toggleChatInput();
-        return;
-      } else if (!detailedLeaderboard.classList.contains('hidden')) {
-        detailedLeaderboard.classList.add('hidden');
         return;
       }
     }
@@ -2126,10 +2244,13 @@
     // Don't process game inputs when chat is focused
     if (isChatFocused) return;
 
-    // Handle TAB key for leaderboard toggle
+    // Handle TAB key for leaderboard (show on hold)
     if (e.code === 'Tab') {
       e.preventDefault();
-      toggleDetailedLeaderboard();
+      if (!isTabHeld) {
+        isTabHeld = true;
+        showDetailedLeaderboard();
+      }
       return;
     }
     
@@ -2188,6 +2309,16 @@
           socket.emit('upgrade', { stat });
         }
       }
+    }
+  });
+
+  // Handle key release events
+  document.addEventListener('keyup', (e) => {
+    // Handle TAB key release for leaderboard (hide on release)
+    if (e.code === 'Tab' && isTabHeld) {
+      isTabHeld = false;
+      hideDetailedLeaderboard();
+      return;
     }
   });
 
@@ -2309,9 +2440,7 @@
     lapTimer.classList.add('hidden');
     boostDisplay.classList.add('hidden');
     currentLapStartTime = 0;
-    bestLapTime = null;
     previousLapCount = 0;
-    bestLapTimeSpan.textContent = '';
     currentLapTimeSpan.textContent = '0:00.000';
   }
 
@@ -2622,6 +2751,139 @@
       hideMenuDisconnectionWarning();
     }
   });
+
+  // AFK Warning System
+  let afkWarningActive = false;
+  let afkWarningElement = null;
+  let afkCountdownInterval = null;
+
+  // Create AFK warning overlay
+  function createAFKWarningOverlay() {
+    const overlay = document.createElement('div');
+    overlay.id = 'afkWarning';
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 10000;
+      font-family: Arial, sans-serif;
+    `;
+    
+    const content = document.createElement('div');
+    content.style.cssText = `
+      background: #ff4444;
+      color: white;
+      padding: 30px;
+      border-radius: 15px;
+      text-align: center;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      max-width: 400px;
+      border: 3px solid #ff6666;
+    `;
+    
+    content.innerHTML = `
+      <div style="font-size: 32px; margin-bottom: 15px;">⚠️</div>
+      <div style="font-size: 24px; font-weight: bold; margin-bottom: 10px;">AFK WARNING</div>
+      <div id="afkReason" style="font-size: 16px; margin-bottom: 15px;">You appear to be inactive</div>
+      <div style="font-size: 48px; font-weight: bold; color: #ffff00;" id="afkCountdown">5</div>
+      <div style="font-size: 14px; margin-top: 10px;">Move or interact to stay connected</div>
+    `;
+    
+    overlay.appendChild(content);
+    return overlay;
+  }
+
+  // Show AFK warning
+  function showAFKWarning(reason, countdown) {
+    if (afkWarningActive) return;
+    
+    afkWarningActive = true;
+    afkWarningElement = createAFKWarningOverlay();
+    document.body.appendChild(afkWarningElement);
+    
+    // Set the reason
+    const reasonElement = afkWarningElement.querySelector('#afkReason');
+    if (reasonElement) {
+      reasonElement.textContent = reason;
+    }
+    
+    // Start countdown
+    let timeLeft = countdown;
+    const countdownElement = afkWarningElement.querySelector('#afkCountdown');
+    
+    afkCountdownInterval = setInterval(() => {
+      timeLeft--;
+      if (countdownElement) {
+        countdownElement.textContent = timeLeft;
+      }
+      
+      if (timeLeft <= 0) {
+        clearInterval(afkCountdownInterval);
+      }
+    }, 1000);
+    
+    // Send activity ping on any user interaction to dismiss warning
+    const dismissWarning = () => {
+      socket.emit('activityPing');
+      hideAFKWarning();
+    };
+    
+    // Add event listeners for user activity
+    document.addEventListener('keydown', dismissWarning, { once: true });
+    document.addEventListener('mousedown', dismissWarning, { once: true });
+    document.addEventListener('mousemove', dismissWarning, { once: true });
+    document.addEventListener('touchstart', dismissWarning, { once: true });
+  }
+
+  // Hide AFK warning
+  function hideAFKWarning() {
+    if (!afkWarningActive) return;
+    
+    afkWarningActive = false;
+    
+    if (afkCountdownInterval) {
+      clearInterval(afkCountdownInterval);
+      afkCountdownInterval = null;
+    }
+    
+    if (afkWarningElement) {
+      document.body.removeChild(afkWarningElement);
+      afkWarningElement = null;
+    }
+  }
+
+  // Handle AFK warning from server
+  socket.on('afkWarning', (data) => {
+    console.log('⚠️ AFK Warning received:', data);
+    showAFKWarning(data.reason, data.countdown);
+  });
+
+  // Handle force disconnect from server
+  socket.on('forceDisconnect', (data) => {
+    console.log('🚫 Force disconnect:', data.reason);
+    
+    // Hide any existing warnings
+    hideAFKWarning();
+    
+    // Show disconnect message to user
+    alert(`You have been disconnected: ${data.reason}`);
+    
+    // The socket will be disconnected by the server
+    // The existing disconnect handlers will take care of cleanup
+  });
+
+  // Send periodic activity pings when spectating (for menu interactions)
+  setInterval(() => {
+    if (isSpectating && socket.connected) {
+      socket.emit('activityPing');
+    }
+  }, 30000); // Every 30 seconds when spectating
 
   // Spectator rendering function
   function drawSpectatorView() {
@@ -3352,10 +3614,8 @@
         currentLapStartTime = now;
         previousLapCount = centerPlayer.laps;
       } else if (centerPlayer.laps < previousLapCount) {
-        // Laps reset (new game/crashed) - reset timer
+        // Laps reset (new game/crashed) - reset current lap timer only (preserve bestLapTime)
         currentLapStartTime = now;
-        bestLapTime = null;
-        bestLapTimeSpan.textContent = '';
         previousLapCount = centerPlayer.laps;
       } else if (currentLapStartTime === 0 && centerPlayer.laps === 0) {
         // First time in game - start timing
@@ -3447,6 +3707,31 @@
   }
 
   // HELPERS
+
+  // Generate a reliable map identifier
+  function generateMapKey(map) {
+    if (!map) return 'null';
+    
+    // Use name or key if available
+    if (map.name) return map.name;
+    if (map.key) return map.key;
+    
+    // Generate a proper hash of the entire map structure
+    const mapString = JSON.stringify({
+      shapes: map.shapes || [],
+      checkpoints: map.checkpoints || [],
+      dynamicObjects: map.dynamicObjects || []
+    });
+    
+    // Simple but reliable hash function
+    let hash = 0;
+    for (let i = 0; i < mapString.length; i++) {
+      const char = mapString.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return hash.toString();
+  }
 
   function drawCheckerboard(ctx, screenVerts, cellSize = 10, originWorld = { x: 0, y: 0 }, scale = 1, me = null, centerX = 0, centerY = 0) {
     ctx.save()
