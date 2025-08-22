@@ -832,6 +832,12 @@
   let killFeedMessages = [];
   let messageIdCounter = 0;
   
+  // Leaderboard TAB hold state
+  let isTabHeld = false;
+  
+  // Per-map statistics tracking
+  let currentMapKey = null;
+  
   // Spectator state management
   let spectatorState = null;
   let isSpectating = false;
@@ -921,11 +927,9 @@
     myAbility = null;
     lastAbilityUse = 0;
     
-    // Reset lap timer state
+    // Reset lap timer state (preserve bestLapTime for per-map persistence)
     currentLapStartTime = 0;
     previousLapCount = 0;
-    bestLapTime = null;
-    bestLapTimeSpan.textContent = '';
     
     // Reset the first state flag so next game waits for server data
     hasReceivedFirstState = false;
@@ -993,66 +997,111 @@
     `).join('');
   }
 
-  function updateDetailedLeaderboard(players) {
-    if (!players || players.length === 0) {
-      leaderboardTableBody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: rgba(255,255,255,0.5);">No players in game</td></tr>';
+  function updateDetailedLeaderboard(players, roomMembers) {
+    // Combine players and room members for comprehensive display
+    const allEntries = [];
+    const playerSocketIds = new Set();
+    
+    // Add active players first
+    if (players && players.length > 0) {
+      const sortedPlayers = [...players].sort((a, b) => {
+        if (a.laps !== b.laps) return b.laps - a.laps;
+        if (a.bestLapTime && b.bestLapTime) return a.bestLapTime - b.bestLapTime;
+        if (a.bestLapTime && !b.bestLapTime) return -1;
+        if (!a.bestLapTime && b.bestLapTime) return 1;
+        return 0;
+      });
+      
+      sortedPlayers.forEach((player, index) => {
+        playerSocketIds.add(player.socketId);
+        allEntries.push({
+          type: 'player',
+          rank: index + 1,
+          player: player
+        });
+      });
+    }
+    
+    // Add non-playing room members (spectators)
+    if (roomMembers && roomMembers.length > 0) {
+      const spectators = roomMembers
+        .filter(member => member.state === 'spectating' && !playerSocketIds.has(member.socketId))
+        .sort((a, b) => a.joinedAt - b.joinedAt); // Sort by join time
+      
+      spectators.forEach(member => {
+        allEntries.push({
+          type: 'spectator',
+          member: member
+        });
+      });
+    }
+    
+    if (allEntries.length === 0) {
+      leaderboardTableBody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: rgba(255,255,255,0.5);">No one in room</td></tr>';
       return;
     }
 
-    // Sort players by laps (descending), then by best lap time (ascending)
-    const sortedPlayers = [...players].sort((a, b) => {
-      if (a.laps !== b.laps) return b.laps - a.laps;
-      if (a.bestLapTime && b.bestLapTime) return a.bestLapTime - b.bestLapTime;
-      if (a.bestLapTime && !b.bestLapTime) return -1;
-      if (!a.bestLapTime && b.bestLapTime) return 1;
-      return 0;
-    });
+    leaderboardTableBody.innerHTML = allEntries.map((entry) => {
+      if (entry.type === 'player') {
+        const player = entry.player;
+        const rank = entry.rank;
+        const kdr = player.kdr;
+        let kdrText = '--';
+        let kdrClass = '';
+        
+        if (player.deaths === 0 && player.kills > 0) {
+          kdrText = '∞';
+          kdrClass = 'stat-kdr-perfect';
+        } else if (player.deaths === 0) {
+          kdrText = '0.00';
+        } else {
+          kdrText = kdr.toFixed(2);
+          if (kdr >= 2.0) kdrClass = 'stat-kdr-high';
+        }
 
-    leaderboardTableBody.innerHTML = sortedPlayers.map((player, index) => {
-      const rank = index + 1;
-      const kdr = player.kdr;
-      let kdrText = '--';
-      let kdrClass = '';
-      
-      if (player.deaths === 0 && player.kills > 0) {
-        kdrText = '∞';
-        kdrClass = 'stat-kdr-perfect';
-      } else if (player.deaths === 0) {
-        kdrText = '0.00';
-      } else {
-        kdrText = kdr.toFixed(2);
-        if (kdr >= 2.0) kdrClass = 'stat-kdr-high';
+        const bestLapText = player.bestLapTime ? formatTime(player.bestLapTime) : '--';
+        const rankClass = rank === 1 ? 'rank-1' : rank === 2 ? 'rank-2' : rank === 3 ? 'rank-3' : '';
+
+        return `
+          <tr>
+            <td class="${rankClass}">#${rank}</td>
+            <td>
+              <div class="leaderboard-player-cell">
+                <div class="leaderboard-player-color" style="background-color: ${player.color}"></div>
+                <div class="leaderboard-player-name">${player.name || 'Unnamed'}</div>
+              </div>
+            </td>
+            <td>${player.laps}/${player.maxLaps || 3}</td>
+            <td class="stat-kills">${player.kills || 0}</td>
+            <td class="stat-deaths">${player.deaths || 0}</td>
+            <td class="${kdrClass}">${kdrText}</td>
+            <td class="stat-best-lap">${bestLapText}</td>
+          </tr>
+        `;
+      } else if (entry.type === 'spectator') {
+        const member = entry.member;
+        return `
+          <tr class="spectator-row">
+            <td>--</td>
+            <td>
+              <div class="leaderboard-player-cell">
+                <div class="leaderboard-player-color spectator-indicator"></div>
+                <div class="leaderboard-player-name spectator-name">${member.name}</div>
+              </div>
+            </td>
+            <td colspan="5" class="spectator-status">Spectating</td>
+          </tr>
+        `;
       }
-
-      const bestLapText = player.bestLapTime ? formatTime(player.bestLapTime) : '--';
-      const rankClass = rank === 1 ? 'rank-1' : rank === 2 ? 'rank-2' : rank === 3 ? 'rank-3' : '';
-
-      return `
-        <tr>
-          <td class="${rankClass}">#${rank}</td>
-          <td>
-            <div class="leaderboard-player-cell">
-              <div class="leaderboard-player-color" style="background-color: ${player.color}"></div>
-              <div class="leaderboard-player-name">${player.name || 'Unnamed'}</div>
-            </div>
-          </td>
-          <td>${player.laps}/${player.maxLaps || 3}</td>
-          <td class="stat-kills">${player.kills || 0}</td>
-          <td class="stat-deaths">${player.deaths || 0}</td>
-          <td class="${kdrClass}">${kdrText}</td>
-          <td class="stat-best-lap">${bestLapText}</td>
-        </tr>
-      `;
     }).join('');
   }
 
-  function toggleDetailedLeaderboard() {
-    const isHidden = detailedLeaderboard.classList.contains('hidden');
-    if (isHidden) {
-      detailedLeaderboard.classList.remove('hidden');
-    } else {
-      detailedLeaderboard.classList.add('hidden');
-    }
+  function showDetailedLeaderboard() {
+    detailedLeaderboard.classList.remove('hidden');
+  }
+  
+  function hideDetailedLeaderboard() {
+    detailedLeaderboard.classList.add('hidden');
   }
 
   // Settings system functions
@@ -1745,12 +1794,20 @@
     const now = Date.now();
     gameStates = gameStates.filter(state => (now - state.timestamp) < 1000);
 
-    // Update current map immediately (doesn't need interpolation)
+    // Update current map immediately (doesn't need interpolation) 
+    const newMapKey = data.map ? Object.keys(data.map).join('') : null; // Simple map detection
+    if (newMapKey && newMapKey !== currentMapKey) {
+      // Map has changed - reset per-map statistics
+      currentMapKey = newMapKey;
+      bestLapTime = null;
+      bestLapTimeSpan.textContent = '';
+      console.log('Map changed, resetting lap time statistics');
+    }
     currentMap = data.map || currentMap;
     
     // Update leaderboards with latest player data
     updateMiniLeaderboard(data.players);
-    updateDetailedLeaderboard(data.players);
+    updateDetailedLeaderboard(data.players, data.roomMembers);
     
     // Update player name for chat if not already set
     if (!playerName && data.players) {
@@ -1809,7 +1866,7 @@
       
       // Update leaderboards with latest player data
       updateMiniLeaderboard(data.players);
-      updateDetailedLeaderboard(data.players);
+      updateDetailedLeaderboard(data.players, data.roomMembers);
       
     } catch (error) {
       console.error('Error handling binary state:', error);
@@ -1878,7 +1935,7 @@
     
     // Update leaderboards with latest player data
     updateMiniLeaderboard(newPlayers);
-    updateDetailedLeaderboard(newPlayers);
+    updateDetailedLeaderboard(newPlayers, data.roomMembers);
   });
 
   // Handle heartbeat (no data changed)
@@ -1907,7 +1964,7 @@
     
     // Update leaderboards with spectator data
     updateMiniLeaderboard(data.players);
-    updateDetailedLeaderboard(data.players);
+    updateDetailedLeaderboard(data.players, data.roomMembers);
   });
 
   socket.on('returnToMenu', ({ winner, crashed }) => {
@@ -1933,11 +1990,9 @@
     myAbility = null;
     lastAbilityUse = 0;
     
-    // Reset lap timer state
+    // Reset lap timer state (preserve bestLapTime for per-map persistence)
     currentLapStartTime = 0;
     previousLapCount = 0;
-    bestLapTime = null;
-    bestLapTimeSpan.textContent = '';
     
     // Reset the first state flag so next game waits for server data
     hasReceivedFirstState = false;
@@ -2112,13 +2167,10 @@
       return;
     }
 
-    // Handle ESC key for chat and leaderboard
+    // Handle ESC key for chat
     if (e.code === 'Escape') {
       if (isChatFocused) {
         toggleChatInput();
-        return;
-      } else if (!detailedLeaderboard.classList.contains('hidden')) {
-        detailedLeaderboard.classList.add('hidden');
         return;
       }
     }
@@ -2126,10 +2178,13 @@
     // Don't process game inputs when chat is focused
     if (isChatFocused) return;
 
-    // Handle TAB key for leaderboard toggle
+    // Handle TAB key for leaderboard (show on hold)
     if (e.code === 'Tab') {
       e.preventDefault();
-      toggleDetailedLeaderboard();
+      if (!isTabHeld) {
+        isTabHeld = true;
+        showDetailedLeaderboard();
+      }
       return;
     }
     
@@ -2188,6 +2243,16 @@
           socket.emit('upgrade', { stat });
         }
       }
+    }
+  });
+
+  // Handle key release events
+  document.addEventListener('keyup', (e) => {
+    // Handle TAB key release for leaderboard (hide on release)
+    if (e.code === 'Tab' && isTabHeld) {
+      isTabHeld = false;
+      hideDetailedLeaderboard();
+      return;
     }
   });
 
@@ -2309,9 +2374,7 @@
     lapTimer.classList.add('hidden');
     boostDisplay.classList.add('hidden');
     currentLapStartTime = 0;
-    bestLapTime = null;
     previousLapCount = 0;
-    bestLapTimeSpan.textContent = '';
     currentLapTimeSpan.textContent = '0:00.000';
   }
 
@@ -3352,10 +3415,8 @@
         currentLapStartTime = now;
         previousLapCount = centerPlayer.laps;
       } else if (centerPlayer.laps < previousLapCount) {
-        // Laps reset (new game/crashed) - reset timer
+        // Laps reset (new game/crashed) - reset current lap timer only (preserve bestLapTime)
         currentLapStartTime = now;
-        bestLapTime = null;
-        bestLapTimeSpan.textContent = '';
         previousLapCount = centerPlayer.laps;
       } else if (currentLapStartTime === 0 && centerPlayer.laps === 0) {
         // First time in game - start timing

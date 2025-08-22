@@ -631,10 +631,11 @@ class Car {
     this.upgradePoints = 0;
     this.upgradeUsage = {}; // Track how many times each upgrade has been used
     
-    // Player statistics for leaderboard
-    this.kills = 0;
-    this.deaths = 0;
-    this.bestLapTime = null;
+    // Player statistics for leaderboard (restore from map stats if available)
+    const mapStats = room?.mapStats?.get(socketId);
+    this.kills = mapStats?.kills || 0;
+    this.deaths = mapStats?.deaths || 0;
+    this.bestLapTime = mapStats?.bestLapTime || null;
     this.currentLapStartTime = 0;
     this.prevFinishCheck = null; // used for lap crossing on square track
     this.cursor = { x: 0, y: 0 }; // direction and intensity from client
@@ -917,8 +918,9 @@ class Car {
     this.prevFinishCheck = null;
     this.upgradeUsage = {};
     
-    // Reset lap timing (keep kill/death stats across respawns)
-    this.bestLapTime = null;
+    // Reset lap timing (preserve bestLapTime from map stats if available)
+    const mapStats = this.room?.mapStats?.get(this.socketId);
+    this.bestLapTime = mapStats?.bestLapTime || null;
     this.currentLapStartTime = 0;
     
     // Restore boost on new life
@@ -977,6 +979,17 @@ class Car {
     const roomGameState = this.room ? this.room.gameState : (gameState || this.room?.gameState);
     return this.ability.activate(this, roomWorld, roomGameState);
   }
+  
+  // Save current statistics to room's per-map stats
+  saveStatsToRoom() {
+    if (this.room && this.socketId) {
+      this.room.mapStats.set(this.socketId, {
+        kills: this.kills,
+        deaths: this.deaths,
+        bestLapTime: this.bestLapTime
+      });
+    }
+  }
 }
 
 class Room {
@@ -1008,6 +1021,12 @@ class Room {
     this.currentMapKey = mapKey || mapKeys[this.currentMapIndex] || 'square';
     this.currentTrackBodies = [];
     this.currentDynamicBodies = [];
+    
+    // Race state flags
+    this.winMessageSent = false;
+    
+    // Per-map statistics tracking (preserved until map changes)
+    this.mapStats = new Map(); // socketId -> { kills, deaths, bestLapTime }
     
     // Set up collision detection for this room's physics world
     this.setupCollisionDetection();
@@ -1209,6 +1228,8 @@ class Room {
       carB.upgradePoints += 1;
       carB.kills += 1; // Track kill
       carA.deaths += 1; // Track death
+      carB.saveStatsToRoom();
+      carA.saveStatsToRoom();
       
       // Broadcast kill feed message to this room
       this.broadcastKillFeedMessage(`${carB.name} crashed ${carA.name}!`, 'crash');
@@ -1217,6 +1238,8 @@ class Room {
       carA.upgradePoints += 1;
       carA.kills += 1; // Track kill
       carB.deaths += 1; // Track death
+      carA.saveStatsToRoom();
+      carB.saveStatsToRoom();
       
       // Broadcast kill feed message to this room
       this.broadcastKillFeedMessage(`${carA.name} crashed ${carB.name}!`, 'crash');
@@ -1224,6 +1247,8 @@ class Room {
       // Both crashed - mutual destruction (both get a death, no kills)
       carA.deaths += 1;
       carB.deaths += 1;
+      carA.saveStatsToRoom();
+      carB.saveStatsToRoom();
       this.broadcastKillFeedMessage(`${carA.name} and ${carB.name} crashed!`, 'crash');
     }
   }
@@ -1299,6 +1324,9 @@ class Room {
   }
   
   setTrackBodies(mapKey) {
+    // Reset per-map statistics when changing maps
+    this.mapStats.clear();
+    
     // Remove old static bodies
     for (const body of this.currentTrackBodies) {
       Matter.World.remove(this.world, body)
@@ -1568,6 +1596,51 @@ class Room {
       car.resetCar();
       car.upgradePoints = 0;
     }
+    // Reset race state flags
+    this.winMessageSent = false;
+  }
+  
+  // Get all room members with their status for leaderboard display
+  getRoomMembersData() {
+    const members = [];
+    
+    // Add all members from allMembers map
+    for (const [socketId, member] of this.allMembers.entries()) {
+      const socket = member.socket;
+      const session = socket?.request?.session;
+      
+      let name = 'Connecting...';
+      let isAuthenticated = false;
+      
+      if (session?.username) {
+        name = session.isGuest ? session.username : session.username;
+        isAuthenticated = !session.isGuest;
+        
+        // For spectators, show "in lobby" status
+        if (member.state === Room.USER_STATES.SPECTATING) {
+          name = `${session.username} in lobby...`;
+        }
+      }
+      
+      // For players, get name from Car object which may have client-provided name
+      if (member.state === Room.USER_STATES.PLAYING) {
+        const car = this.players.get(socketId);
+        if (car && car.name) {
+          name = car.name;
+          isAuthenticated = true; // Players are considered authenticated
+        }
+      }
+      
+      members.push({
+        socketId: socketId,
+        name: name,
+        state: member.state,
+        isAuthenticated: isAuthenticated,
+        joinedAt: member.joinedAt
+      });
+    }
+    
+    return members;
   }
 }
 
@@ -2336,10 +2409,10 @@ function gameLoop() {
           roundWinner = car;
         }
       }
-        if (roundWinner) {
+        if (roundWinner && !room.winMessageSent) {
           const winnerName = roundWinner.name;
           
-          // Broadcast win message to kill feed
+          // Broadcast win message to kill feed (only once per race)
           for (const [sid, car] of room.players.entries()) {
             const sock = io.sockets.sockets.get(sid);
             if (sock) {
@@ -2349,6 +2422,9 @@ function gameLoop() {
               });
             }
           }
+          
+          // Mark that win message has been sent for this race
+          room.winMessageSent = true;
           
           // Short delay to let the kill feed message display before returning to menu
           setTimeout(() => {
@@ -2379,6 +2455,7 @@ function gameLoop() {
             if (!car.crashedByPlayer && !car.killFeedSent) {
               // Track death for solo crash
               car.deaths += 1;
+              car.saveStatsToRoom();
               
               // Broadcast solo crash message to kill feed (send once to each player)
               for (const [socketId, otherCar] of room.players.entries()) {
@@ -2480,6 +2557,7 @@ setInterval(() => {
 
         const fullState = {
           players: state,
+          roomMembers: room.getRoomMembersData(),
           mySocketId: socketId,
           map: map,
           abilityObjects: clientAbilityObjects,
@@ -2493,6 +2571,7 @@ setInterval(() => {
           // Send delta update
           socket.emit('delta', {
             ...deltaState,
+            roomMembers: room.getRoomMembersData(),
             mySocketId: socketId,
             abilityObjects: clientAbilityObjects,
             dynamicObjects: clientDynamicObjects,
@@ -2585,6 +2664,7 @@ function broadcastToSpectators() {
         maxLaps: car.maxLaps,
         color: CAR_TYPES[car.type].color
       })) : [],
+      roomMembers: room ? room.getRoomMembersData() : [],
       abilityObjects: clientAbilityObjects,
       dynamicObjects: clientDynamicObjects,
       map: mapManager.getMap(room.currentMapKey), // Always send current map
