@@ -1362,12 +1362,25 @@ class Room {
           continue
         }
 
+        // Calculate centroid of the vertices
+        const centroid = {
+          x: dynObj.vertices.reduce((sum, v) => sum + v.x, 0) / dynObj.vertices.length,
+          y: dynObj.vertices.reduce((sum, v) => sum + v.y, 0) / dynObj.vertices.length
+        }
+        
+        // Create vertices relative to centroid
+        const relativeVertices = dynObj.vertices.map(v => ({
+          x: v.x - centroid.x,
+          y: v.y - centroid.y
+        }))
+
         const bodyOptions = {
           ...HELPERS.getBodyOptionsFromShape(dynObj),
           label: `dynamic-${dynObj.id || 'object'}`
         }
         
-        const body = Matter.Bodies.fromVertices(0, 0, [dynObj.vertices], bodyOptions)
+        // Create body at the centroid position with relative vertices
+        const body = Matter.Bodies.fromVertices(centroid.x, centroid.y, [relativeVertices], bodyOptions)
         
         // Apply frictionAir if specified
         if (typeof dynObj.frictionAir === 'number') {
