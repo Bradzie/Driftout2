@@ -1903,6 +1903,7 @@ io.on('connection', (socket) => {
           abilityObjects: [],
           dynamicObjects: [],
           map: mapData,
+          roomId: targetRoom.id,
           timestamp: Date.now()
         };
         socket.emit('spectatorState', immediateSpectatorState);
@@ -2716,6 +2717,7 @@ function broadcastToSpectators() {
       abilityObjects: clientAbilityObjects,
       dynamicObjects: clientDynamicObjects,
       map: roomMapData, // Always send current map
+      roomId: room ? room.id : null,
       timestamp: Date.now()
     };
     

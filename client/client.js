@@ -2018,6 +2018,12 @@
   socket.on('spectatorState', (data) => {
     spectatorState = data;
     
+    // Update current room ID from spectator state
+    if (data.roomId && data.roomId !== currentRoomId) {
+      console.log(`🏠 Room ID updated from spectatorState: ${currentRoomId} -> ${data.roomId}`);
+      currentRoomId = data.roomId;
+    }
+    
     // Always update currentMap when we have new map data
     if (data.map) {
       // Use proper map key generation with room context
