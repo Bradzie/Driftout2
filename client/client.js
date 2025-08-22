@@ -310,7 +310,6 @@
       
       // Also set the player name for chat
       playerName = currentUser.username;
-      console.log('Player name set from currentUser:', playerName);
       
       // Show chat when authenticated
       chatContainer.classList.remove('hidden');
@@ -906,7 +905,6 @@
     const myPlayer = currentPlayers.find(p => p.socketId === mySocketId);
     if (myPlayer && myPlayer.crashed && !playerCrashTime) {
       playerCrashTime = now;
-      console.log('Player crashed, starting fade timer');
       
       // Don't stop input interval here - we need it for the fade detection
       // Just zero out the cursor to stop car movement
@@ -950,12 +948,10 @@
     if (playerCrashTime && (now - playerCrashTime) > CRASH_FADE_DURATION) {
       returnToMenuAfterCrash();
     }
-    //console.log(`detecting crashes`)
   }
   
   // Handle returning to menu after player crash fade
   function returnToMenu() {
-    console.log('Returning to menu');
     clearInterval(sendInputInterval);
     sendInputInterval = null;
     menu.style.display = 'flex';
@@ -1000,7 +996,6 @@
   }
 
   function returnToMenuAfterCrash() {
-    console.log('Crash fade completed, returning to menu');
     returnToMenu();
   }
 
@@ -1442,8 +1437,12 @@
   function joinSpecificRoom(roomId) {
     closeRoomBrowser();
     
-    // Track the room we're joining for crash handling
+    // Store old room ID for comparison
+    const oldRoomId = currentRoomId;
+    
+    // Update room ID FIRST, before any operations that depend on it
     currentRoomId = roomId;
+    currentMapKey = null; // Force next spectator state to be treated as map change
     
     // Start spectating the specific room
     socket.emit('requestSpectator', { roomId });
@@ -1594,11 +1593,17 @@
   function startSpectating(roomId) {
     if (!isSpectating) {
       isSpectating = true;
+      
+      // Update current room ID if switching
+      const targetRoomId = roomId || currentRoomId;
+      if (targetRoomId) {
+        currentRoomId = targetRoomId;
+      }
+      
       // Use provided roomId or currentRoomId, or no roomId for default room
-      const spectatorData = roomId || currentRoomId ? { roomId: roomId || currentRoomId } : {};
+      const spectatorData = targetRoomId ? { roomId: targetRoomId } : {};
       socket.emit('requestSpectator', spectatorData);
       resizeSpectatorCanvas();
-      console.log('Started spectating mode', roomId || currentRoomId ? `in room ${roomId || currentRoomId}` : '');
       updateToolbarVisibility(); // Update toolbar for spectator state
     }
   }
@@ -1700,7 +1705,6 @@
   }
 
   joinButton.addEventListener('click', () => {
-    console.log('Join button clicked', { currentUser, currentRoomId });
     
     // Check if user is authenticated
     if (!currentUser || !currentUser.username) {
@@ -1712,8 +1716,7 @@
     const selected = document.querySelector('input[name="car"]:checked');
     const carType = selected ? selected.value : 'Speedster';
     const name = currentUser.username;
-    
-    console.log('Emitting joinGame', { carType, name, roomId: currentRoomId });
+
     socket.emit('joinGame', { carType, name, roomId: currentRoomId });
   });
 
@@ -1723,7 +1726,6 @@
   });
 
   socket.on('joined', (data) => {
-    console.log('Successfully joined game:', data);
     stopSpectating(); // Stop spectating when joining game
     
     // Track the current room ID for crash handling
@@ -1745,7 +1747,6 @@
         const myPlayer = latestState.players.find(p => p.socketId === mySocketId);
         if (myPlayer && myPlayer.name) {
           playerName = myPlayer.name;
-          console.log('Player name set for chat:', playerName);
         }
       }
     }, 100);
@@ -1845,16 +1846,21 @@
     const now = Date.now();
     gameStates = gameStates.filter(state => (now - state.timestamp) < 1000);
 
-    // Update current map immediately (doesn't need interpolation) 
-    const newMapKey = data.map ? Object.keys(data.map).join('') : null; // Simple map detection
-    if (newMapKey && newMapKey !== currentMapKey) {
-      // Map has changed - reset per-map statistics
-      currentMapKey = newMapKey;
-      bestLapTime = null;
-      bestLapTimeSpan.textContent = '';
-      console.log('Map changed, resetting lap time statistics');
+    // Update current map immediately (doesn't need interpolation)
+    if (data.map) {
+      // Use proper map key generation with room context (same as spectator state handler)
+      const newMapKey = `${currentRoomId}_${generateMapKey(data.map)}`;
+      
+      if (newMapKey !== currentMapKey) {
+        // Map has changed - reset per-map statistics
+        currentMapKey = newMapKey;
+        bestLapTime = null;
+        bestLapTimeSpan.textContent = '';
+      }
+      
+      // Always use fresh map data from server
+      currentMap = data.map;
     }
-    currentMap = data.map || currentMap;
     
     // Update leaderboards with latest player data
     updateMiniLeaderboard(data.players);
@@ -1866,7 +1872,6 @@
       const myPlayer = data.players.find(p => p.socketId === mySocketId);
       if (myPlayer && myPlayer.name) {
         playerName = myPlayer.name;
-        console.log('Player name updated from state:', playerName);
       }
     }
   });
@@ -2013,6 +2018,22 @@
   socket.on('spectatorState', (data) => {
     spectatorState = data;
     
+    // Always update currentMap when we have new map data
+    if (data.map) {
+      // Use proper map key generation with room context
+      const newMapKey = `${currentRoomId}_${generateMapKey(data.map)}`;
+      
+      if (newMapKey !== currentMapKey) {
+        // Map has actually changed - reset per-map statistics
+        currentMapKey = newMapKey;
+        bestLapTime = null;
+        bestLapTimeSpan.textContent = '';
+      }
+      
+      // Always use fresh map data from server
+      currentMap = data.map;
+    }
+    
     // Update leaderboards with spectator data
     updateMiniLeaderboard(data.players);
     updateDetailedLeaderboard(data.players, data.roomMembers);
@@ -2103,7 +2124,6 @@
 
   function sendChatMessage() {
     const message = chatInput.value.trim();
-    console.log('Attempting to send chat message:', { message, playerName, hasMessage: !!message, hasPlayerName: !!playerName });
     
     if (!message) {
       console.log('Chat message blocked: empty message');
@@ -2127,7 +2147,6 @@
           const myPlayer = latestState.players.find(p => p.socketId === mySocketId);
           if (myPlayer && myPlayer.name) {
             playerName = myPlayer.name;
-            console.log('Retrieved player name from game state:', playerName);
           }
         }
       }
@@ -3559,6 +3578,31 @@
   }
 
   // HELPERS
+
+  // Generate a reliable map identifier
+  function generateMapKey(map) {
+    if (!map) return 'null';
+    
+    // Use name or key if available
+    if (map.name) return map.name;
+    if (map.key) return map.key;
+    
+    // Generate a proper hash of the entire map structure
+    const mapString = JSON.stringify({
+      shapes: map.shapes || [],
+      checkpoints: map.checkpoints || [],
+      dynamicObjects: map.dynamicObjects || []
+    });
+    
+    // Simple but reliable hash function
+    let hash = 0;
+    for (let i = 0; i < mapString.length; i++) {
+      const char = mapString.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return hash.toString();
+  }
 
   function drawCheckerboard(ctx, screenVerts, cellSize = 10, originWorld = { x: 0, y: 0 }, scale = 1, me = null, centerX = 0, centerY = 0) {
     ctx.save()

@@ -518,7 +518,15 @@ function pointInPolygon(x, y, vertices) {
 }
 
 function applyAreaEffects(room) {
-  const map = mapManager.getMap(room.currentMapKey);
+  // Handle currentMapKey that might include category prefix
+  let keyToGet = room.currentMapKey;
+  let categoryToGet = null;
+  if (keyToGet && keyToGet.includes('/')) {
+    const parts = keyToGet.split('/');
+    categoryToGet = parts[0];
+    keyToGet = parts[1];
+  }
+  const map = mapManager.getMap(keyToGet, categoryToGet);
   if (!map || !map.areaEffects) return;
 
   for (const [sid, car] of room.players.entries()) {
@@ -584,7 +592,6 @@ function applyCurrentEffects(car, currentEffects) {
   // Apply effects
   if (maxIceStrength > 0) {
     const newFriction = originalFriction * (1 - maxIceStrength);
-    console.log(`Applying ice effect: original=${originalFriction}, strength=${maxIceStrength}, new=${newFriction}`);
     car.body.frictionAir = newFriction;
     car._activeAreaEffects.add(`ice_${maxIceStrength}`);
   } else {
@@ -1650,13 +1657,13 @@ const rooms = [];
 // Helper function to get a random map key
 function getRandomMapKey() {
   const mapKeys = mapManager.getAllMapKeys();
-  return mapKeys[Math.floor(Math.random() * mapKeys.length)] || 'square';
+  const selectedKey = mapKeys[Math.floor(Math.random() * mapKeys.length)] || 'square';
+  return selectedKey;
 }
 
 // Create initial room
 function initializeRooms() {
   if (rooms.length === 0) {
-    console.log('Creating initial default room');
     const randomMapKey = getRandomMapKey();
     const defaultRoom = new Room(uuidv4(), randomMapKey);
     defaultRoom.name = 'Official Room';
@@ -1845,6 +1852,7 @@ io.on('connection', (socket) => {
   // Handle spectator requests (with room support)
   socket.on('requestSpectator', (data = {}) => {
     const { roomId } = data;
+    
     // Clean up from other rooms first
     for (const room of rooms) {
       if (room.hasMember(socket.id)) {
@@ -1867,19 +1875,44 @@ io.on('connection', (socket) => {
     }
     
     try {
-      if (targetRoom.isJoinable) {
+      if (targetRoom && targetRoom.isJoinable) {
         targetRoom.addMember(socket, Room.USER_STATES.SPECTATING);
         currentRoom = targetRoom;
-        console.log(`User ${socket.id} started spectating room ${targetRoom.name}`);
+        
+        // Send immediate spectator state for the new room to avoid delay
+        // Handle currentMapKey that might include category prefix
+        let keyToGet = targetRoom.currentMapKey;
+        let categoryToGet = null;
+        if (keyToGet && keyToGet.includes('/')) {
+          const parts = keyToGet.split('/');
+          categoryToGet = parts[0];
+          keyToGet = parts[1];
+        }
+        const mapData = mapManager.getMap(keyToGet, categoryToGet);
+        console.log(`🗺️ Map retrieval:`, {
+          roomId: targetRoom.id,
+          currentMapKey: targetRoom.currentMapKey,
+          mapData: !!mapData,
+          mapShapes: mapData?.shapes?.length,
+          mapName: mapData?.name
+        });
+        
+        const immediateSpectatorState = {
+          players: [],
+          roomMembers: targetRoom.getRoomMembersData(),
+          abilityObjects: [],
+          dynamicObjects: [],
+          map: mapData,
+          timestamp: Date.now()
+        };
+        socket.emit('spectatorState', immediateSpectatorState);
       } else {
         // Still add to global spectators for backward compatibility
         spectators.set(socket.id, socket);
-        console.log(`User ${socket.id} spectating globally (room full)`);
       }
     } catch (error) {
       // Fallback to global spectators
       spectators.set(socket.id, socket);
-      console.log(`User ${socket.id} spectating globally (fallback)`);
     }
   });
   
@@ -2473,7 +2506,6 @@ function gameLoop() {
             
             // Mark the crash timestamp for delayed cleanup
             if (!car.crashedAt) {
-              console.log(`crashed`)
               car.crashedAt = Date.now();
               // Stop the car from moving
               Matter.Body.setVelocity(car.body, { x: 0, y: 0 });
@@ -2489,13 +2521,11 @@ function gameLoop() {
       // Clean up cars that have been crashed for longer than fade duration
       for (const [sid, car] of [...room.players.entries()]) {
         if (car.crashedAt && Date.now() - car.crashedAt > 300) { //500ms
-          console.log(`Cleaning up crashed car ${car.name} (${sid}) after ${Date.now() - car.crashedAt}ms`);
           
           // Demote crashed player to spectator instead of removing entirely
           const wasPlayer = room.players.has(sid);
           if (wasPlayer) {
             room.demoteToSpectator(sid);
-            console.log(`Player ${car.name} (${sid}) demoted to spectator after crash`);
           }
         }
       }
@@ -2523,7 +2553,15 @@ setInterval(() => {
     for (const socketId of allSocketIds) {
       const socket = io.sockets.sockets.get(socketId);
       if (socket) {
-        const map = mapManager.getMap(room.currentMapKey);
+        // Handle currentMapKey that might include category prefix
+        let keyToGet = room.currentMapKey;
+        let categoryToGet = null;
+        if (keyToGet && keyToGet.includes('/')) {
+          const parts = keyToGet.split('/');
+          categoryToGet = parts[0];
+          keyToGet = parts[1];
+        }
+        const map = mapManager.getMap(keyToGet, categoryToGet);
         const clientAbilityObjects = room.gameState.abilityObjects.map(obj => ({
           id: obj.id,
           type: obj.type,
@@ -2648,6 +2686,16 @@ function broadcastToSpectators() {
     });
     
     // Create spectator-optimized state (always include map, even with no players)
+    // Handle currentMapKey that might include category prefix
+    let keyToGet = room.currentMapKey;
+    let categoryToGet = null;
+    if (keyToGet && keyToGet.includes('/')) {
+      const parts = keyToGet.split('/');
+      categoryToGet = parts[0];
+      keyToGet = parts[1];
+    }
+    const roomMapData = mapManager.getMap(keyToGet, categoryToGet);
+    
     const spectatorState = {
       players: room && room.players.size > 0 ? Array.from(room.players.values())
         .filter(car => !car.crashedAt) // Exclude crashed cars from spectator view
@@ -2667,7 +2715,7 @@ function broadcastToSpectators() {
       roomMembers: room ? room.getRoomMembersData() : [],
       abilityObjects: clientAbilityObjects,
       dynamicObjects: clientDynamicObjects,
-      map: mapManager.getMap(room.currentMapKey), // Always send current map
+      map: roomMapData, // Always send current map
       timestamp: Date.now()
     };
     
@@ -2705,5 +2753,5 @@ setInterval(() => {
 ensureDefaultRoom();
 
 server.listen(PORT, () => {
-  console.log(`Driftout2 server listening on port ${PORT}`);
+  console.log(`Driftz.IO server listening on port ${PORT}`);
 });
