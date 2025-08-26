@@ -8,20 +8,6 @@
   let fakePingLatency = 100; // Default 100ms
   const originalSocketEmit = socket.emit.bind(socket);
   
-  // Settings system
-  let settings = {
-    showFPS: false,
-    showPing: false
-  };
-  
-  // Performance tracking
-  let fpsCounter = 0;
-  let lastFpsUpdate = 0;
-  let frameCount = 0;
-  let currentFPS = 0;
-  let pingValue = 0;
-  let lastPingTime = 0;
-  
   // Wrap socket.emit to add artificial delay when fake ping is enabled
   socket.emit = function(...args) {
     if (fakePingEnabled && fakePingLatency > 0) {
@@ -55,6 +41,20 @@
     wrappedHandlers.set(handler, wrappedHandler);
     return originalSocketOn(event, wrappedHandler);
   };
+
+  // Settings system
+  let settings = {
+    showFPS: false,
+    showPing: false
+  };
+  
+  // Performance tracking
+  let fpsCounter = 0;
+  let lastFpsUpdate = 0;
+  let frameCount = 0;
+  let currentFPS = 0;
+  let pingValue = 0;
+  let lastPingTime = 0;
 
   // Authentication elements
   const authScreen = document.getElementById('authScreen');
@@ -198,7 +198,6 @@
     menu.classList.remove('hidden');
     miniLeaderboard.classList.remove('hidden');
     loadCarTypes();
-    startSpectating(); // Start spectating after successful authentication
   }
   
   
@@ -233,7 +232,12 @@
     updatePlayerInfo();
     // Add a small delay to ensure the HTTP session is properly set
     setTimeout(() => {
-      socket.emit('refreshSession');
+      if (socket) {
+        socket.emit('refreshSession');
+        // Automatically start spectating after successful authentication
+        // This triggers smart room assignment on the server
+        startSpectating();
+      }
     }, 100);
   }
 
@@ -1550,6 +1554,16 @@
     }, 5000);
   }
   
+  function showMapNotification(map) {
+    if (!map) return;
+    
+    const mapName = map.displayName || map.name || 'Unknown Map';
+    const mapAuthor = map.author || 'Unknown Author';
+    const message = `Map: ${mapName} by ${mapAuthor}`;
+    
+    addKillFeedMessage(message, 'info');
+  }
+  
   function removeKillFeedMessage(messageId) {
     const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
     if (messageElement) {
@@ -1844,6 +1858,9 @@
         currentMapKey = newMapKey;
         bestLapTime = null;
         bestLapTimeSpan.textContent = '';
+        
+        // Show map notification in kill feed
+        showMapNotification(data.map);
       }
       
       // Always use fresh map data from server
@@ -2022,6 +2039,9 @@
         currentMapKey = newMapKey;
         bestLapTime = null;
         bestLapTimeSpan.textContent = '';
+        
+        // Show map notification in kill feed
+        showMapNotification(data.map);
       }
       
       // Always use fresh map data from server
@@ -2747,6 +2767,13 @@
     disconnectionOverlay.classList.add('hidden');
     if (menu.style.display !== 'none') {
       hideMenuDisconnectionWarning();
+    }
+    
+    // Refresh session if needed (after initial authentication)
+    if (needSessionRefresh) {
+      console.log('Socket connected after auth, refreshing session...');
+      refreshSocketSession();
+      needSessionRefresh = false;
     }
   });
 

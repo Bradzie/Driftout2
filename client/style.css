@@ -2968,7 +2968,6 @@ select.property-input {
   max-height: 180px;
   overflow-y: auto;
   margin-bottom: 8px;
-  backdrop-filter: blur(4px);
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
 }
