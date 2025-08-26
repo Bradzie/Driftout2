@@ -624,6 +624,11 @@ function applyCurrentEffects(car, currentEffects) {
       const oldHealth = car.currentHealth;
       car.currentHealth = Math.max(0, car.currentHealth - damage);
       car._lavaDamageTracking.set(effectKey, currentTime);
+
+      
+      // Check if car died from lava damage
+      if (car.currentHealth <= 0)
+        car.justCrashed = true;
       
       // Add lava effect to active effects
       car._activeAreaEffects.add(effectKey);
