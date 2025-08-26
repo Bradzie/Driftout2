@@ -1957,6 +1957,7 @@ function buildAreaEffectProperties(area, index) {
   
   const effectOptions = [
     { value: 'ice', label: 'Ice (Reduces Friction)' },
+    { value: 'lava', label: 'Lava (Damage Over Time)' },
     { value: 'boost', label: 'Boost (Speed Up)' },
     { value: 'damage', label: 'Damage Zone' },
     { value: 'slow', label: 'Slow Zone' }

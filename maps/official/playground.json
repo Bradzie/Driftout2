@@ -29,20 +29,110 @@
     {
       "vertices": [
         {
-          "x": -275,
-          "y": 150
+          "x": -700,
+          "y": 400
         },
         {
-          "x": -275,
-          "y": -125
+          "x": -700,
+          "y": -2400
         },
         {
-          "x": 200,
-          "y": -125
+          "x": 600,
+          "y": -2400
         },
         {
-          "x": 200,
-          "y": 150
+          "x": 600,
+          "y": 400
+        }
+      ],
+      "fillColor": [
+        128,
+        128,
+        128
+      ],
+      "borderColors": [
+        "#ff4df1",
+        "#ffffff"
+      ],
+      "borderWidth": 20
+    },
+    {
+      "vertices": [
+        {
+          "x": 700,
+          "y": -100
+        },
+        {
+          "x": 500,
+          "y": -100
+        },
+        {
+          "x": 500,
+          "y": -200
+        },
+        {
+          "x": 700,
+          "y": -200
+        }
+      ],
+      "fillColor": [
+        128,
+        128,
+        128
+      ],
+      "borderColors": [
+        "#ff4d4d",
+        "#ffffff"
+      ],
+      "borderWidth": 20
+    },
+    {
+      "vertices": [
+        {
+          "x": 600,
+          "y": -300
+        },
+        {
+          "x": 400,
+          "y": -300
+        },
+        {
+          "x": 400,
+          "y": -400
+        },
+        {
+          "x": 600,
+          "y": -400
+        }
+      ],
+      "fillColor": [
+        128,
+        128,
+        128
+      ],
+      "borderColors": [
+        "#ff4d4d",
+        "#ffffff"
+      ],
+      "borderWidth": 20
+    },
+    {
+      "vertices": [
+        {
+          "x": 500,
+          "y": -500
+        },
+        {
+          "x": 300,
+          "y": -500
+        },
+        {
+          "x": 300,
+          "y": -600
+        },
+        {
+          "x": 500,
+          "y": -600
         }
       ],
       "fillColor": [
@@ -62,12 +152,12 @@
       "type": "line",
       "vertices": [
         {
-          "x": -243,
-          "y": 137.5
+          "x": -600,
+          "y": 100
         },
         {
-          "x": -237,
-          "y": -111.5
+          "x": -600,
+          "y": 300
         }
       ],
       "id": "checkpoint-1"
@@ -77,40 +167,20 @@
     {
       "vertices": [
         {
-          "x": 175,
-          "y": -125
-        },
-        {
-          "x": 50,
-          "y": -125
-        },
-        {
-          "x": 50,
-          "y": -75
-        },
-        {
-          "x": 75,
-          "y": -25
-        },
-        {
-          "x": 100,
+          "x": -600,
           "y": 0
         },
         {
-          "x": 150,
-          "y": 25
+          "x": -400,
+          "y": 0
         },
         {
-          "x": 200,
-          "y": 25
+          "x": -400,
+          "y": -1600
         },
         {
-          "x": 200,
-          "y": 25
-        },
-        {
-          "x": 200,
-          "y": -125
+          "x": -600,
+          "y": -1600
         }
       ],
       "effect": "ice",
@@ -119,6 +189,33 @@
         173,
         216,
         230
+      ]
+    },
+    {
+      "vertices": [
+        {
+          "x": 600,
+          "y": 400
+        },
+        {
+          "x": 300,
+          "y": 400
+        },
+        {
+          "x": 300,
+          "y": 100
+        },
+        {
+          "x": 600,
+          "y": 100
+        }
+      ],
+      "effect": "lava",
+      "strength": 0.95,
+      "fillColor": [
+        255,
+        13,
+        13
       ]
     }
   ],
@@ -160,11 +257,277 @@
         33
       ],
       "strokeWidth": 4
+    },
+    {
+      "id": "dynamicBox2",
+      "vertices": [
+        {
+          "x": -575,
+          "y": -1700
+        },
+        {
+          "x": -600,
+          "y": -1700
+        },
+        {
+          "x": -600,
+          "y": -1675
+        },
+        {
+          "x": -575,
+          "y": -1675
+        }
+      ],
+      "isStatic": false,
+      "density": 0.3,
+      "friction": 0.3,
+      "frictionAir": 0.2,
+      "restitution": 0.1,
+      "damageScale": 0,
+      "fillColor": [
+        139,
+        69,
+        19
+      ],
+      "strokeColor": [
+        101,
+        67,
+        33
+      ],
+      "strokeWidth": 4
+    },
+    {
+      "id": "dynamicBox3",
+      "vertices": [
+        {
+          "x": -550,
+          "y": -1650
+        },
+        {
+          "x": -575,
+          "y": -1650
+        },
+        {
+          "x": -575,
+          "y": -1625
+        },
+        {
+          "x": -550,
+          "y": -1625
+        }
+      ],
+      "isStatic": false,
+      "density": 0.3,
+      "friction": 0.3,
+      "frictionAir": 0.2,
+      "restitution": 0.1,
+      "damageScale": 0,
+      "fillColor": [
+        139,
+        69,
+        19
+      ],
+      "strokeColor": [
+        101,
+        67,
+        33
+      ],
+      "strokeWidth": 4
+    },
+    {
+      "id": "dynamicBox4",
+      "vertices": [
+        {
+          "x": -525,
+          "y": -1700
+        },
+        {
+          "x": -550,
+          "y": -1700
+        },
+        {
+          "x": -550,
+          "y": -1675
+        },
+        {
+          "x": -525,
+          "y": -1675
+        }
+      ],
+      "isStatic": false,
+      "density": 0.3,
+      "friction": 0.3,
+      "frictionAir": 0.2,
+      "restitution": 0.1,
+      "damageScale": 0,
+      "fillColor": [
+        139,
+        69,
+        19
+      ],
+      "strokeColor": [
+        101,
+        67,
+        33
+      ],
+      "strokeWidth": 4
+    },
+    {
+      "id": "dynamicBox5",
+      "vertices": [
+        {
+          "x": -500,
+          "y": -1650
+        },
+        {
+          "x": -525,
+          "y": -1650
+        },
+        {
+          "x": -525,
+          "y": -1625
+        },
+        {
+          "x": -500,
+          "y": -1625
+        }
+      ],
+      "isStatic": false,
+      "density": 0.3,
+      "friction": 0.3,
+      "frictionAir": 0.2,
+      "restitution": 0.1,
+      "damageScale": 0,
+      "fillColor": [
+        139,
+        69,
+        19
+      ],
+      "strokeColor": [
+        101,
+        67,
+        33
+      ],
+      "strokeWidth": 4
+    },
+    {
+      "id": "dynamicBox6",
+      "vertices": [
+        {
+          "x": -475,
+          "y": -1675
+        },
+        {
+          "x": -500,
+          "y": -1675
+        },
+        {
+          "x": -500,
+          "y": -1700
+        },
+        {
+          "x": -475,
+          "y": -1700
+        }
+      ],
+      "isStatic": false,
+      "density": 0.3,
+      "friction": 0.3,
+      "frictionAir": 0.2,
+      "restitution": 0.1,
+      "damageScale": 0,
+      "fillColor": [
+        139,
+        69,
+        19
+      ],
+      "strokeColor": [
+        101,
+        67,
+        33
+      ],
+      "strokeWidth": 4
+    },
+    {
+      "id": "dynamicBox7",
+      "vertices": [
+        {
+          "x": -450,
+          "y": -1625
+        },
+        {
+          "x": -475,
+          "y": -1625
+        },
+        {
+          "x": -475,
+          "y": -1650
+        },
+        {
+          "x": -450,
+          "y": -1650
+        }
+      ],
+      "isStatic": false,
+      "density": 0.3,
+      "friction": 0.3,
+      "frictionAir": 0.2,
+      "restitution": 0.1,
+      "damageScale": 0,
+      "fillColor": [
+        139,
+        69,
+        19
+      ],
+      "strokeColor": [
+        101,
+        67,
+        33
+      ],
+      "strokeWidth": 4
+    },
+    {
+      "id": "dynamicBox8",
+      "vertices": [
+        {
+          "x": -425,
+          "y": -1675
+        },
+        {
+          "x": -450,
+          "y": -1675
+        },
+        {
+          "x": -450,
+          "y": -1700
+        },
+        {
+          "x": -425,
+          "y": -1700
+        }
+      ],
+      "isStatic": false,
+      "density": 0.3,
+      "friction": 0.3,
+      "frictionAir": 0.2,
+      "restitution": 0.1,
+      "damageScale": 0,
+      "fillColor": [
+        139,
+        69,
+        19
+      ],
+      "strokeColor": [
+        101,
+        67,
+        33
+      ],
+      "strokeWidth": 4
     }
   ],
   "author": "Bradzie",
   "created_at": "2025-08-21T14:05:25.454Z",
-  "updated_at": "2025-08-21T14:05:25.454Z",
+  "updated_at": "2025-08-26T14:48:34.861Z",
   "author_id": 1,
   "category": "official"
 }

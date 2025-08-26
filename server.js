@@ -529,6 +529,7 @@ function applyAreaEffects(room) {
     keyToGet = parts[1];
   }
   const map = mapManager.getMap(keyToGet, categoryToGet);
+  
   if (!map || !map.areaEffects) return;
 
   for (const [sid, car] of room.players.entries()) {
@@ -550,9 +551,8 @@ function applyAreaEffects(room) {
       
       const isInside = pointInPolygon(carX, carY, areaEffect.vertices);
       
-      if (isInside) {
+      if (isInside)
         currentEffects.push(areaEffect);
-      }
     }
 
     // Apply current effects
@@ -582,16 +582,20 @@ function applyCurrentEffects(car, currentEffects) {
     return;
   }
 
-  // Calculate combined effect (for now, we'll just use the strongest ice effect)
+  // Calculate combined effects
   let maxIceStrength = 0;
+  let maxLavaStrength = 0;
   
   for (const effect of currentEffects) {
     if (effect.effect === 'ice' && effect.strength > maxIceStrength) {
       maxIceStrength = effect.strength;
     }
+    if (effect.effect === 'lava' && effect.strength > maxLavaStrength) {
+      maxLavaStrength = effect.strength;
+    }
   }
 
-  // Apply effects
+  // Apply ice effects
   if (maxIceStrength > 0) {
     const newFriction = originalFriction * (1 - maxIceStrength);
     car.body.frictionAir = newFriction;
@@ -600,6 +604,35 @@ function applyCurrentEffects(car, currentEffects) {
     // No ice effects - restore original
     car.body.frictionAir = originalFriction;
     car._activeAreaEffects.clear();
+  }
+
+  // Apply lava damage effects
+  if (maxLavaStrength > 0) {
+    const currentTime = Date.now();
+    const effectKey = `lava_${maxLavaStrength}`;
+    
+    // Initialize lava damage tracking if needed
+    if (!car._lavaDamageTracking) {
+      car._lavaDamageTracking = new Map();
+    }
+    
+    // Check if we should apply damage (limit to once per 100ms to avoid excessive damage)
+    const lastDamageTime = car._lavaDamageTracking.get(effectKey) || 0;
+    if (currentTime - lastDamageTime >= 100) {
+      // Apply damage based on strength (strength = damage per second, so divide by 10 for 100ms intervals)
+      const damage = maxLavaStrength / 10;
+      const oldHealth = car.currentHealth;
+      car.currentHealth = Math.max(0, car.currentHealth - damage);
+      car._lavaDamageTracking.set(effectKey, currentTime);
+      
+      // Add lava effect to active effects
+      car._activeAreaEffects.add(effectKey);
+    }
+  } else {
+    // Clear lava damage tracking when not in lava
+    if (car._lavaDamageTracking) {
+      car._lavaDamageTracking.clear();
+    }
   }
 }
 const CAR_TYPES = require('./carTypes');
@@ -616,7 +649,7 @@ const CAR_TYPES = require('./carTypes');
 
 // Velocity-based collision damage constants
 const BASE_VELOCITY_DAMAGE_SCALE = 2.0;  // Main damage tuning knob
-const WALL_VELOCITY_DAMAGE_SCALE = 0.05;  // For static wall collisions
+const WALL_VELOCITY_DAMAGE_SCALE = 0.2;  // For static wall collisions
 const MIN_DAMAGE_VELOCITY = 0;  // Ignore very slow collisions
 const MAX_DAMAGE_MULTIPLIER = 5.0;  // Cap damage to prevent one-hit kills
 const MIN_DAMAGE_MULTIPLIER = 1.0;  // Minimum damage scaling
