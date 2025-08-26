@@ -8,7 +8,9 @@ let selectedObjects = []; // Changed to array for multi-select
 let selectedObject = null; // Keep for backward compatibility
 let selectedVertex = null;
 let isDragging = false;
+let isDraggingObject = false; // New flag for whole object dragging
 let dragStartPos = null;
+let hoveredObject = null; // Track hovered object for visual feedback
 let currentMapInfo = {
   key: null,
   name: null,
@@ -114,6 +116,9 @@ function initEventListeners() {
   // Keyboard events
   window.addEventListener('keydown', handleKeyDown);
   window.addEventListener('resize', resizeEditorCanvas);
+  
+  // Initialize status bar
+  updateStatusBar();
 }
 
 function selectTool(tool) {
@@ -138,6 +143,9 @@ function selectTool(tool) {
   currentTool = tool;
   selectedObject = null;
   selectedVertex = null;
+  
+  // Update status bar
+  updateStatusBar();
 
   // Update UI
   document.querySelectorAll('.tool-btn').forEach(btn => {
@@ -207,11 +215,59 @@ function handleMouseMove(e) {
   }
   
   lastMousePos = { x: e.clientX, y: e.clientY };
+  
+  // Update coordinates in status bar
+  updateCoordinates(mousePos);
+  
+  // Update hover state (only when not dragging)
+  if (!isDragging && currentTool === 'select') {
+    const newHoveredObject = findObjectAtPosition(mousePos);
+    if (hoveredObject !== newHoveredObject) {
+      hoveredObject = newHoveredObject;
+      // Update cursor
+      editorCanvas.style.cursor = hoveredObject ? 'move' : 'default';
+      renderEditor(); // Re-render to show/hide hover effects
+    }
+  }
 
   if (isDragging && selectedVertex) {
+    // Dragging individual vertex
     const snappedPos = snapToGridPos(mousePos);
     selectedVertex.x = snappedPos.x;
     selectedVertex.y = snappedPos.y;
+    renderEditor();
+  } else if (isDragging && isDraggingObject && selectedObjects.length > 0) {
+    // Dragging whole object(s)
+    const deltaX = mousePos.x - dragStartPos.x;
+    const deltaY = mousePos.y - dragStartPos.y;
+    
+    // Apply snapping to the drag movement
+    let snappedDeltaX = deltaX;
+    let snappedDeltaY = deltaY;
+    
+    if (snapToGrid) {
+      snappedDeltaX = Math.round(deltaX / gridSize) * gridSize;
+      snappedDeltaY = Math.round(deltaY / gridSize) * gridSize;
+    }
+    
+    // Move all selected objects
+    selectedObjects.forEach(obj => {
+      const objectData = getObjectData(obj);
+      if (!objectData || !objectData.vertices) return;
+      
+      // Move all vertices of the object
+      objectData.vertices.forEach(vertex => {
+        vertex.x = vertex._originalX + snappedDeltaX;
+        vertex.y = vertex._originalY + snappedDeltaY;
+      });
+      
+      // Handle dynamic objects that have position property
+      if (obj.type === 'dynamicObject' && objectData.position) {
+        objectData.position.x = objectData.position._originalX + snappedDeltaX;
+        objectData.position.y = objectData.position._originalY + snappedDeltaY;
+      }
+    });
+    
     renderEditor();
   }
 }
@@ -222,7 +278,30 @@ function handleMouseUp(e) {
     return;
   }
 
+  // Save to history if we were dragging objects
+  if (isDraggingObject && selectedObjects.length > 0) {
+    saveToHistory();
+    
+    // Clean up original position markers
+    selectedObjects.forEach(obj => {
+      const objectData = getObjectData(obj);
+      if (!objectData || !objectData.vertices) return;
+      
+      objectData.vertices.forEach(vertex => {
+        delete vertex._originalX;
+        delete vertex._originalY;
+      });
+      
+      // Handle dynamic objects that have position property
+      if (obj.type === 'dynamicObject' && objectData.position) {
+        delete objectData.position._originalX;
+        delete objectData.position._originalY;
+      }
+    });
+  }
+
   isDragging = false;
+  isDraggingObject = false;
   dragStartPos = null;
 }
 
@@ -353,24 +432,36 @@ function handleKeyDown(e) {
       if (e.ctrlKey) {
         e.preventDefault();
         alignSelectedObjects('left');
+      } else if (selectedObjects.length > 0) {
+        e.preventDefault();
+        nudgeSelectedObjects(-gridSize, 0);
       }
       break;
     case 'ArrowRight':
       if (e.ctrlKey) {
         e.preventDefault();
         alignSelectedObjects('right');
+      } else if (selectedObjects.length > 0) {
+        e.preventDefault();
+        nudgeSelectedObjects(gridSize, 0);
       }
       break;
     case 'ArrowUp':
       if (e.ctrlKey) {
         e.preventDefault();
         alignSelectedObjects('top');
+      } else if (selectedObjects.length > 0) {
+        e.preventDefault();
+        nudgeSelectedObjects(0, -gridSize);
       }
       break;
     case 'ArrowDown':
       if (e.ctrlKey) {
         e.preventDefault();
         alignSelectedObjects('bottom');
+      } else if (selectedObjects.length > 0) {
+        e.preventDefault();
+        nudgeSelectedObjects(0, gridSize);
       }
       break;
     case 'PageUp':
@@ -426,6 +517,28 @@ function handleSelectMouseDown(mousePos, ctrlKey = false) {
       selectedObjects = [clickedObject];
     }
     selectedVertex = null;
+    
+    // Enable object dragging
+    isDragging = true;
+    isDraggingObject = true;
+    dragStartPos = mousePos;
+    
+    // Store original positions for smooth dragging
+    selectedObjects.forEach(obj => {
+      const objectData = getObjectData(obj);
+      if (!objectData || !objectData.vertices) return;
+      
+      objectData.vertices.forEach(vertex => {
+        vertex._originalX = vertex.x;
+        vertex._originalY = vertex.y;
+      });
+      
+      // Handle dynamic objects that have position property
+      if (obj.type === 'dynamicObject' && objectData.position) {
+        objectData.position._originalX = objectData.position.x;
+        objectData.position._originalY = objectData.position.y;
+      }
+    });
   } else {
     // Clicked on empty space
     if (!ctrlKey) {
@@ -449,6 +562,7 @@ function handleCreateShapeMouseDown(mousePos) {
   }
   
   newShapeVertices.push({ x: snappedPos.x, y: snappedPos.y });
+  updateStatusBar();
   renderEditor();
 }
 
@@ -457,6 +571,7 @@ function handleCreateCheckpointMouseDown(mousePos) {
     // Start creating checkpoint - first click
     creatingCheckpoint = true;
     checkpointStartPoint = { ...mousePos };
+    updateStatusBar();
   } else {
     // Finish creating checkpoint - second click
     const checkpoint = {
@@ -482,6 +597,7 @@ function handleCreateDynamicMouseDown(mousePos) {
     // Start creating dynamic object - first click
     creatingDynamic = true;
     dynamicStartPoint = { ...mousePos };
+    updateStatusBar();
   } else {
     // Finish creating dynamic object - second click
     const width = Math.abs(mousePos.x - dynamicStartPoint.x);
@@ -526,6 +642,7 @@ function handleCreateAreaEffectMouseDown(mousePos) {
   }
   
   areaEffectVertices.push({ x: snappedPos.x, y: snappedPos.y });
+  updateStatusBar();
   renderEditor();
 }
 
@@ -1156,6 +1273,7 @@ function finishCreatingShape() {
   creatingShape = false;
   newShapeVertices = [];
   selectTool('select');
+  updateStatusBar();
   renderEditor();
 }
 
@@ -1176,6 +1294,7 @@ function finishCreatingAreaEffect() {
   creatingAreaEffect = false;
   areaEffectVertices = [];
   selectTool('select');
+  updateStatusBar();
   renderEditor();
 }
 
@@ -1240,7 +1359,8 @@ function renderEditor() {
   if (Array.isArray(editorMap.shapes)) {
     editorMap.shapes.forEach((shape, index) => {
       const isSelected = selectedObjects.some(obj => obj.type === 'shape' && obj.index === index);
-      drawShape(shape, isSelected);
+      const isHovered = hoveredObject && hoveredObject.type === 'shape' && hoveredObject.index === index;
+      drawShape(shape, isSelected, isHovered);
     });
   }
 
@@ -1248,7 +1368,8 @@ function renderEditor() {
   if (Array.isArray(editorMap.checkpoints)) {
     editorMap.checkpoints.forEach((checkpoint, index) => {
       const isSelected = selectedObjects.some(obj => obj.type === 'checkpoint' && obj.index === index);
-      drawCheckpoint(checkpoint, isSelected);
+      const isHovered = hoveredObject && hoveredObject.type === 'checkpoint' && hoveredObject.index === index;
+      drawCheckpoint(checkpoint, isSelected, isHovered);
     });
   }
 
@@ -1256,7 +1377,8 @@ function renderEditor() {
   if (Array.isArray(editorMap.areaEffects)) {
     editorMap.areaEffects.forEach((area, index) => {
       const isSelected = selectedObjects.some(obj => obj.type === 'areaEffect' && obj.index === index);
-      drawAreaEffect(area, isSelected);
+      const isHovered = hoveredObject && hoveredObject.type === 'areaEffect' && hoveredObject.index === index;
+      drawAreaEffect(area, isSelected, isHovered);
     });
   }
 
@@ -1264,7 +1386,8 @@ function renderEditor() {
   if (Array.isArray(editorMap.dynamicObjects)) {
     editorMap.dynamicObjects.forEach((obj, index) => {
       const isSelected = selectedObjects.some(selectedObj => selectedObj.type === 'dynamicObject' && selectedObj.index === index);
-      drawDynamicObject(obj, isSelected);
+      const isHovered = hoveredObject && hoveredObject.type === 'dynamicObject' && hoveredObject.index === index;
+      drawDynamicObject(obj, isSelected, isHovered);
     });
   }
 
@@ -1327,7 +1450,7 @@ function drawGrid() {
   editorCtx.setLineDash([]);
 }
 
-function drawShape(shape, isSelected) {
+function drawShape(shape, isSelected, isHovered = false) {
   if (!Array.isArray(shape.vertices) || shape.vertices.length === 0) return;
 
   // Draw filled shape
@@ -1402,13 +1525,20 @@ function drawShape(shape, isSelected) {
     editorCtx.stroke();
   }
 
+  // Draw hover glow
+  if (isHovered && !isSelected) {
+    editorCtx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+    editorCtx.lineWidth = 4 / zoom;
+    editorCtx.stroke();
+  }
+
   // Draw vertices
   if (isSelected) {
     drawVertices(shape.vertices);
   }
 }
 
-function drawCheckpoint(checkpoint, isSelected) {
+function drawCheckpoint(checkpoint, isSelected, isHovered = false) {
   if (!Array.isArray(checkpoint.vertices)) return;
 
   editorCtx.strokeStyle = isSelected ? '#ffff00' : '#00ff00';
@@ -1422,12 +1552,19 @@ function drawCheckpoint(checkpoint, isSelected) {
   }
   editorCtx.stroke();
 
+  // Draw hover glow
+  if (isHovered && !isSelected) {
+    editorCtx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+    editorCtx.lineWidth = 6 / zoom;
+    editorCtx.stroke();
+  }
+
   if (isSelected) {
     drawVertices(checkpoint.vertices);
   }
 }
 
-function drawAreaEffect(area, isSelected) {
+function drawAreaEffect(area, isSelected, isHovered = false) {
   if (!Array.isArray(area.vertices)) return;
 
   editorCtx.beginPath();
@@ -1444,6 +1581,13 @@ function drawAreaEffect(area, isSelected) {
   }
   editorCtx.fill();
 
+  // Draw hover glow
+  if (isHovered && !isSelected) {
+    editorCtx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+    editorCtx.lineWidth = 3 / zoom;
+    editorCtx.stroke();
+  }
+
   if (isSelected) {
     editorCtx.strokeStyle = '#ffff00';
     editorCtx.lineWidth = 2 / zoom;
@@ -1452,7 +1596,7 @@ function drawAreaEffect(area, isSelected) {
   }
 }
 
-function drawDynamicObject(obj, isSelected) {
+function drawDynamicObject(obj, isSelected, isHovered = false) {
   if (!obj.vertices || !Array.isArray(obj.vertices) || obj.vertices.length < 3) return;
   
   // Draw the polygon shape
@@ -1475,6 +1619,13 @@ function drawDynamicObject(obj, isSelected) {
   if (obj.strokeColor && Array.isArray(obj.strokeColor)) {
     editorCtx.strokeStyle = `rgb(${obj.strokeColor[0]},${obj.strokeColor[1]},${obj.strokeColor[2]})`;
     editorCtx.lineWidth = obj.strokeWidth || 2;
+    editorCtx.stroke();
+  }
+
+  // Draw hover glow
+  if (isHovered && !isSelected) {
+    editorCtx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+    editorCtx.lineWidth = 4 / zoom;
     editorCtx.stroke();
   }
 
@@ -1959,8 +2110,6 @@ function buildAreaEffectProperties(area, index) {
     { value: 'ice', label: 'Ice (Reduces Friction)' },
     { value: 'lava', label: 'Lava (Damage Over Time)' },
     { value: 'boost', label: 'Boost (Speed Up)' },
-    { value: 'damage', label: 'Damage Zone' },
-    { value: 'slow', label: 'Slow Zone' }
   ];
   html += createSelectInput('Effect Type', area.effect, `area_effect_${index}`, effectOptions);
   
@@ -2460,6 +2609,79 @@ function resizeEditorCanvas() {
 
 // Expose global functions
 window.initMapEditor = initMapEditor;
+// Status Bar Functions
+function updateStatusBar() {
+  const toolNameElement = document.getElementById('editorToolName');
+  const hintElement = document.getElementById('editorHint');
+  
+  if (!toolNameElement || !hintElement) return;
+  
+  const toolNames = {
+    'select': 'Select Tool',
+    'createShape': 'Create Shape',
+    'checkpoint': 'Create Checkpoint',
+    'dynamic': 'Create Dynamic Object', 
+    'areaEffect': 'Create Area Effect'
+  };
+  
+  const toolHints = {
+    'select': 'Click to select objects, drag to move them. Ctrl+click for multi-select. Arrow keys to nudge.',
+    'createShape': 'Click to add vertices, press Enter to complete the shape, Escape to cancel.',
+    'checkpoint': 'Click two points to create a checkpoint line.',
+    'dynamic': 'Click and drag to create a dynamic object rectangle.',
+    'areaEffect': 'Click to add vertices, press Enter to complete the area effect, Escape to cancel.'
+  };
+  
+  toolNameElement.textContent = toolNames[currentTool] || 'Unknown Tool';
+  hintElement.textContent = toolHints[currentTool] || '';
+  
+  // Add special hints for creation states
+  if (creatingShape && newShapeVertices.length > 2) {
+    hintElement.textContent = 'Press Enter to complete the shape, or Escape to cancel.';
+  } else if (creatingAreaEffect && areaEffectVertices.length > 2) {
+    hintElement.textContent = 'Press Enter to complete the area effect, or Escape to cancel.';
+  } else if (creatingCheckpoint && checkpointStartPoint) {
+    hintElement.textContent = 'Click the second point to complete the checkpoint.';
+  } else if (creatingDynamic && dynamicStartPoint) {
+    hintElement.textContent = 'Click to set the size of the dynamic object.';
+  }
+}
+
+function updateCoordinates(mousePos) {
+  const coordsElement = document.getElementById('editorCoords');
+  if (!coordsElement || !mousePos) return;
+  
+  const x = Math.round(mousePos.x);
+  const y = Math.round(mousePos.y);
+  coordsElement.textContent = `${x}, ${y}`;
+}
+
+// Nudge selected objects by small amounts using arrow keys
+function nudgeSelectedObjects(deltaX, deltaY) {
+  if (selectedObjects.length === 0) return;
+  
+  saveToHistory();
+  
+  selectedObjects.forEach(obj => {
+    const objectData = getObjectData(obj);
+    if (!objectData || !objectData.vertices) return;
+    
+    objectData.vertices.forEach(vertex => {
+      vertex.x += deltaX;
+      vertex.y += deltaY;
+    });
+    
+    // Handle dynamic objects that have position property
+    if (obj.type === 'dynamicObject' && objectData.position) {
+      objectData.position.x += deltaX;
+      objectData.position.y += deltaY;
+    }
+  });
+  
+  renderEditor();
+  updatePropertiesPanel();
+}
+
 window.selectObject = selectObject;
 window.closeSaveMapModal = closeSaveMapModal;
 window.confirmSaveMap = confirmSaveMap;
