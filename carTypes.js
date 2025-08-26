@@ -107,7 +107,7 @@ const CAR_TYPES = {
     color: { fill: [157, 230, 160], stroke: [99, 145, 101], strokeWidth: 4 },
     shapes: [
       {
-        vertices: circleToPolygon(15, 16),
+        vertices: circleToPolygon(15, 8),
         bodyOptions: {
           friction: 0.6,
           restitution: 0.9,

@@ -2254,6 +2254,7 @@ input[type="number"]:focus {
   left: 0;
   width: 100%;
   height: 100%;
+  background-color: #323232;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -2967,7 +2968,6 @@ select.property-input {
   max-height: 180px;
   overflow-y: auto;
   margin-bottom: 8px;
-  backdrop-filter: blur(4px);
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
 }
@@ -3367,4 +3367,62 @@ select.property-input {
 
 .select-map-btn:hover {
   background: #4a91e2;
+}
+
+/* Map Editor Status Bar */
+.editor-status-bar {
+  position: absolute;
+  bottom: 0;
+  left: 300px; /* Account for sidebar width */
+  right: 0;
+  height: 32px;
+  background: rgba(40, 40, 40, 0.95);
+  border-top: 1px solid #555;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 15px;
+  font-family: 'Arial', sans-serif;
+  font-size: 12px;
+  color: #ddd;
+  z-index: 100;
+}
+
+.status-left {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.status-right {
+  display: flex;
+  align-items: center;
+}
+
+#editorToolName {
+  font-weight: bold;
+  color: #4CAF50;
+}
+
+.editor-hint {
+  color: #FFD700;
+  font-style: italic;
+}
+
+.editor-coords {
+  font-family: 'Courier New', monospace;
+  color: #87CEEB;
+}
+
+/* Map Editor Property Help Text */
+.property-help {
+  font-size: 11px;
+  color: #999;
+  font-style: italic;
+  margin: 5px 0 10px 0;
+  line-height: 1.3;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 4px 8px;
+  border-radius: 3px;
+  border-left: 2px solid #4CAF50;
 }
