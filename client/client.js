@@ -198,6 +198,7 @@
     menu.classList.remove('hidden');
     miniLeaderboard.classList.remove('hidden');
     loadCarTypes();
+    startSpectating(); // Start spectating after successful authentication
   }
   
   
@@ -1621,9 +1622,6 @@
   });
   resizeCanvas();
   resizeSpectatorCanvas();
-  
-  // Start spectating when page loads (menu is visible)
-  startSpectating();
 
   async function initCarSelection() {
     try {
