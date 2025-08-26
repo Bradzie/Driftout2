@@ -565,7 +565,8 @@ function initAreaEffectsForCar(car) {
   
   const carType = CAR_TYPES[car.type];
   car._originalBodyProps = {
-    frictionAir: carType && carType.bodyOptions ? carType.bodyOptions.frictionAir : 0.004 // fallback default
+    frictionAir: carType && carType.bodyOptions ? carType.bodyOptions.frictionAir : 0.004, // fallback default
+    acceleration: car.stats.acceleration // store original acceleration
   };
   car._activeAreaEffects = new Set();
   car._areaEffectsInit = true;
@@ -573,11 +574,13 @@ function initAreaEffectsForCar(car) {
 
 function applyCurrentEffects(car, currentEffects) {
   const originalFriction = car._originalBodyProps.frictionAir;
-  if (typeof originalFriction !== 'number') return;
+  const originalAcceleration = car._originalBodyProps.acceleration;
+  if (typeof originalFriction !== 'number' || typeof originalAcceleration !== 'number') return;
 
   if (currentEffects.length === 0) {
     // No effects - restore original values
     car.body.frictionAir = originalFriction;
+    car.stats.acceleration = originalAcceleration;
     car._activeAreaEffects.clear();
     return;
   }
@@ -585,6 +588,8 @@ function applyCurrentEffects(car, currentEffects) {
   // Calculate combined effects
   let maxIceStrength = 0;
   let maxLavaStrength = 0;
+  let maxBoostStrength = 0;
+  let maxSlowStrength = 0;
   
   for (const effect of currentEffects) {
     if (effect.effect === 'ice' && effect.strength > maxIceStrength) {
@@ -592,6 +597,12 @@ function applyCurrentEffects(car, currentEffects) {
     }
     if (effect.effect === 'lava' && effect.strength > maxLavaStrength) {
       maxLavaStrength = effect.strength;
+    }
+    if (effect.effect === 'boost' && effect.strength > maxBoostStrength) {
+      maxBoostStrength = effect.strength;
+    }
+    if (effect.effect === 'slow' && effect.strength > maxSlowStrength) {
+      maxSlowStrength = effect.strength;
     }
   }
 
@@ -603,6 +614,26 @@ function applyCurrentEffects(car, currentEffects) {
   } else {
     // No ice effects - restore original
     car.body.frictionAir = originalFriction;
+  }
+  
+  // Apply acceleration modifying effects (boost and slow are mutually exclusive, strongest wins)
+  if (maxBoostStrength > 0 && maxBoostStrength >= maxSlowStrength) {
+    const newAcceleration = originalAcceleration * maxBoostStrength;
+    car.stats.acceleration = newAcceleration;
+    car._activeAreaEffects.add(`boost_${maxBoostStrength}`);
+    console.log(`🚀 Boost effect: Car ${car.id} acceleration boosted from ${originalAcceleration} to ${newAcceleration} (${maxBoostStrength}x)`);
+  } else if (maxSlowStrength > 0) {
+    const newAcceleration = originalAcceleration * (1 - maxSlowStrength);
+    car.stats.acceleration = Math.max(0.1, newAcceleration); // Prevent going to zero
+    car._activeAreaEffects.add(`slow_${maxSlowStrength}`);
+    console.log(`🐌 Slow effect: Car ${car.id} acceleration reduced from ${originalAcceleration} to ${car.stats.acceleration} (-${maxSlowStrength * 100}%)`);
+  } else {
+    // No acceleration effects - restore original
+    car.stats.acceleration = originalAcceleration;
+  }
+  
+  // Clear area effects if no effects are active
+  if (maxIceStrength === 0 && maxBoostStrength === 0 && maxLavaStrength === 0 && maxSlowStrength === 0) {
     car._activeAreaEffects.clear();
   }
 

@@ -1285,9 +1285,9 @@ function finishCreatingAreaEffect() {
     saveToHistory();
     editorMap.areaEffects.push({
       vertices: areaEffectVertices,
-      effect: 'ice',
-      strength: 0.95,
-      fillColor: [173, 216, 230]
+      effect: 'boost',
+      strength: 2.0,
+      fillColor: [50, 255, 50]
     });
   }
   
@@ -1574,11 +1574,30 @@ function drawAreaEffect(area, isSelected, isHovered = false) {
   }
   editorCtx.closePath();
 
-  if (area.fillColor) {
-    editorCtx.fillStyle = `rgb(${area.fillColor[0]},${area.fillColor[1]},${area.fillColor[2]})`;
-  } else {
-    editorCtx.fillStyle = 'rgba(0, 0, 255, 0.5)';
+  // Determine colors based on effect type if not explicitly set
+  let fillColor = area.fillColor;
+  if (!fillColor || fillColor.length !== 3) {
+    switch (area.effect) {
+      case 'ice':
+        fillColor = [173, 216, 230]; // Light blue
+        break;
+      case 'lava':
+        fillColor = [255, 69, 0]; // Red-orange
+        break;
+      case 'boost':
+        fillColor = [50, 255, 50]; // Bright green
+        break;
+      case 'slow':
+        fillColor = [255, 140, 0]; // Dark orange
+        break;
+      default:
+        fillColor = [128, 128, 128]; // Gray
+    }
   }
+  
+  // Apply transparency for better visibility
+  const alpha = 0.6;
+  editorCtx.fillStyle = `rgba(${fillColor[0]},${fillColor[1]},${fillColor[2]},${alpha})`;
   editorCtx.fill();
 
   // Draw hover glow
@@ -1594,6 +1613,48 @@ function drawAreaEffect(area, isSelected, isHovered = false) {
     editorCtx.stroke();
     drawVertices(area.vertices);
   }
+  
+  // Draw effect icon in center of area
+  const centerX = area.vertices.reduce((sum, v) => sum + v.x, 0) / area.vertices.length;
+  const centerY = area.vertices.reduce((sum, v) => sum + v.y, 0) / area.vertices.length;
+  
+  editorCtx.save();
+  editorCtx.translate(centerX, -centerY);
+  editorCtx.scale(1 / zoom, 1 / zoom);
+  
+  // Draw effect-specific icon
+  editorCtx.fillStyle = '#fff';
+  editorCtx.font = 'bold 16px Arial';
+  editorCtx.textAlign = 'center';
+  editorCtx.textBaseline = 'middle';
+  
+  let icon = '';
+  switch (area.effect) {
+    case 'ice':
+      icon = '❄️';
+      break;
+    case 'lava':
+      icon = '🔥';
+      break;
+    case 'boost':
+      icon = '⚡';
+      break;
+    case 'slow':
+      icon = '🐌';
+      break;
+    default:
+      icon = '?';
+  }
+  
+  // Draw icon background
+  editorCtx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  editorCtx.fillRect(-12, -10, 24, 20);
+  
+  // Draw icon
+  editorCtx.fillStyle = '#fff';
+  editorCtx.fillText(icon, 0, 0);
+  
+  editorCtx.restore();
 }
 
 function drawDynamicObject(obj, isSelected, isHovered = false) {
@@ -2110,10 +2171,47 @@ function buildAreaEffectProperties(area, index) {
     { value: 'ice', label: 'Ice (Reduces Friction)' },
     { value: 'lava', label: 'Lava (Damage Over Time)' },
     { value: 'boost', label: 'Boost (Speed Up)' },
+    { value: 'slow', label: 'Slow Zone (Reduce Speed)' }
   ];
   html += createSelectInput('Effect Type', area.effect, `area_effect_${index}`, effectOptions);
   
-  html += createSliderInput('Strength', area.strength, `area_strength_${index}`, 0, 2, 0.01);
+  // Adjust slider range based on effect type
+  let maxStrength = 2;
+  let step = 0.01;
+  if (area.effect === 'boost') {
+    maxStrength = 5; // Boost can be up to 5x acceleration
+    step = 0.1;
+  } else if (area.effect === 'slow') {
+    maxStrength = 1; // Slow is percentage reduction (0-1)
+    step = 0.05;
+  } else if (area.effect === 'lava') {
+    maxStrength = 50; // Lava damage per second
+    step = 1;
+  }
+  
+  html += createSliderInput('Strength', area.strength, `area_strength_${index}`, 0, maxStrength, step);
+  
+  // Add help text based on effect type
+  let helpText = '';
+  switch (area.effect) {
+    case 'ice':
+      helpText = 'Reduces car friction. 0.5 = half friction, 1.0 = no friction';
+      break;
+    case 'lava':
+      helpText = 'Damage per second. 10 = moderate damage, 25+ = high damage';
+      break;
+    case 'boost':
+      helpText = 'Acceleration multiplier. 2.0 = double speed, 3.0 = triple speed';
+      break;
+    case 'slow':
+      helpText = 'Speed reduction. 0.5 = half speed, 0.8 = very slow';
+      break;
+  }
+  
+  if (helpText) {
+    html += `<div class="property-help">${helpText}</div>`;
+  }
+  
   html += createColorInput('Fill Color', area.fillColor, `area_fillColor_${index}`);
   
   return html;
