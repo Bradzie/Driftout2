@@ -76,7 +76,8 @@ class MapManager {
           name: mapData.displayName || key,
           description: mapData.description || '',
           author: mapData.author || (category === 'official' ? 'Official' : 'Community'),
-          created_at: mapData.created_at || null
+          created_at: mapData.created_at || null,
+          id: mapData.id
         };
       }
     } catch (error) {
