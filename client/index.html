@@ -537,6 +537,7 @@
           <button id="mapEditorBrowseButton">Browse</button>
           <button id="saveMapButton">Save</button>
           <button id="saveAsMapButton">Save As...</button>
+          <button id="setPreviewButton">Set Preview Image</button>
         </div>
       </div>
       
@@ -549,6 +550,16 @@
           <button id="addCheckpointTool" class="tool-btn" data-tool="checkpoint">Checkpoint</button>
           <button id="addDynamicTool" class="tool-btn" data-tool="dynamic">Dynamic</button>
           <button id="addAreaEffectTool" class="tool-btn" data-tool="areaEffect">Area Effect</button>
+        </div>
+      </div>
+      
+      <!-- Shape Presets Panel -->
+      <div class="editor-section">
+        <h3>Shape Presets</h3>
+        <div class="preset-buttons">
+          <button id="circlePresetBtn" class="preset-btn" data-preset="circle">Circle</button>
+          <button id="rectanglePresetBtn" class="preset-btn" data-preset="rectangle">Rectangle</button>
+          <button id="trianglePresetBtn" class="preset-btn" data-preset="triangle">Triangle</button>
         </div>
       </div>
       
@@ -640,12 +651,26 @@
             </label>
           </div>
         </div>
+        <div class="form-group">
+          <label class="radio-label">
+            <input type="checkbox" id="generatePreviewOnSave" checked>
+            <span class="radio-text">Generate preview image</span>
+          </label>
+        </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeSaveMapModal()">Cancel</button>
         <button class="btn btn-primary" onclick="confirmSaveMap()">Save Map</button>
       </div>
     </div>
+  </div>
+
+  <!-- Vertex Context Menu -->
+  <div id="vertexContextMenu" class="vertex-context-menu hidden">
+    <div class="context-menu-item" id="addVertexOption">Add Vertex Here</div>
+    <div class="context-menu-item" id="removeVertexOption">Remove Vertex</div>
+    <div class="context-menu-separator"></div>
+    <div class="context-menu-item" id="cancelVertexOption">Cancel</div>
   </div>
 
   <script src="client.js"></script>

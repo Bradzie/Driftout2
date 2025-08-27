@@ -3330,6 +3330,16 @@ select.property-input {
   justify-content: center;
   margin-bottom: 15px;
   border: 1px solid #444;
+  overflow: hidden;
+  position: relative;
+}
+
+.preview-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  border-radius: 4px;
 }
 
 .no-preview {
@@ -3425,4 +3435,82 @@ select.property-input {
   padding: 4px 8px;
   border-radius: 3px;
   border-left: 2px solid #4CAF50;
+}
+
+/* Vertex Context Menu */
+.vertex-context-menu {
+  position: fixed;
+  z-index: 10000;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  min-width: 150px;
+  font-size: 13px;
+}
+
+.context-menu-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  color: #ddd;
+  transition: background-color 0.2s;
+}
+
+.context-menu-item:hover {
+  background: #3a3a3a;
+  color: #fff;
+}
+
+.context-menu-item:first-child {
+  border-top-left-radius: 4px;
+  border-top-right-radius: 4px;
+}
+
+.context-menu-item:last-child {
+  border-bottom-left-radius: 4px;
+  border-bottom-right-radius: 4px;
+}
+
+.context-menu-item.disabled {
+  color: #666;
+  cursor: not-allowed;
+}
+
+.context-menu-item.disabled:hover {
+  background: transparent;
+  color: #666;
+}
+
+.context-menu-separator {
+  height: 1px;
+  background: #444;
+  margin: 4px 0;
+}
+
+/* Shape Preset Buttons */
+.preset-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.preset-btn {
+  background: #3a3a3a;
+  border: 1px solid #555;
+  color: #ddd;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.preset-btn:hover {
+  background: #4a4a4a;
+  border-color: #666;
+}
+
+.preset-btn:active {
+  background: #2a2a2a;
 }

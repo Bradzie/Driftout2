@@ -1,6 +1,8 @@
 const express = require('express');
 const http = require('http');
 const path = require('path');
+const fs = require('fs');
+const formidable = require('formidable');
 const { Server } = require('socket.io');
 const Matter = require('matter-js');
 const decomp = require('poly-decomp');
@@ -34,6 +36,7 @@ const sessionMiddleware = session({
 app.use(express.json());
 app.use(sessionMiddleware);
 app.use(express.static('client'));
+app.use('/previews', express.static('maps/previews')); // Serve preview images
 
 // Share session with socket.io
 const wrap = (middleware) => (socket, next) => middleware(socket.request, {}, next);
@@ -53,7 +56,8 @@ app.get('/api/maps', (req, res) => {
       name: map.name,
       description: map.description || '',
       category: map.category,
-      author: map.author
+      author: map.author,
+      id: map.id
     }));
     res.json(mapList);
   } catch (error) {
@@ -115,13 +119,11 @@ app.post('/api/maps', async (req, res) => {
         return res.status(400).json({ error: 'Invalid directory. Must be "official" or "community"' });
       }
 
-      if (targetDirectory === 'official') {
-        filename = name.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
-      } else {
-        const sanitizedName = name.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
-        const timestamp = Date.now();
-        filename = `${req.session.userId}_${sanitizedName}_${timestamp}`;
+      // Use UUID as filename for new maps (both official and community)
+      if (!mapData.id) {
+        return res.status(400).json({ error: 'Map data must include a UUID (id field)' });
       }
+      filename = mapData.id;
     }
     
     const enhancedMapData = {
@@ -256,6 +258,79 @@ app.get('/api/maps/my', async (req, res) => {
   } catch (error) {
     console.error('Get user maps error:', error);
     res.status(500).json({ error: 'Failed to get user maps' });
+  }
+});
+
+// Upload preview image for a map
+app.post('/api/maps/preview', async (req, res) => {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  try {
+    // Handle file upload
+    const form = new formidable.IncomingForm();
+    form.maxFileSize = 5 * 1024 * 1024; // 5MB limit
+    form.keepExtensions = true;
+
+    form.parse(req, async (err, fields, files) => {
+      if (err) {
+        console.error('Preview upload parse error:', err);
+        return res.status(400).json({ error: 'Failed to parse upload' });
+      }
+
+      // Get mapId (UUID) from parsed form fields
+      const mapId = Array.isArray(fields.mapId) ? fields.mapId[0] : fields.mapId;
+      if (!mapId) {
+        return res.status(400).json({ error: 'Map ID is required' });
+      }
+
+      const previewFile = files.preview;
+      if (!previewFile) {
+        return res.status(400).json({ error: 'No preview file provided' });
+      }
+
+      try {
+        // Ensure previews directory exists
+        const previewsDir = path.join(__dirname, 'maps', 'previews');
+        if (!fs.existsSync(previewsDir)) {
+          fs.mkdirSync(previewsDir, { recursive: true });
+        }
+
+        // Create filename from map UUID
+        const filename = mapId + '.png';
+        const targetPath = path.join(previewsDir, filename);
+
+        // Copy uploaded file to target location
+        if (Array.isArray(previewFile)) {
+          fs.copyFileSync(previewFile[0].filepath, targetPath);
+        } else {
+          fs.copyFileSync(previewFile.filepath, targetPath);
+        }
+
+        // Clean up temporary file
+        if (Array.isArray(previewFile)) {
+          fs.unlinkSync(previewFile[0].filepath);
+        } else {
+          fs.unlinkSync(previewFile.filepath);
+        }
+
+        res.json({ 
+          success: true, 
+          message: 'Preview image saved successfully',
+          previewPath: `/previews/${filename}`,
+          mapId: mapId
+        });
+
+      } catch (saveError) {
+        console.error('Preview save error:', saveError);
+        res.status(500).json({ error: 'Failed to save preview image' });
+      }
+    });
+
+  } catch (error) {
+    console.error('Preview upload error:', error);
+    res.status(500).json({ error: 'Failed to upload preview' });
   }
 });
 

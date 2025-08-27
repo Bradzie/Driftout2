@@ -11,6 +11,8 @@ let isDragging = false;
 let isDraggingObject = false; // New flag for whole object dragging
 let dragStartPos = null;
 let hoveredObject = null; // Track hovered object for visual feedback
+let hoveredVertex = null; // Track hovered vertex for visual feedback
+let hoveredEdge = null; // Track hovered edge for visual feedback
 let currentMapInfo = {
   key: null,
   name: null,
@@ -40,9 +42,29 @@ let dynamicStartPoint = null;
 let creatingAreaEffect = false;
 let areaEffectVertices = [];
 
+// Preset creation states
+let creatingCircle = false;
+let creatingRectangle = false;
+let creatingTriangle = false;
+let presetStartPoint = null;
+
 // History management
 let historyStack = [];
 let historyIndex = -1;
+
+// UUID generation utility
+function generateUUID() {
+  // Use crypto API if available, otherwise fallback to Date-based UUID
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Fallback UUID v4 generation for older browsers
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
 const MAX_HISTORY = 50;
 
 // Clipboard
@@ -87,6 +109,25 @@ function initEventListeners() {
     });
   });
 
+  // Add preset button event listeners
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      handlePresetClick(btn.dataset.preset);
+    });
+  });
+
+  // Context menu event listeners
+  document.getElementById('addVertexOption').addEventListener('click', handleAddVertex);
+  document.getElementById('removeVertexOption').addEventListener('click', handleRemoveVertex);
+  document.getElementById('cancelVertexOption').addEventListener('click', hideContextMenu);
+  
+  // Hide context menu when clicking outside
+  document.addEventListener('click', (e) => {
+    if (contextMenuVisible && !document.getElementById('vertexContextMenu').contains(e.target)) {
+      hideContextMenu();
+    }
+  });
+
   // Grid settings
   document.getElementById('showGrid').addEventListener('change', (e) => {
     showGrid = e.target.checked;
@@ -105,6 +146,7 @@ function initEventListeners() {
   // File operations
   document.getElementById('saveMapButton')?.addEventListener('click', saveMap);
   document.getElementById('saveAsMapButton')?.addEventListener('click', saveMapAs);
+  document.getElementById('setPreviewButton')?.addEventListener('click', generatePreviewImage);
 
   // Canvas events
   editorCanvas.addEventListener('mousedown', handleMouseDown);
@@ -138,6 +180,12 @@ function selectTool(tool) {
   if (creatingAreaEffect) {
     creatingAreaEffect = false;
     areaEffectVertices = [];
+  }
+  if (creatingCircle || creatingRectangle || creatingTriangle) {
+    creatingCircle = false;
+    creatingRectangle = false;
+    creatingTriangle = false;
+    presetStartPoint = null;
   }
 
   currentTool = tool;
@@ -197,6 +245,15 @@ function handleMouseDown(e) {
       case 'areaEffect':
         handleCreateAreaEffectMouseDown(mousePos);
         break;
+      case 'createCircle':
+        handleCreateCircleMouseDown(mousePos);
+        break;
+      case 'createRectangle':
+        handleCreateRectangleMouseDown(mousePos);
+        break;
+      case 'createTriangle':
+        handleCreateTriangleMouseDown(mousePos);
+        break;
     }
   }
 }
@@ -221,11 +278,26 @@ function handleMouseMove(e) {
   
   // Update hover state (only when not dragging)
   if (!isDragging && currentTool === 'select') {
-    const newHoveredObject = findObjectAtPosition(mousePos);
-    if (hoveredObject !== newHoveredObject) {
+    const newHoveredVertex = findVertexAtPosition(mousePos, 15);
+    const newHoveredEdge = newHoveredVertex ? null : findEdgeAtPosition(mousePos, 10);
+    const newHoveredObject = (newHoveredVertex || newHoveredEdge) ? null : findObjectAtPosition(mousePos);
+    
+    if (hoveredVertex !== newHoveredVertex || hoveredEdge !== newHoveredEdge || hoveredObject !== newHoveredObject) {
+      hoveredVertex = newHoveredVertex;
+      hoveredEdge = newHoveredEdge;
       hoveredObject = newHoveredObject;
+      
       // Update cursor
-      editorCanvas.style.cursor = hoveredObject ? 'move' : 'default';
+      if (hoveredVertex) {
+        editorCanvas.style.cursor = 'grab';
+      } else if (hoveredEdge) {
+        editorCanvas.style.cursor = 'copy'; // Indicates you can add a vertex
+      } else if (hoveredObject) {
+        editorCanvas.style.cursor = 'move';
+      } else {
+        editorCanvas.style.cursor = 'default';
+      }
+      
       renderEditor(); // Re-render to show/hide hover effects
     }
   }
@@ -320,9 +392,35 @@ function handleWheel(e) {
   renderEditor();
 }
 
+// Context menu state
+let contextMenuVisible = false;
+let contextMenuTarget = null;
+
 function handleRightClick(e) {
   e.preventDefault();
-  // TODO: Context menu for adding/removing vertices
+  
+  if (currentTool !== 'select') {
+    return; // Only show context menu in select mode
+  }
+  
+  const mousePos = getMousePos(e);
+  
+  // Check if right-clicked on a vertex
+  const vertexHit = findVertexAtPosition(mousePos, 15);
+  if (vertexHit) {
+    showVertexContextMenu(e.clientX, e.clientY, vertexHit, mousePos);
+    return;
+  }
+  
+  // Check if right-clicked on a shape edge
+  const edgeHit = findEdgeAtPosition(mousePos, 10);
+  if (edgeHit) {
+    showEdgeContextMenu(e.clientX, e.clientY, edgeHit, mousePos);
+    return;
+  }
+  
+  // Hide context menu if clicking elsewhere
+  hideContextMenu();
 }
 
 function handleKeyDown(e) {
@@ -338,6 +436,11 @@ function handleKeyDown(e) {
       } else if (creatingAreaEffect) {
         creatingAreaEffect = false;
         areaEffectVertices = [];
+        renderEditor();
+      } else if (creatingCircle || creatingRectangle || creatingTriangle) {
+        resetCreationStates();
+        currentTool = 'select';
+        updateStatusBar();
         renderEditor();
       }
       break;
@@ -393,6 +496,30 @@ function handleKeyDown(e) {
       if (e.ctrlKey) {
         e.preventDefault();
         pasteObject();
+      } else if (!e.ctrlKey && currentTool === 'select' && hoveredEdge) {
+        // V key to add vertex at hovered edge
+        e.preventDefault();
+        const fakeMouseEvent = {
+          clientX: lastMousePos.x,
+          clientY: lastMousePos.y
+        };
+        const mousePos = getMousePos(fakeMouseEvent);
+        showEdgeContextMenu(lastMousePos.x, lastMousePos.y, hoveredEdge, mousePos);
+        handleAddVertex();
+      }
+      break;
+    case 'x':
+    case 'X':
+      if (!e.ctrlKey && currentTool === 'select' && hoveredVertex) {
+        // X key to remove vertex at hovered vertex
+        e.preventDefault();
+        const fakeMouseEvent = {
+          clientX: lastMousePos.x,
+          clientY: lastMousePos.y
+        };
+        const mousePos = getMousePos(fakeMouseEvent);
+        showVertexContextMenu(lastMousePos.x, lastMousePos.y, hoveredVertex, mousePos);
+        handleRemoveVertex();
       }
       break;
     case 'a':
@@ -427,6 +554,15 @@ function handleKeyDown(e) {
       break;
     case '5':
       selectTool('areaEffect');
+      break;
+    case '6':
+      handlePresetClick('circle');
+      break;
+    case '7':
+      handlePresetClick('rectangle');
+      break;
+    case '8':
+      handlePresetClick('triangle');
       break;
     case 'ArrowLeft':
       if (e.ctrlKey) {
@@ -643,6 +779,191 @@ function handleCreateAreaEffectMouseDown(mousePos) {
   
   areaEffectVertices.push({ x: snappedPos.x, y: snappedPos.y });
   updateStatusBar();
+  renderEditor();
+}
+
+// Shape Preset Functions
+function resetCreationStates() {
+  creatingShape = false;
+  newShapeVertices = [];
+  creatingCheckpoint = false;
+  checkpointStartPoint = null;
+  creatingDynamic = false;
+  dynamicStartPoint = null;
+  creatingAreaEffect = false;
+  areaEffectVertices = [];
+  creatingCircle = false;
+  creatingRectangle = false;
+  creatingTriangle = false;
+  presetStartPoint = null;
+  selectedVertex = null;
+}
+
+function handlePresetClick(presetType) {
+  // Reset current creation states
+  resetCreationStates();
+  
+  // Set appropriate tool based on preset
+  switch (presetType) {
+    case 'circle':
+      currentTool = 'createCircle';
+      break;
+    case 'rectangle':
+      currentTool = 'createRectangle';
+      break;
+    case 'triangle':
+      currentTool = 'createTriangle';
+      break;
+  }
+  
+  updateStatusBar();
+  renderEditor();
+}
+
+function handleCreateCircleMouseDown(mousePos) {
+  const snappedPos = snapToGridPos(mousePos);
+  
+  if (!creatingCircle) {
+    // Start creating circle - first click sets center
+    creatingCircle = true;
+    presetStartPoint = { ...snappedPos };
+    updateStatusBar();
+  } else {
+    // Second click sets radius
+    const radius = Math.sqrt(
+      Math.pow(snappedPos.x - presetStartPoint.x, 2) + 
+      Math.pow(snappedPos.y - presetStartPoint.y, 2)
+    );
+    
+    if (radius > 5) { // Minimum radius
+      createCircleShape(presetStartPoint, radius);
+    }
+    
+    creatingCircle = false;
+    presetStartPoint = null;
+    currentTool = 'select';
+    updateStatusBar();
+  }
+  renderEditor();
+}
+
+function handleCreateRectangleMouseDown(mousePos) {
+  const snappedPos = snapToGridPos(mousePos);
+  
+  if (!creatingRectangle) {
+    // Start creating rectangle - first click
+    creatingRectangle = true;
+    presetStartPoint = { ...snappedPos };
+    updateStatusBar();
+  } else {
+    // Second click completes rectangle
+    if (Math.abs(snappedPos.x - presetStartPoint.x) > 5 && 
+        Math.abs(snappedPos.y - presetStartPoint.y) > 5) {
+      createRectangleShape(presetStartPoint, snappedPos);
+    }
+    
+    creatingRectangle = false;
+    presetStartPoint = null;
+    currentTool = 'select';
+    updateStatusBar();
+  }
+  renderEditor();
+}
+
+function handleCreateTriangleMouseDown(mousePos) {
+  const snappedPos = snapToGridPos(mousePos);
+  
+  if (!creatingTriangle) {
+    // Start creating triangle - first click sets center
+    creatingTriangle = true;
+    presetStartPoint = { ...snappedPos };
+    updateStatusBar();
+  } else {
+    // Second click sets size
+    const radius = Math.sqrt(
+      Math.pow(snappedPos.x - presetStartPoint.x, 2) + 
+      Math.pow(snappedPos.y - presetStartPoint.y, 2)
+    );
+    
+    if (radius > 5) { // Minimum radius
+      createTriangleShape(presetStartPoint, radius);
+    }
+    
+    creatingTriangle = false;
+    presetStartPoint = null;
+    currentTool = 'select';
+    updateStatusBar();
+  }
+  renderEditor();
+}
+
+function createCircleShape(center, radius, segments = 16) {
+  const vertices = [];
+  for (let i = 0; i < segments; i++) {
+    const angle = (i / segments) * 2 * Math.PI;
+    vertices.push({
+      x: center.x + Math.cos(angle) * radius,
+      y: center.y + Math.sin(angle) * radius
+    });
+  }
+  
+  const shape = {
+    type: "polygon",
+    vertices: vertices,
+    color: [100, 100, 100],
+    isStatic: true
+  };
+  
+  saveToHistory();
+  editorMap.shapes.push(shape);
+  updateUI();
+  renderEditor();
+}
+
+function createRectangleShape(startPos, endPos) {
+  const minX = Math.min(startPos.x, endPos.x);
+  const maxX = Math.max(startPos.x, endPos.x);
+  const minY = Math.min(startPos.y, endPos.y);
+  const maxY = Math.max(startPos.y, endPos.y);
+  
+  const shape = {
+    type: "polygon",
+    vertices: [
+      { x: minX, y: minY },
+      { x: maxX, y: minY },
+      { x: maxX, y: maxY },
+      { x: minX, y: maxY }
+    ],
+    color: [100, 100, 100],
+    isStatic: true
+  };
+  
+  saveToHistory();
+  editorMap.shapes.push(shape);
+  updateUI();
+  renderEditor();
+}
+
+function createTriangleShape(center, radius) {
+  const vertices = [];
+  for (let i = 0; i < 3; i++) {
+    const angle = (i / 3) * 2 * Math.PI - Math.PI / 2; // Start from top
+    vertices.push({
+      x: center.x + Math.cos(angle) * radius,
+      y: center.y + Math.sin(angle) * radius
+    });
+  }
+  
+  const shape = {
+    type: "polygon",
+    vertices: vertices,
+    color: [100, 100, 100],
+    isStatic: true
+  };
+  
+  saveToHistory();
+  editorMap.shapes.push(shape);
+  updateUI();
   renderEditor();
 }
 
@@ -1125,6 +1446,177 @@ function findVertexAtPosition(pos, tolerance = 10) {
   return null;
 }
 
+function findEdgeAtPosition(pos, tolerance = 10) {
+  const scaledTolerance = tolerance / zoom;
+
+  // Check shapes
+  if (editorMap.shapes) {
+    for (let i = 0; i < editorMap.shapes.length; i++) {
+      const shape = editorMap.shapes[i];
+      for (let j = 0; j < shape.vertices.length; j++) {
+        const vertex1 = shape.vertices[j];
+        const vertex2 = shape.vertices[(j + 1) % shape.vertices.length];
+        
+        const distanceToEdge = distancePointToLineSegment(pos, vertex1, vertex2);
+        if (distanceToEdge <= scaledTolerance) {
+          return {
+            object: { type: 'shape', index: i, data: shape },
+            edgeIndex: j,
+            insertPosition: pos
+          };
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+function distancePointToLineSegment(point, lineStart, lineEnd) {
+  const A = point.x - lineStart.x;
+  const B = point.y - lineStart.y;
+  const C = lineEnd.x - lineStart.x;
+  const D = lineEnd.y - lineStart.y;
+
+  const dot = A * C + B * D;
+  const lenSq = C * C + D * D;
+  
+  if (lenSq === 0) return Math.sqrt(A * A + B * B);
+  
+  let param = dot / lenSq;
+  
+  let xx, yy;
+  
+  if (param < 0) {
+    xx = lineStart.x;
+    yy = lineStart.y;
+  } else if (param > 1) {
+    xx = lineEnd.x;
+    yy = lineEnd.y;
+  } else {
+    xx = lineStart.x + param * C;
+    yy = lineStart.y + param * D;
+  }
+
+  const dx = point.x - xx;
+  const dy = point.y - yy;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+// Context Menu Functions
+function showVertexContextMenu(clientX, clientY, vertexHit, mousePos) {
+  const contextMenu = document.getElementById('vertexContextMenu');
+  const removeOption = document.getElementById('removeVertexOption');
+  
+  contextMenuVisible = true;
+  contextMenuTarget = {
+    type: 'vertex',
+    vertexHit: vertexHit,
+    mousePos: mousePos
+  };
+  
+  // Check if we can remove this vertex (minimum 3 vertices for polygon)
+  const canRemove = vertexHit.object.data.vertices.length > 3;
+  
+  if (canRemove) {
+    removeOption.classList.remove('disabled');
+  } else {
+    removeOption.classList.add('disabled');
+  }
+  
+  // Position the menu
+  contextMenu.style.left = clientX + 'px';
+  contextMenu.style.top = clientY + 'px';
+  contextMenu.classList.remove('hidden');
+  
+  // Hide "Add Vertex Here" option since we're on a vertex
+  document.getElementById('addVertexOption').style.display = 'none';
+}
+
+function showEdgeContextMenu(clientX, clientY, edgeHit, mousePos) {
+  const contextMenu = document.getElementById('vertexContextMenu');
+  
+  contextMenuVisible = true;
+  contextMenuTarget = {
+    type: 'edge',
+    edgeHit: edgeHit,
+    mousePos: mousePos
+  };
+  
+  // Show "Add Vertex Here" option and hide "Remove Vertex"
+  document.getElementById('addVertexOption').style.display = 'block';
+  document.getElementById('removeVertexOption').style.display = 'none';
+  
+  // Position the menu
+  contextMenu.style.left = clientX + 'px';
+  contextMenu.style.top = clientY + 'px';
+  contextMenu.classList.remove('hidden');
+}
+
+function hideContextMenu() {
+  const contextMenu = document.getElementById('vertexContextMenu');
+  contextMenu.classList.add('hidden');
+  contextMenuVisible = false;
+  contextMenuTarget = null;
+  
+  // Reset menu items visibility
+  document.getElementById('addVertexOption').style.display = 'block';
+  document.getElementById('removeVertexOption').style.display = 'block';
+}
+
+// Vertex Operations
+function handleAddVertex() {
+  if (!contextMenuTarget || contextMenuTarget.type !== 'edge') {
+    hideContextMenu();
+    return;
+  }
+  
+  const { edgeHit, mousePos } = contextMenuTarget;
+  const shape = edgeHit.object.data;
+  const edgeIndex = edgeHit.edgeIndex;
+  
+  // Save to history before modification
+  saveToHistory();
+  
+  // Insert new vertex after the edge's first vertex
+  const snappedPos = snapToGridPos(mousePos);
+  shape.vertices.splice(edgeIndex + 1, 0, {
+    x: snappedPos.x,
+    y: snappedPos.y
+  });
+  
+  hideContextMenu();
+  updateUI();
+  renderEditor();
+}
+
+function handleRemoveVertex() {
+  if (!contextMenuTarget || contextMenuTarget.type !== 'vertex') {
+    hideContextMenu();
+    return;
+  }
+  
+  const { vertexHit } = contextMenuTarget;
+  const shape = vertexHit.object.data;
+  const vertexIndex = vertexHit.vertexIndex;
+  
+  // Check minimum vertex count (shapes need at least 3 vertices)
+  if (shape.vertices.length <= 3) {
+    hideContextMenu();
+    return;
+  }
+  
+  // Save to history before modification
+  saveToHistory();
+  
+  // Remove the vertex
+  shape.vertices.splice(vertexIndex, 1);
+  
+  hideContextMenu();
+  updateUI();
+  renderEditor();
+}
+
 function findObjectAtPosition(pos) {
   const tolerance = 10 / zoom; // Adjust tolerance based on zoom level
 
@@ -1415,6 +1907,15 @@ function renderEditor() {
   if (creatingAreaEffect && areaEffectVertices.length > 0) {
     drawNewAreaEffect();
   }
+  
+  // Draw preset previews
+  if (creatingCircle && presetStartPoint) {
+    drawCirclePreview();
+  } else if (creatingRectangle && presetStartPoint) {
+    drawRectanglePreview();
+  } else if (creatingTriangle && presetStartPoint) {
+    drawTrianglePreview();
+  }
 
   editorCtx.restore();
 }
@@ -1535,6 +2036,36 @@ function drawShape(shape, isSelected, isHovered = false) {
   // Draw vertices
   if (isSelected) {
     drawVertices(shape.vertices);
+  }
+  
+  // Draw hovered vertex highlight
+  if (hoveredVertex && hoveredVertex.object.data === shape) {
+    const vertex = hoveredVertex.vertex;
+    editorCtx.beginPath();
+    editorCtx.arc(vertex.x, -vertex.y, 6 / zoom, 0, 2 * Math.PI);
+    editorCtx.fillStyle = 'rgba(255, 255, 0, 0.5)';
+    editorCtx.fill();
+    editorCtx.strokeStyle = '#ffff00';
+    editorCtx.lineWidth = 2 / zoom;
+    editorCtx.stroke();
+  }
+  
+  // Draw hovered edge highlight
+  if (hoveredEdge && hoveredEdge.object.data === shape) {
+    const edgeIndex = hoveredEdge.edgeIndex;
+    const vertex1 = shape.vertices[edgeIndex];
+    const vertex2 = shape.vertices[(edgeIndex + 1) % shape.vertices.length];
+    
+    editorCtx.beginPath();
+    editorCtx.moveTo(vertex1.x, -vertex1.y);
+    editorCtx.lineTo(vertex2.x, -vertex2.y);
+    editorCtx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
+    editorCtx.lineWidth = 4 / zoom;
+    editorCtx.stroke();
+    
+    // Draw plus icon at insertion point
+    const insertPos = hoveredEdge.insertPosition;
+    drawPlusIcon(insertPos.x, -insertPos.y, 8 / zoom);
   }
 }
 
@@ -1771,6 +2302,23 @@ function drawVertices(vertices, color = '#ffff00') {
   });
 }
 
+function drawPlusIcon(x, y, size) {
+  editorCtx.strokeStyle = '#00ff00';
+  editorCtx.lineWidth = 2 / zoom;
+  
+  // Horizontal line
+  editorCtx.beginPath();
+  editorCtx.moveTo(x - size/2, y);
+  editorCtx.lineTo(x + size/2, y);
+  editorCtx.stroke();
+  
+  // Vertical line
+  editorCtx.beginPath();
+  editorCtx.moveTo(x, y - size/2);
+  editorCtx.lineTo(x, y + size/2);
+  editorCtx.stroke();
+}
+
 function getMouseCanvasPos() {
   // Get the current mouse position from the last known position
   if (!lastMousePos) return null;
@@ -1897,6 +2445,128 @@ function drawDynamicPreview() {
   editorCtx.moveTo(centerX, -(centerY - 8 / zoom));
   editorCtx.lineTo(centerX, -(centerY + 8 / zoom));
   editorCtx.stroke();
+}
+
+// Preset preview drawing functions
+function drawCirclePreview() {
+  if (!lastMousePos || !presetStartPoint) return;
+  
+  const mousePos = getMousePos({ clientX: lastMousePos.x, clientY: lastMousePos.y });
+  const radius = Math.sqrt(
+    Math.pow(mousePos.x - presetStartPoint.x, 2) + 
+    Math.pow(mousePos.y - presetStartPoint.y, 2)
+  );
+  
+  // Draw preview circle
+  editorCtx.strokeStyle = '#00ff00';
+  editorCtx.fillStyle = 'rgba(0, 255, 0, 0.2)';
+  editorCtx.lineWidth = 2 / zoom;
+  editorCtx.setLineDash([5 / zoom, 5 / zoom]);
+  
+  editorCtx.beginPath();
+  editorCtx.arc(presetStartPoint.x, -presetStartPoint.y, radius, 0, 2 * Math.PI);
+  editorCtx.fill();
+  editorCtx.stroke();
+  editorCtx.setLineDash([]);
+  
+  // Draw center point
+  editorCtx.fillStyle = '#00ff00';
+  editorCtx.beginPath();
+  editorCtx.arc(presetStartPoint.x, -presetStartPoint.y, 3 / zoom, 0, 2 * Math.PI);
+  editorCtx.fill();
+  
+  // Draw radius line
+  editorCtx.strokeStyle = '#00ff00';
+  editorCtx.lineWidth = 1 / zoom;
+  editorCtx.beginPath();
+  editorCtx.moveTo(presetStartPoint.x, -presetStartPoint.y);
+  editorCtx.lineTo(mousePos.x, -mousePos.y);
+  editorCtx.stroke();
+  
+  // Draw radius text
+  editorCtx.fillStyle = '#00ff00';
+  editorCtx.font = `${12 / zoom}px Arial`;
+  editorCtx.textAlign = 'center';
+  editorCtx.fillText(`r: ${radius.toFixed(0)}`, presetStartPoint.x, -(presetStartPoint.y - 15 / zoom));
+}
+
+function drawRectanglePreview() {
+  if (!lastMousePos || !presetStartPoint) return;
+  
+  const mousePos = getMousePos({ clientX: lastMousePos.x, clientY: lastMousePos.y });
+  const minX = Math.min(presetStartPoint.x, mousePos.x);
+  const maxX = Math.max(presetStartPoint.x, mousePos.x);
+  const minY = Math.min(presetStartPoint.y, mousePos.y);
+  const maxY = Math.max(presetStartPoint.y, mousePos.y);
+  const width = maxX - minX;
+  const height = maxY - minY;
+  
+  // Draw preview rectangle
+  editorCtx.strokeStyle = '#00ff00';
+  editorCtx.fillStyle = 'rgba(0, 255, 0, 0.2)';
+  editorCtx.lineWidth = 2 / zoom;
+  editorCtx.setLineDash([5 / zoom, 5 / zoom]);
+  
+  editorCtx.beginPath();
+  editorCtx.rect(minX, -maxY, width, height);
+  editorCtx.fill();
+  editorCtx.stroke();
+  editorCtx.setLineDash([]);
+  
+  // Draw dimensions text
+  editorCtx.fillStyle = '#00ff00';
+  editorCtx.font = `${12 / zoom}px Arial`;
+  editorCtx.textAlign = 'center';
+  const dimensionsText = `${width.toFixed(0)} × ${height.toFixed(0)}`;
+  editorCtx.fillText(dimensionsText, (minX + maxX) / 2, -((minY + maxY) / 2 - 15 / zoom));
+}
+
+function drawTrianglePreview() {
+  if (!lastMousePos || !presetStartPoint) return;
+  
+  const mousePos = getMousePos({ clientX: lastMousePos.x, clientY: lastMousePos.y });
+  const radius = Math.sqrt(
+    Math.pow(mousePos.x - presetStartPoint.x, 2) + 
+    Math.pow(mousePos.y - presetStartPoint.y, 2)
+  );
+  
+  // Calculate triangle vertices
+  const vertices = [];
+  for (let i = 0; i < 3; i++) {
+    const angle = (i / 3) * 2 * Math.PI - Math.PI / 2; // Start from top
+    vertices.push({
+      x: presetStartPoint.x + Math.cos(angle) * radius,
+      y: presetStartPoint.y + Math.sin(angle) * radius
+    });
+  }
+  
+  // Draw preview triangle
+  editorCtx.strokeStyle = '#00ff00';
+  editorCtx.fillStyle = 'rgba(0, 255, 0, 0.2)';
+  editorCtx.lineWidth = 2 / zoom;
+  editorCtx.setLineDash([5 / zoom, 5 / zoom]);
+  
+  editorCtx.beginPath();
+  editorCtx.moveTo(vertices[0].x, -vertices[0].y);
+  for (let i = 1; i < vertices.length; i++) {
+    editorCtx.lineTo(vertices[i].x, -vertices[i].y);
+  }
+  editorCtx.closePath();
+  editorCtx.fill();
+  editorCtx.stroke();
+  editorCtx.setLineDash([]);
+  
+  // Draw center point
+  editorCtx.fillStyle = '#00ff00';
+  editorCtx.beginPath();
+  editorCtx.arc(presetStartPoint.x, -presetStartPoint.y, 3 / zoom, 0, 2 * Math.PI);
+  editorCtx.fill();
+  
+  // Draw radius text
+  editorCtx.fillStyle = '#00ff00';
+  editorCtx.font = `${12 / zoom}px Arial`;
+  editorCtx.textAlign = 'center';
+  editorCtx.fillText(`r: ${radius.toFixed(0)}`, presetStartPoint.x, -(presetStartPoint.y - 15 / zoom));
 }
 
 function drawNewAreaEffect() {
@@ -2456,8 +3126,9 @@ function updateUI() {
 
 // File operations
 function createNewMap() {
-  // Create blank map template with start property
+  // Create blank map template with start property and UUID
   editorMap = {
+    "id": generateUUID(),
     "displayName": "New Map",
     "scale": { 
       "player": 0.002, 
@@ -2477,6 +3148,8 @@ function createNewMap() {
     "areaEffects": [],
     "dynamicObjects": []
   };
+  
+  console.log('New map created with UUID:', editorMap.id);
   
   currentMapInfo = { 
     key: null, 
@@ -2507,6 +3180,12 @@ function loadMap(key) {
   fetch(url)
     .then(res => res.json())
     .then(map => {
+      // Ensure map has UUID for backward compatibility
+      if (!map.id) {
+        map.id = generateUUID();
+        console.log('Generated UUID for existing map:', map.id);
+      }
+      
       editorMap = map;
       currentMapInfo = {
         key: key,
@@ -2514,6 +3193,10 @@ function loadMap(key) {
         directory: key.split('/')[0],
         isNew: false,
       };
+      
+      console.log('Map loaded successfully. currentMapInfo set to:', currentMapInfo);
+      console.log('Map UUID:', editorMap.id);
+      
       // Initialize history
       historyStack = [JSON.parse(JSON.stringify(editorMap))];
       historyIndex = 0;
@@ -2586,10 +3269,281 @@ function confirmSaveMap() {
   const mapName = document.getElementById('saveMapName').value.trim();
   const author = document.getElementById('saveMapAuthor').value.trim();
   const directory = document.querySelector('input[name="saveDirectory"]:checked').value;
-  executeSave(mapName, directory, author);
+  const generatePreview = document.getElementById('generatePreviewOnSave').checked;
+  executeSave(mapName, directory, author, null, generatePreview);
 }
 
-async function executeSave(mapName, directory, author, key = null) {
+// Preview Image Generation
+async function generatePreviewImageInternal() {
+  if (!editorMap || !editorCanvas) {
+    throw new Error('No map loaded to generate preview from');
+  }
+
+  // Create a temporary canvas for the preview
+  const previewCanvas = document.createElement('canvas');
+  const previewCtx = previewCanvas.getContext('2d');
+  
+  // Set preview dimensions (300x200 for good quality)
+  previewCanvas.width = 300;
+  previewCanvas.height = 200;
+  
+  // Store current editor state
+  const originalPan = { x: panX, y: panY };
+  const originalZoom = zoom;
+  const originalShowGrid = showGrid;
+  const originalSelected = [...selectedObjects];
+  const originalHovered = hoveredObject;
+  const originalHoveredVertex = hoveredVertex;
+  const originalHoveredEdge = hoveredEdge;
+  
+  // Calculate auto-framing
+  const bounds = calculateMapBounds();
+  if (!bounds) {
+    throw new Error('No content found to preview');
+  }
+  
+  try {
+    // Clear selection and hover states for clean preview
+    selectedObjects.length = 0;
+    hoveredObject = null;
+    hoveredVertex = null;
+    hoveredEdge = null;
+    showGrid = false;
+    
+    // Set up preview viewport
+    setupPreviewViewport(bounds, previewCanvas);
+    
+    // Render the preview
+    renderPreview(previewCtx, previewCanvas, bounds);
+    
+    // Convert to blob and save
+    return new Promise((resolve, reject) => {
+      previewCanvas.toBlob(async (blob) => {
+        try {
+          const result = await savePreviewImage(blob);
+          resolve(result);
+        } catch (error) {
+          reject(error);
+        }
+      }, 'image/png', 0.9);
+    });
+  } finally {
+    // Restore original editor state
+    restoreEditorState(originalPan, originalZoom, originalShowGrid, originalSelected, originalHovered, originalHoveredVertex, originalHoveredEdge);
+  }
+}
+
+async function generatePreviewImage() {
+  try {
+    await generatePreviewImageInternal();
+    alert('Preview image generated successfully!');
+  } catch (error) {
+    console.error('Failed to generate preview:', error);
+    alert('Failed to generate preview image: ' + error.message);
+  }
+}
+
+function calculateMapBounds() {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let hasContent = false;
+
+  // Check all shapes
+  if (editorMap.shapes && Array.isArray(editorMap.shapes)) {
+    editorMap.shapes.forEach(shape => {
+      if (shape.vertices && Array.isArray(shape.vertices)) {
+        shape.vertices.forEach(vertex => {
+          minX = Math.min(minX, vertex.x);
+          minY = Math.min(minY, vertex.y);
+          maxX = Math.max(maxX, vertex.x);
+          maxY = Math.max(maxY, vertex.y);
+          hasContent = true;
+        });
+      }
+    });
+  }
+
+  // Check checkpoints
+  if (editorMap.checkpoints && Array.isArray(editorMap.checkpoints)) {
+    editorMap.checkpoints.forEach(checkpoint => {
+      if (checkpoint.vertices && Array.isArray(checkpoint.vertices)) {
+        checkpoint.vertices.forEach(vertex => {
+          minX = Math.min(minX, vertex.x);
+          minY = Math.min(minY, vertex.y);
+          maxX = Math.max(maxX, vertex.x);
+          maxY = Math.max(maxY, vertex.y);
+          hasContent = true;
+        });
+      }
+    });
+  }
+
+  // Check dynamic objects
+  if (editorMap.dynamicObjects && Array.isArray(editorMap.dynamicObjects)) {
+    editorMap.dynamicObjects.forEach(obj => {
+      if (obj.vertices && Array.isArray(obj.vertices)) {
+        obj.vertices.forEach(vertex => {
+          minX = Math.min(minX, vertex.x);
+          minY = Math.min(minY, vertex.y);
+          maxX = Math.max(maxX, vertex.x);
+          maxY = Math.max(maxY, vertex.y);
+          hasContent = true;
+        });
+      }
+    });
+  }
+
+  // Check area effects
+  if (editorMap.areaEffects && Array.isArray(editorMap.areaEffects)) {
+    editorMap.areaEffects.forEach(area => {
+      if (area.vertices && Array.isArray(area.vertices)) {
+        area.vertices.forEach(vertex => {
+          minX = Math.min(minX, vertex.x);
+          minY = Math.min(minY, vertex.y);
+          maxX = Math.max(maxX, vertex.x);
+          maxY = Math.max(maxY, vertex.y);
+          hasContent = true;
+        });
+      }
+    });
+  }
+
+  // Check start area
+  if (editorMap.start && editorMap.start.vertices && Array.isArray(editorMap.start.vertices)) {
+    editorMap.start.vertices.forEach(vertex => {
+      minX = Math.min(minX, vertex.x);
+      minY = Math.min(minY, vertex.y);
+      maxX = Math.max(maxX, vertex.x);
+      maxY = Math.max(maxY, vertex.y);
+      hasContent = true;
+    });
+  }
+
+  if (!hasContent) return null;
+
+  // Add some padding
+  const padding = Math.max((maxX - minX) * 0.1, (maxY - minY) * 0.1, 50);
+  
+  return {
+    minX: minX - padding,
+    minY: minY - padding,
+    maxX: maxX + padding,
+    maxY: maxY + padding,
+    width: (maxX - minX) + 2 * padding,
+    height: (maxY - minY) + 2 * padding
+  };
+}
+
+function setupPreviewViewport(bounds, previewCanvas) {
+  // Calculate zoom to fit content
+  const scaleX = previewCanvas.width / bounds.width;
+  const scaleY = previewCanvas.height / bounds.height;
+  zoom = Math.min(scaleX, scaleY) * 0.9; // Leave some margin
+
+  // Center the content
+  const centerX = (bounds.minX + bounds.maxX) / 2;
+  const centerY = (bounds.minY + bounds.maxY) / 2;
+  
+  panX = previewCanvas.width / 2 - centerX * zoom;
+  panY = previewCanvas.height / 2 + centerY * zoom; // Note: Y is flipped in canvas
+}
+
+function renderPreview(previewCtx, previewCanvas, bounds) {
+  // Clear canvas with dark background
+  previewCtx.fillStyle = '#1a1a1a';
+  previewCtx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
+  
+  // Set up transformation
+  previewCtx.save();
+  previewCtx.translate(previewCanvas.width / 2 + panX, previewCanvas.height / 2 + panY);
+  previewCtx.scale(zoom, zoom);
+
+  // Temporarily swap contexts to render preview
+  const originalCtx = editorCtx;
+  editorCtx = previewCtx;
+  
+  try {
+    // Draw shapes
+    if (Array.isArray(editorMap.shapes)) {
+      editorMap.shapes.forEach(shape => {
+        drawShape(shape, false, false);
+      });
+    }
+
+    // Draw checkpoints
+    if (Array.isArray(editorMap.checkpoints)) {
+      editorMap.checkpoints.forEach(checkpoint => {
+        drawCheckpoint(checkpoint, false, false);
+      });
+    }
+
+    // Draw area effects
+    if (Array.isArray(editorMap.areaEffects)) {
+      editorMap.areaEffects.forEach(area => {
+        drawAreaEffect(area, false, false);
+      });
+    }
+
+    // Draw dynamic objects
+    if (Array.isArray(editorMap.dynamicObjects)) {
+      editorMap.dynamicObjects.forEach(obj => {
+        drawDynamicObject(obj, false, false);
+      });
+    }
+
+    // Draw start area
+    if (editorMap.start && Array.isArray(editorMap.start.vertices)) {
+      drawStartArea(editorMap.start);
+    }
+  } finally {
+    // Restore original context
+    editorCtx = originalCtx;
+    previewCtx.restore();
+  }
+}
+
+function restoreEditorState(originalPan, originalZoom, originalShowGrid, originalSelected, originalHovered, originalHoveredVertex, originalHoveredEdge) {
+  panX = originalPan.x;
+  panY = originalPan.y;
+  zoom = originalZoom;
+  showGrid = originalShowGrid;
+  selectedObjects.splice(0, selectedObjects.length, ...originalSelected);
+  hoveredObject = originalHovered;
+  hoveredVertex = originalHoveredVertex;
+  hoveredEdge = originalHoveredEdge;
+  
+  renderEditor(); // Re-render with restored state
+}
+
+async function savePreviewImage(blob) {
+  console.log('savePreviewImage called with currentMapInfo:', currentMapInfo);
+  console.log('editorMap.id:', editorMap?.id);
+  
+  if (!editorMap?.id) {
+    throw new Error('No map UUID available. Please save the map first, or if you loaded an existing map, try reloading it.');
+  }
+
+  const formData = new FormData();
+  formData.append('preview', blob, 'preview.png');
+  formData.append('mapId', editorMap.id);
+
+  console.log('Sending preview with mapId (UUID):', editorMap.id);
+
+  const response = await fetch('/api/maps/preview', {
+    method: 'POST',
+    body: formData
+  });
+
+  const result = await response.json();
+  
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to save preview');
+  }
+  
+  console.log('Preview saved successfully:', result);
+  return result;
+}
+
+async function executeSave(mapName, directory, author, key = null, generatePreview = false) {
   if (!mapName) {
     alert('Please enter a map name');
     return;
@@ -2603,6 +3557,12 @@ async function executeSave(mapName, directory, author, key = null) {
   closeSaveMapModal();
   
   try {
+    // Ensure map has UUID
+    if (!editorMap.id) {
+      editorMap.id = generateUUID();
+      console.log('Generated UUID for map being saved:', editorMap.id);
+    }
+    
     const enhancedMapData = {
       ...editorMap,
       displayName: mapName,
@@ -2630,13 +3590,26 @@ async function executeSave(mapName, directory, author, key = null) {
     const result = await response.json();
     
     if (result.success) {
-      alert(`Map saved successfully to ${directory} directory!`);
       currentMapInfo = {
         key: result.key,
         name: mapName,
         directory: directory,
         isNew: false,
       };
+      
+      // Generate preview image if requested
+      if (generatePreview) {
+        try {
+          await generatePreviewImageInternal();
+          alert(`Map saved successfully to ${directory} directory with preview image!`);
+        } catch (previewError) {
+          console.error('Preview generation failed:', previewError);
+          alert(`Map saved successfully to ${directory} directory, but preview generation failed: ${previewError.message}`);
+        }
+      } else {
+        alert(`Map saved successfully to ${directory} directory!`);
+      }
+      
       loadMapsList(result.key);
     } else {
       alert('Failed to save map: ' + result.error);
@@ -2674,10 +3647,15 @@ function displayMapsInBrowser(maps) {
     const author = map.key.includes('official/') ? 'Official' : 'Community';
     const category = map.category || author;
     
+    // Check if preview image exists (use UUID if available, fallback to key)
+    const previewImageUrl = map.id ? `/previews/${map.id}.png` : `/previews/${map.key.replace(/\//g, '_')}.png`;
+    
     return `
       <div class="map-entry" data-map-key="${map.key}">
         <div class="map-preview">
-          <div class="no-preview">No preview</div>
+          <img src="${previewImageUrl}" alt="${map.name} preview" class="preview-image" 
+               onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+          <div class="no-preview" style="display: none;">No preview</div>
         </div>
         <div class="map-info">
           <h4 class="map-name">${map.name}</h4>
@@ -2719,7 +3697,10 @@ function updateStatusBar() {
     'createShape': 'Create Shape',
     'checkpoint': 'Create Checkpoint',
     'dynamic': 'Create Dynamic Object', 
-    'areaEffect': 'Create Area Effect'
+    'areaEffect': 'Create Area Effect',
+    'createCircle': 'Create Circle',
+    'createRectangle': 'Create Rectangle',
+    'createTriangle': 'Create Triangle'
   };
   
   const toolHints = {
@@ -2727,7 +3708,10 @@ function updateStatusBar() {
     'createShape': 'Click to add vertices, press Enter to complete the shape, Escape to cancel.',
     'checkpoint': 'Click two points to create a checkpoint line.',
     'dynamic': 'Click and drag to create a dynamic object rectangle.',
-    'areaEffect': 'Click to add vertices, press Enter to complete the area effect, Escape to cancel.'
+    'areaEffect': 'Click to add vertices, press Enter to complete the area effect, Escape to cancel.',
+    'createCircle': 'Click to set center, then click again to set radius.',
+    'createRectangle': 'Click first corner, then click opposite corner.',
+    'createTriangle': 'Click to set center, then click again to set size.'
   };
   
   toolNameElement.textContent = toolNames[currentTool] || 'Unknown Tool';
@@ -2742,6 +3726,12 @@ function updateStatusBar() {
     hintElement.textContent = 'Click the second point to complete the checkpoint.';
   } else if (creatingDynamic && dynamicStartPoint) {
     hintElement.textContent = 'Click to set the size of the dynamic object.';
+  } else if (creatingCircle && presetStartPoint) {
+    hintElement.textContent = 'Click to set the radius of the circle.';
+  } else if (creatingRectangle && presetStartPoint) {
+    hintElement.textContent = 'Click the opposite corner to complete the rectangle.';
+  } else if (creatingTriangle && presetStartPoint) {
+    hintElement.textContent = 'Click to set the size of the triangle.';
   }
 }
 
