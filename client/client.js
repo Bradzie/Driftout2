@@ -1318,10 +1318,15 @@
       const author = map.key.includes('official/') ? 'Official' : 'Community';
       const category = map.category || author;
       
+      // Check if preview image exists (use UUID if available, fallback to key)
+      const previewImageUrl = map.id ? `/previews/${map.id}.png` : `/previews/${map.key.replace(/\//g, '_')}.png`;
+      
       return `
         <div class="map-entry" data-map-key="${map.key}">
           <div class="map-preview">
-            <div class="no-preview">No preview</div>
+            <img src="${previewImageUrl}" alt="${map.name} preview" class="preview-image" 
+                 onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+            <div class="no-preview" style="display: none;">No preview</div>
           </div>
           <div class="map-info">
             <h4 class="map-name">${map.name}</h4>

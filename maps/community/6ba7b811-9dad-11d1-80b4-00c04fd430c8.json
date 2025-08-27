@@ -1,5 +1,6 @@
 {
-  "displayName": "playground",
+  "id": "6ba7b811-9dad-11d1-80b4-00c04fd430c8",
+  "displayName": "playground2",
   "scale": {
     "player": 0.002,
     "spectator": 0.0005
@@ -133,6 +134,60 @@
         {
           "x": 500,
           "y": -600
+        }
+      ],
+      "fillColor": [
+        128,
+        128,
+        128
+      ],
+      "borderColors": [
+        "#ff4d4d",
+        "#ffffff"
+      ],
+      "borderWidth": 20
+    },
+    {
+      "vertices": [
+        {
+          "x": 1700,
+          "y": -675
+        },
+        {
+          "x": 175,
+          "y": -675
+        },
+        {
+          "x": 125,
+          "y": -750
+        },
+        {
+          "x": 50,
+          "y": -875
+        },
+        {
+          "x": 25,
+          "y": -1025
+        },
+        {
+          "x": 125,
+          "y": -1100
+        },
+        {
+          "x": 250,
+          "y": -1225
+        },
+        {
+          "x": 450,
+          "y": -1225
+        },
+        {
+          "x": 600,
+          "y": -1175
+        },
+        {
+          "x": 1700,
+          "y": -1175
         }
       ],
       "fillColor": [
@@ -580,8 +635,8 @@
     }
   ],
   "author": "Bradzie",
-  "created_at": "2025-08-21T14:05:25.454Z",
-  "updated_at": "2025-08-26T15:51:06.998Z",
+  "created_at": "2025-08-27T15:54:24.269Z",
+  "updated_at": "2025-08-27T15:54:24.270Z",
   "author_id": 1,
-  "category": "official"
+  "category": "community"
 }

@@ -51,6 +51,20 @@ let presetStartPoint = null;
 // History management
 let historyStack = [];
 let historyIndex = -1;
+
+// UUID generation utility
+function generateUUID() {
+  // Use crypto API if available, otherwise fallback to Date-based UUID
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Fallback UUID v4 generation for older browsers
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
 const MAX_HISTORY = 50;
 
 // Clipboard
@@ -132,6 +146,7 @@ function initEventListeners() {
   // File operations
   document.getElementById('saveMapButton')?.addEventListener('click', saveMap);
   document.getElementById('saveAsMapButton')?.addEventListener('click', saveMapAs);
+  document.getElementById('setPreviewButton')?.addEventListener('click', generatePreviewImage);
 
   // Canvas events
   editorCanvas.addEventListener('mousedown', handleMouseDown);
@@ -3111,8 +3126,9 @@ function updateUI() {
 
 // File operations
 function createNewMap() {
-  // Create blank map template with start property
+  // Create blank map template with start property and UUID
   editorMap = {
+    "id": generateUUID(),
     "displayName": "New Map",
     "scale": { 
       "player": 0.002, 
@@ -3132,6 +3148,8 @@ function createNewMap() {
     "areaEffects": [],
     "dynamicObjects": []
   };
+  
+  console.log('New map created with UUID:', editorMap.id);
   
   currentMapInfo = { 
     key: null, 
@@ -3162,6 +3180,12 @@ function loadMap(key) {
   fetch(url)
     .then(res => res.json())
     .then(map => {
+      // Ensure map has UUID for backward compatibility
+      if (!map.id) {
+        map.id = generateUUID();
+        console.log('Generated UUID for existing map:', map.id);
+      }
+      
       editorMap = map;
       currentMapInfo = {
         key: key,
@@ -3169,6 +3193,10 @@ function loadMap(key) {
         directory: key.split('/')[0],
         isNew: false,
       };
+      
+      console.log('Map loaded successfully. currentMapInfo set to:', currentMapInfo);
+      console.log('Map UUID:', editorMap.id);
+      
       // Initialize history
       historyStack = [JSON.parse(JSON.stringify(editorMap))];
       historyIndex = 0;
@@ -3241,10 +3269,281 @@ function confirmSaveMap() {
   const mapName = document.getElementById('saveMapName').value.trim();
   const author = document.getElementById('saveMapAuthor').value.trim();
   const directory = document.querySelector('input[name="saveDirectory"]:checked').value;
-  executeSave(mapName, directory, author);
+  const generatePreview = document.getElementById('generatePreviewOnSave').checked;
+  executeSave(mapName, directory, author, null, generatePreview);
 }
 
-async function executeSave(mapName, directory, author, key = null) {
+// Preview Image Generation
+async function generatePreviewImageInternal() {
+  if (!editorMap || !editorCanvas) {
+    throw new Error('No map loaded to generate preview from');
+  }
+
+  // Create a temporary canvas for the preview
+  const previewCanvas = document.createElement('canvas');
+  const previewCtx = previewCanvas.getContext('2d');
+  
+  // Set preview dimensions (300x200 for good quality)
+  previewCanvas.width = 300;
+  previewCanvas.height = 200;
+  
+  // Store current editor state
+  const originalPan = { x: panX, y: panY };
+  const originalZoom = zoom;
+  const originalShowGrid = showGrid;
+  const originalSelected = [...selectedObjects];
+  const originalHovered = hoveredObject;
+  const originalHoveredVertex = hoveredVertex;
+  const originalHoveredEdge = hoveredEdge;
+  
+  // Calculate auto-framing
+  const bounds = calculateMapBounds();
+  if (!bounds) {
+    throw new Error('No content found to preview');
+  }
+  
+  try {
+    // Clear selection and hover states for clean preview
+    selectedObjects.length = 0;
+    hoveredObject = null;
+    hoveredVertex = null;
+    hoveredEdge = null;
+    showGrid = false;
+    
+    // Set up preview viewport
+    setupPreviewViewport(bounds, previewCanvas);
+    
+    // Render the preview
+    renderPreview(previewCtx, previewCanvas, bounds);
+    
+    // Convert to blob and save
+    return new Promise((resolve, reject) => {
+      previewCanvas.toBlob(async (blob) => {
+        try {
+          const result = await savePreviewImage(blob);
+          resolve(result);
+        } catch (error) {
+          reject(error);
+        }
+      }, 'image/png', 0.9);
+    });
+  } finally {
+    // Restore original editor state
+    restoreEditorState(originalPan, originalZoom, originalShowGrid, originalSelected, originalHovered, originalHoveredVertex, originalHoveredEdge);
+  }
+}
+
+async function generatePreviewImage() {
+  try {
+    await generatePreviewImageInternal();
+    alert('Preview image generated successfully!');
+  } catch (error) {
+    console.error('Failed to generate preview:', error);
+    alert('Failed to generate preview image: ' + error.message);
+  }
+}
+
+function calculateMapBounds() {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let hasContent = false;
+
+  // Check all shapes
+  if (editorMap.shapes && Array.isArray(editorMap.shapes)) {
+    editorMap.shapes.forEach(shape => {
+      if (shape.vertices && Array.isArray(shape.vertices)) {
+        shape.vertices.forEach(vertex => {
+          minX = Math.min(minX, vertex.x);
+          minY = Math.min(minY, vertex.y);
+          maxX = Math.max(maxX, vertex.x);
+          maxY = Math.max(maxY, vertex.y);
+          hasContent = true;
+        });
+      }
+    });
+  }
+
+  // Check checkpoints
+  if (editorMap.checkpoints && Array.isArray(editorMap.checkpoints)) {
+    editorMap.checkpoints.forEach(checkpoint => {
+      if (checkpoint.vertices && Array.isArray(checkpoint.vertices)) {
+        checkpoint.vertices.forEach(vertex => {
+          minX = Math.min(minX, vertex.x);
+          minY = Math.min(minY, vertex.y);
+          maxX = Math.max(maxX, vertex.x);
+          maxY = Math.max(maxY, vertex.y);
+          hasContent = true;
+        });
+      }
+    });
+  }
+
+  // Check dynamic objects
+  if (editorMap.dynamicObjects && Array.isArray(editorMap.dynamicObjects)) {
+    editorMap.dynamicObjects.forEach(obj => {
+      if (obj.vertices && Array.isArray(obj.vertices)) {
+        obj.vertices.forEach(vertex => {
+          minX = Math.min(minX, vertex.x);
+          minY = Math.min(minY, vertex.y);
+          maxX = Math.max(maxX, vertex.x);
+          maxY = Math.max(maxY, vertex.y);
+          hasContent = true;
+        });
+      }
+    });
+  }
+
+  // Check area effects
+  if (editorMap.areaEffects && Array.isArray(editorMap.areaEffects)) {
+    editorMap.areaEffects.forEach(area => {
+      if (area.vertices && Array.isArray(area.vertices)) {
+        area.vertices.forEach(vertex => {
+          minX = Math.min(minX, vertex.x);
+          minY = Math.min(minY, vertex.y);
+          maxX = Math.max(maxX, vertex.x);
+          maxY = Math.max(maxY, vertex.y);
+          hasContent = true;
+        });
+      }
+    });
+  }
+
+  // Check start area
+  if (editorMap.start && editorMap.start.vertices && Array.isArray(editorMap.start.vertices)) {
+    editorMap.start.vertices.forEach(vertex => {
+      minX = Math.min(minX, vertex.x);
+      minY = Math.min(minY, vertex.y);
+      maxX = Math.max(maxX, vertex.x);
+      maxY = Math.max(maxY, vertex.y);
+      hasContent = true;
+    });
+  }
+
+  if (!hasContent) return null;
+
+  // Add some padding
+  const padding = Math.max((maxX - minX) * 0.1, (maxY - minY) * 0.1, 50);
+  
+  return {
+    minX: minX - padding,
+    minY: minY - padding,
+    maxX: maxX + padding,
+    maxY: maxY + padding,
+    width: (maxX - minX) + 2 * padding,
+    height: (maxY - minY) + 2 * padding
+  };
+}
+
+function setupPreviewViewport(bounds, previewCanvas) {
+  // Calculate zoom to fit content
+  const scaleX = previewCanvas.width / bounds.width;
+  const scaleY = previewCanvas.height / bounds.height;
+  zoom = Math.min(scaleX, scaleY) * 0.9; // Leave some margin
+
+  // Center the content
+  const centerX = (bounds.minX + bounds.maxX) / 2;
+  const centerY = (bounds.minY + bounds.maxY) / 2;
+  
+  panX = previewCanvas.width / 2 - centerX * zoom;
+  panY = previewCanvas.height / 2 + centerY * zoom; // Note: Y is flipped in canvas
+}
+
+function renderPreview(previewCtx, previewCanvas, bounds) {
+  // Clear canvas with dark background
+  previewCtx.fillStyle = '#1a1a1a';
+  previewCtx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
+  
+  // Set up transformation
+  previewCtx.save();
+  previewCtx.translate(previewCanvas.width / 2 + panX, previewCanvas.height / 2 + panY);
+  previewCtx.scale(zoom, zoom);
+
+  // Temporarily swap contexts to render preview
+  const originalCtx = editorCtx;
+  editorCtx = previewCtx;
+  
+  try {
+    // Draw shapes
+    if (Array.isArray(editorMap.shapes)) {
+      editorMap.shapes.forEach(shape => {
+        drawShape(shape, false, false);
+      });
+    }
+
+    // Draw checkpoints
+    if (Array.isArray(editorMap.checkpoints)) {
+      editorMap.checkpoints.forEach(checkpoint => {
+        drawCheckpoint(checkpoint, false, false);
+      });
+    }
+
+    // Draw area effects
+    if (Array.isArray(editorMap.areaEffects)) {
+      editorMap.areaEffects.forEach(area => {
+        drawAreaEffect(area, false, false);
+      });
+    }
+
+    // Draw dynamic objects
+    if (Array.isArray(editorMap.dynamicObjects)) {
+      editorMap.dynamicObjects.forEach(obj => {
+        drawDynamicObject(obj, false, false);
+      });
+    }
+
+    // Draw start area
+    if (editorMap.start && Array.isArray(editorMap.start.vertices)) {
+      drawStartArea(editorMap.start);
+    }
+  } finally {
+    // Restore original context
+    editorCtx = originalCtx;
+    previewCtx.restore();
+  }
+}
+
+function restoreEditorState(originalPan, originalZoom, originalShowGrid, originalSelected, originalHovered, originalHoveredVertex, originalHoveredEdge) {
+  panX = originalPan.x;
+  panY = originalPan.y;
+  zoom = originalZoom;
+  showGrid = originalShowGrid;
+  selectedObjects.splice(0, selectedObjects.length, ...originalSelected);
+  hoveredObject = originalHovered;
+  hoveredVertex = originalHoveredVertex;
+  hoveredEdge = originalHoveredEdge;
+  
+  renderEditor(); // Re-render with restored state
+}
+
+async function savePreviewImage(blob) {
+  console.log('savePreviewImage called with currentMapInfo:', currentMapInfo);
+  console.log('editorMap.id:', editorMap?.id);
+  
+  if (!editorMap?.id) {
+    throw new Error('No map UUID available. Please save the map first, or if you loaded an existing map, try reloading it.');
+  }
+
+  const formData = new FormData();
+  formData.append('preview', blob, 'preview.png');
+  formData.append('mapId', editorMap.id);
+
+  console.log('Sending preview with mapId (UUID):', editorMap.id);
+
+  const response = await fetch('/api/maps/preview', {
+    method: 'POST',
+    body: formData
+  });
+
+  const result = await response.json();
+  
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to save preview');
+  }
+  
+  console.log('Preview saved successfully:', result);
+  return result;
+}
+
+async function executeSave(mapName, directory, author, key = null, generatePreview = false) {
   if (!mapName) {
     alert('Please enter a map name');
     return;
@@ -3258,6 +3557,12 @@ async function executeSave(mapName, directory, author, key = null) {
   closeSaveMapModal();
   
   try {
+    // Ensure map has UUID
+    if (!editorMap.id) {
+      editorMap.id = generateUUID();
+      console.log('Generated UUID for map being saved:', editorMap.id);
+    }
+    
     const enhancedMapData = {
       ...editorMap,
       displayName: mapName,
@@ -3285,13 +3590,26 @@ async function executeSave(mapName, directory, author, key = null) {
     const result = await response.json();
     
     if (result.success) {
-      alert(`Map saved successfully to ${directory} directory!`);
       currentMapInfo = {
         key: result.key,
         name: mapName,
         directory: directory,
         isNew: false,
       };
+      
+      // Generate preview image if requested
+      if (generatePreview) {
+        try {
+          await generatePreviewImageInternal();
+          alert(`Map saved successfully to ${directory} directory with preview image!`);
+        } catch (previewError) {
+          console.error('Preview generation failed:', previewError);
+          alert(`Map saved successfully to ${directory} directory, but preview generation failed: ${previewError.message}`);
+        }
+      } else {
+        alert(`Map saved successfully to ${directory} directory!`);
+      }
+      
       loadMapsList(result.key);
     } else {
       alert('Failed to save map: ' + result.error);
