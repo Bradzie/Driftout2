@@ -552,6 +552,16 @@
         </div>
       </div>
       
+      <!-- Shape Presets Panel -->
+      <div class="editor-section">
+        <h3>Shape Presets</h3>
+        <div class="preset-buttons">
+          <button id="circlePresetBtn" class="preset-btn" data-preset="circle">Circle</button>
+          <button id="rectanglePresetBtn" class="preset-btn" data-preset="rectangle">Rectangle</button>
+          <button id="trianglePresetBtn" class="preset-btn" data-preset="triangle">Triangle</button>
+        </div>
+      </div>
+      
       <!-- Grid Settings -->
       <div class="editor-section">
         <h3>Grid</h3>
@@ -646,6 +656,14 @@
         <button class="btn btn-primary" onclick="confirmSaveMap()">Save Map</button>
       </div>
     </div>
+  </div>
+
+  <!-- Vertex Context Menu -->
+  <div id="vertexContextMenu" class="vertex-context-menu hidden">
+    <div class="context-menu-item" id="addVertexOption">Add Vertex Here</div>
+    <div class="context-menu-item" id="removeVertexOption">Remove Vertex</div>
+    <div class="context-menu-separator"></div>
+    <div class="context-menu-item" id="cancelVertexOption">Cancel</div>
   </div>
 
   <script src="client.js"></script>
