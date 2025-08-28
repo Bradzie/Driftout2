@@ -3443,8 +3443,9 @@ function setupPreviewViewport(bounds, previewCanvas) {
   const centerX = (bounds.minX + bounds.maxX) / 2;
   const centerY = (bounds.minY + bounds.maxY) / 2;
   
-  panX = previewCanvas.width / 2 - centerX * zoom;
-  panY = previewCanvas.height / 2 + centerY * zoom; // Note: Y is flipped in canvas
+  // Calculate pan to center the map bounds in the preview canvas
+  panX = -centerX * zoom;
+  panY = -centerY * zoom;
 }
 
 function renderPreview(previewCtx, previewCanvas, bounds) {
