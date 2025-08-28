@@ -508,6 +508,22 @@
     }
   }
 
+  function updateRoomNameDisplay(roomName) {
+    const roomNameDisplay = document.getElementById('roomNameDisplay');
+    const roomNameText = document.getElementById('roomNameText');
+    
+    if (!roomNameDisplay || !roomNameText) {
+      return;
+    }
+    
+    if (roomName && isSpectating) {
+      roomNameText.textContent = roomName;
+      roomNameDisplay.classList.remove('hidden');
+    } else {
+      roomNameDisplay.classList.add('hidden');
+    }
+  }
+
   function updateToolbarVisibility() {
     // Safety check - ensure variables are initialized
     if (typeof toolbarVisible === 'undefined' || !topToolbar || !performanceOverlay || !miniLeaderboard) {
@@ -1623,6 +1639,7 @@
     spectatorState = null;
     spectatorCtx.clearRect(0, 0, spectatorCanvas.width, spectatorCanvas.height);
     updateToolbarVisibility(); // Update toolbar when leaving spectator mode
+    updateRoomNameDisplay(null); // Hide room name when not spectating
   }
   
   function resizeSpectatorCanvas() {
@@ -2033,6 +2050,9 @@
       console.log(`🏠 Room ID updated from spectatorState: ${currentRoomId} -> ${data.roomId}`);
       currentRoomId = data.roomId;
     }
+    
+    // Update room name display
+    updateRoomNameDisplay(data.roomName);
     
     // Always update currentMap when we have new map data
     if (data.map) {
