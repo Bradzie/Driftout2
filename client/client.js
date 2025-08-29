@@ -1758,7 +1758,6 @@
     // Enable binary encoding if server supports it
     if (data.binarySupport) {
       useBinaryEncoding = true;
-      console.log('Binary input encoding enabled');
     } else {
       useBinaryEncoding = false;
     }
@@ -2047,7 +2046,6 @@
     
     // Update current room ID from spectator state
     if (data.roomId && data.roomId !== currentRoomId) {
-      console.log(`🏠 Room ID updated from spectatorState: ${currentRoomId} -> ${data.roomId}`);
       currentRoomId = data.roomId;
     }
     
@@ -2165,17 +2163,14 @@
     const message = chatInput.value.trim();
     
     if (!message) {
-      console.log('Chat message blocked: empty message');
       return;
     }
     
     if (!playerName) {
-      console.log('Chat message blocked: no player name set');
       
       // Try to get player name from currentUser first
       if (currentUser) {
         playerName = currentUser.name || currentUser.username || 'Player';
-        console.log('Retrieved player name from currentUser:', playerName);
       }
       
       // If still no name, try to get from game state
@@ -2192,12 +2187,10 @@
       
       // Still no name? Block the message
       if (!playerName) {
-        console.log('Still no player name available, blocking message');
         return;
       }
     }
     
-    console.log('Sending chat message:', { playerName, message });
     socket.emit('chatMessage', { message: message });
     chatInput.value = '';
     toggleChatInput();
@@ -2910,13 +2903,11 @@
 
   // Handle AFK warning from server
   socket.on('afkWarning', (data) => {
-    console.log('⚠️ AFK Warning received:', data);
     showAFKWarning(data.reason, data.countdown);
   });
 
   // Handle force disconnect from server
   socket.on('forceDisconnect', (data) => {
-    console.log('🚫 Force disconnect:', data.reason);
     
     // Hide any existing warnings
     hideAFKWarning();

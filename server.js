@@ -807,11 +807,22 @@ class Car {
     this.isGhost = false;
     this.trapDamageHistory = new Map();
     const roomMapKey = this.room ? this.room.currentMapKey : 'square'; // fallback
-    const mapDef = mapManager.getMap(roomMapKey);
+    
+    // Parse category and key from roomMapKey if it contains '/'
+    let mapCategory = null;
+    let mapKey = roomMapKey;
+    if (roomMapKey && roomMapKey.includes('/')) {
+      const parts = roomMapKey.split('/');
+      mapCategory = parts[0];
+      mapKey = parts[1];
+    }
+    
+    const mapDef = mapManager.getMap(mapKey, mapCategory);
     let startPos = { x: 0, y: 0 };
     this.checkpointsVisited = new Set()
     this._cpLastSides = new Map()
     this.hasLeftStartSinceLap = false
+    
     if (mapDef && mapDef.start) {
       if (mapDef.start.vertices && mapDef.start.vertices.length) {
         const verts = mapDef.start.vertices;
@@ -821,6 +832,14 @@ class Car {
       } else if (typeof mapDef.start.x === 'number' && typeof mapDef.start.y === 'number') {
         startPos = mapDef.start;
       }
+    } else if (mapDef) {
+      // No start area defined, calculate a reasonable spawn position
+      console.log(`⚠️ Map ${roomMapKey} has no start area defined, calculating fallback spawn position`);
+      startPos = this.calculateFallbackSpawnPosition(mapDef);
+    } else {
+      // No map found at all, use safe default
+      console.log(`⚠️ Map ${roomMapKey} not found, using default spawn position`);
+      startPos = { x: 100, y: 0 }; // Better than (0,0)
     }
     this.checkpointsVisited = new Set();
     const def = CAR_TYPES[this.type]
@@ -974,7 +993,17 @@ class Car {
 
     const pos = this.body.position
     const roomMapKey = this.room ? this.room.currentMapKey : currentMapKey;
-    const map = mapManager.getMap(roomMapKey);
+    
+    // Parse category and key from roomMapKey if it contains '/'
+    let mapCategory = null;
+    let mapKey = roomMapKey;
+    if (roomMapKey && roomMapKey.includes('/')) {
+      const parts = roomMapKey.split('/');
+      mapCategory = parts[0];
+      mapKey = parts[1];
+    }
+    
+    const map = mapManager.getMap(mapKey, mapCategory);
     const checkpoints = map?.checkpoints || []
 
     for (let i = 0; i < checkpoints.length; i++) {
@@ -1015,7 +1044,7 @@ class Car {
       this._cpLastSides.set(cp.id, side)
     }
     let insideStart = false
-    const mapDef = mapManager.getMap(roomMapKey)
+    const mapDef = mapManager.getMap(mapKey, mapCategory)
     if (mapDef?.start?.vertices?.length) {
       insideStart = pointInPolygon(this.body.position.x, this.body.position.y, mapDef.start.vertices)
     }
@@ -1055,7 +1084,17 @@ class Car {
   }
   resetCar() {
     const roomMapKey = this.room ? this.room.currentMapKey : currentMapKey;
-    const map = mapManager.getMap(roomMapKey);
+    
+    // Parse category and key from roomMapKey if it contains '/'
+    let mapCategory = null;
+    let mapKey = roomMapKey;
+    if (roomMapKey && roomMapKey.includes('/')) {
+      const parts = roomMapKey.split('/');
+      mapCategory = parts[0];
+      mapKey = parts[1];
+    }
+    
+    const map = mapManager.getMap(mapKey, mapCategory);
     let startPos = { x: 0, y: 0 }
     if (map.start?.vertices?.length) {
       const verts = map.start.vertices
@@ -1142,6 +1181,59 @@ class Car {
         bestLapTime: this.bestLapTime
       });
     }
+  }
+  
+  // Calculate a reasonable spawn position when no start area is defined
+  calculateFallbackSpawnPosition(mapDef) {
+    if (!mapDef || !mapDef.shapes || !Array.isArray(mapDef.shapes)) {
+      // No shapes to work with, use a safe default
+      return { x: 100, y: 0 };
+    }
+    
+    // Find all vertices from all shapes to calculate map bounds
+    let allVertices = [];
+    for (const shape of mapDef.shapes) {
+      if (shape.vertices && Array.isArray(shape.vertices)) {
+        allVertices = allVertices.concat(shape.vertices);
+      }
+    }
+    
+    if (allVertices.length === 0) {
+      // No vertices found, use safe default
+      return { x: 100, y: 0 };
+    }
+    
+    // Calculate map center
+    const avgX = allVertices.reduce((sum, v) => sum + v.x, 0) / allVertices.length;
+    const avgY = allVertices.reduce((sum, v) => sum + v.y, 0) / allVertices.length;
+    
+    // Find map bounds
+    const minX = Math.min(...allVertices.map(v => v.x));
+    const maxX = Math.max(...allVertices.map(v => v.x));
+    const minY = Math.min(...allVertices.map(v => v.y));
+    const maxY = Math.max(...allVertices.map(v => v.y));
+    
+    // Try to find a position that's likely to be in open space
+    // Use the center, but offset towards the top or bottom to avoid walls
+    const mapWidth = maxX - minX;
+    const mapHeight = maxY - minY;
+    
+    // Offset from center towards what's likely to be open space
+    let spawnX = avgX;
+    let spawnY = avgY - mapHeight * 0.2; // Offset towards top of map
+    
+    // If the offset puts us too close to boundaries, try other positions
+    if (spawnY < minY + 50) {
+      spawnY = avgY + mapHeight * 0.2; // Try bottom
+    }
+    
+    // Ensure we're not too close to map edges
+    spawnX = Math.max(minX + 100, Math.min(maxX - 100, spawnX));
+    spawnY = Math.max(minY + 100, Math.min(maxY - 100, spawnY));
+    
+    console.log(`📍 Calculated fallback spawn position: (${Math.round(spawnX)}, ${Math.round(spawnY)}) for map center: (${Math.round(avgX)}, ${Math.round(avgY)})`);
+    
+    return { x: spawnX, y: spawnY };
   }
 }
 
