@@ -549,16 +549,7 @@ app.post('/api/auth/guest', (req, res) => {
       return res.status(400).json({ error: 'Guest name must be between 1 and 20 characters' });
     }
     
-    // Check if this session is already active as a guest
-    const currentSessionId = req.sessionID;
-    if (isGuestSessionActive(currentSessionId)) {
-      return res.status(409).json({ 
-        error: 'This session is already logged in as a guest.',
-        errorCode: 'ALREADY_LOGGED_IN_AS_GUEST'
-      });
-    }
-    
-    // Generate guest session
+    // Generate guest session (allow multiple guests and guest name changes)
     req.session.userId = null;
     req.session.username = name;
     req.session.isGuest = true;
