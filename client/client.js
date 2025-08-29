@@ -2,6 +2,7 @@
   let socket = io();
   let currentMap = null;
   let currentUser = null;
+  let needSessionRefresh = false;
   
   // Fake ping functionality
   let fakePingEnabled = false;
