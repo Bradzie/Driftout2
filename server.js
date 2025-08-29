@@ -21,6 +21,21 @@ const DEBUG_MODE = false;
 // Initialize database
 const userDb = new UserDatabase();
 
+// Session management for preventing multiple logins
+// Track active sessions: userId -> Set of socketIds
+const activeUserSessions = new Map();
+// Track guest sessions: sessionId -> socketId
+const activeGuestSessions = new Map();
+
+// Configuration for duplicate login handling
+const DUPLICATE_LOGIN_POLICY = {
+  KICK_EXISTING: 'kick_existing',    // Disconnect existing sessions and allow new login
+  REJECT_NEW: 'reject_new'           // Reject new login attempt
+};
+
+// Current policy - can be changed as needed
+const currentDuplicateLoginPolicy = DUPLICATE_LOGIN_POLICY.KICK_EXISTING;
+
 // Configure session middleware
 const sessionMiddleware = session({
   secret: process.env.SESSION_SECRET || 'driftout-secret-key-change-in-production',
@@ -481,6 +496,24 @@ app.post('/api/auth/login', async (req, res) => {
     const result = await userDb.loginUser(email, password);
     
     if (result.success) {
+      const userId = result.user.id;
+      const existingSessions = getUserActiveSessions(userId);
+      
+      // Check for existing active sessions
+      if (existingSessions.size > 0) {
+        console.log(`User ${userId} attempting to login with ${existingSessions.size} existing active sessions`);
+        
+        if (currentDuplicateLoginPolicy === DUPLICATE_LOGIN_POLICY.REJECT_NEW) {
+          return res.status(409).json({ 
+            error: 'Account is already logged in from another location. Please log out from the other session first.',
+            errorCode: 'ALREADY_LOGGED_IN'
+          });
+        } else if (currentDuplicateLoginPolicy === DUPLICATE_LOGIN_POLICY.KICK_EXISTING) {
+          // We'll kick existing sessions after socket connection is established
+          console.log(`Will kick existing sessions for user ${userId} after socket connection`);
+        }
+      }
+      
       req.session.userId = result.user.id;
       req.session.username = result.user.username;
       req.session.isGuest = false;
@@ -516,6 +549,15 @@ app.post('/api/auth/guest', (req, res) => {
       return res.status(400).json({ error: 'Guest name must be between 1 and 20 characters' });
     }
     
+    // Check if this session is already active as a guest
+    const currentSessionId = req.sessionID;
+    if (isGuestSessionActive(currentSessionId)) {
+      return res.status(409).json({ 
+        error: 'This session is already logged in as a guest.',
+        errorCode: 'ALREADY_LOGGED_IN_AS_GUEST'
+      });
+    }
+    
     // Generate guest session
     req.session.userId = null;
     req.session.username = name;
@@ -542,6 +584,31 @@ app.post('/api/auth/guest', (req, res) => {
 });
 
 app.post('/api/auth/logout', (req, res) => {
+  // Clean up active sessions before destroying the session
+  if (req.session && req.session.username) {
+    const session = req.session;
+    if (session.isGuest) {
+      // Clean up guest session
+      unregisterGuestSession(req.sessionID);
+    } else if (session.userId) {
+      // Clean up all active sessions for this user
+      const userId = session.userId;
+      const activeSessions = getUserActiveSessions(userId);
+      for (const socketId of activeSessions) {
+        const socket = io.sockets.sockets.get(socketId);
+        if (socket) {
+          console.log(`Logging out user ${userId}, gracefully logging out socket ${socketId}`);
+          socket.emit('forceLogout', { 
+            reason: 'You have been logged out.' 
+          });
+          // Note: We don't disconnect the socket, just log them out gracefully
+        }
+      }
+      // Clear all sessions for this user
+      activeUserSessions.delete(userId);
+    }
+  }
+
   req.session.destroy((err) => {
     if (err) {
       console.error('Logout error:', err);
@@ -566,6 +633,29 @@ app.get('/api/auth/session', (req, res) => {
   }
 });
 
+// Debug endpoint to check active sessions (only available in debug mode)
+if (DEBUG_MODE) {
+  app.get('/api/debug/sessions', (req, res) => {
+    const userSessionsInfo = {};
+    for (const [userId, sockets] of activeUserSessions.entries()) {
+      userSessionsInfo[userId] = Array.from(sockets);
+    }
+    
+    const guestSessionsInfo = {};
+    for (const [sessionId, socketId] of activeGuestSessions.entries()) {
+      guestSessionsInfo[sessionId] = socketId;
+    }
+    
+    res.json({
+      userSessions: userSessionsInfo,
+      guestSessions: guestSessionsInfo,
+      totalUserSessions: activeUserSessions.size,
+      totalGuestSessions: activeGuestSessions.size,
+      currentPolicy: currentDuplicateLoginPolicy
+    });
+  });
+}
+
 const PORT = process.env.PORT || 3000;
 
 const HELPERS = require('./helpers');
@@ -574,6 +664,64 @@ const { abilityRegistry, SpikeTrapAbility } = require('./abilities');
 const MapManager = require('./MapManager');
 const mapManager = new MapManager('./maps');
 // Legacy global track bodies removed - now handled per room
+
+// Session management utility functions
+function registerUserSession(userId, socketId) {
+  if (!activeUserSessions.has(userId)) {
+    activeUserSessions.set(userId, new Set());
+  }
+  activeUserSessions.get(userId).add(socketId);
+  console.log(`Registered session for user ${userId}, socket ${socketId}`);
+}
+
+function unregisterUserSession(userId, socketId) {
+  if (activeUserSessions.has(userId)) {
+    activeUserSessions.get(userId).delete(socketId);
+    if (activeUserSessions.get(userId).size === 0) {
+      activeUserSessions.delete(userId);
+    }
+    console.log(`Unregistered session for user ${userId}, socket ${socketId}`);
+  }
+}
+
+function getUserActiveSessions(userId) {
+  return activeUserSessions.get(userId) || new Set();
+}
+
+function registerGuestSession(sessionId, socketId) {
+  activeGuestSessions.set(sessionId, socketId);
+  console.log(`Registered guest session ${sessionId}, socket ${socketId}`);
+}
+
+function unregisterGuestSession(sessionId) {
+  if (activeGuestSessions.has(sessionId)) {
+    const socketId = activeGuestSessions.get(sessionId);
+    activeGuestSessions.delete(sessionId);
+    console.log(`Unregistered guest session ${sessionId}, socket ${socketId}`);
+  }
+}
+
+function isGuestSessionActive(sessionId) {
+  return activeGuestSessions.has(sessionId);
+}
+
+function kickExistingSessions(userId, currentSocketId) {
+  const existingSessions = getUserActiveSessions(userId);
+  for (const socketId of existingSessions) {
+    if (socketId !== currentSocketId) {
+      const socket = io.sockets.sockets.get(socketId);
+      if (socket) {
+        console.log(`Logging out existing session: user ${userId}, socket ${socketId}`);
+        socket.emit('forceLogout', { 
+          reason: 'Your account has been logged in from another location.' 
+        });
+        // Note: We don't disconnect the socket, just log them out gracefully
+      }
+      // Clean up the session tracking
+      unregisterUserSession(userId, socketId);
+    }
+  }
+}
 
 function pointInPolygon(x, y, vertices) {
   let inside = false;
@@ -2165,6 +2313,24 @@ io.on('connection', (socket) => {
     isGuest: socket.request.session?.isGuest
   });
   
+  // Register session for duplicate login prevention
+  if (socket.request.session && socket.request.session.username) {
+    const session = socket.request.session;
+    if (session.isGuest) {
+      // Register guest session
+      registerGuestSession(socket.request.sessionID, socket.id);
+    } else if (session.userId) {
+      // Register user session and handle existing sessions
+      const userId = session.userId;
+      registerUserSession(userId, socket.id);
+      
+      // If policy is to kick existing sessions, do it now
+      if (currentDuplicateLoginPolicy === DUPLICATE_LOGIN_POLICY.KICK_EXISTING) {
+        kickExistingSessions(userId, socket.id);
+      }
+    }
+  }
+  
   let currentRoom = null;
   let myCar = null;
   let clientSupportsBinary = false;
@@ -2779,6 +2945,18 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
+    // Clean up session tracking for duplicate login prevention
+    if (socket.request.session && socket.request.session.username) {
+      const session = socket.request.session;
+      if (session.isGuest) {
+        // Clean up guest session
+        unregisterGuestSession(socket.request.sessionID);
+      } else if (session.userId) {
+        // Clean up user session
+        unregisterUserSession(session.userId, socket.id);
+      }
+    }
+    
     // Clean up from all rooms using new membership system
     for (const room of rooms) {
       if (room.hasMember(socket.id)) {

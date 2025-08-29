@@ -2906,17 +2906,19 @@
     showAFKWarning(data.reason, data.countdown);
   });
 
-  // Handle force disconnect from server
-  socket.on('forceDisconnect', (data) => {
+  // Handle graceful logout from server (when logged in from another location)
+  socket.on('forceLogout', (data) => {
     
     // Hide any existing warnings
     hideAFKWarning();
     
-    // Show disconnect message to user
-    alert(`You have been disconnected: ${data.reason}`);
+    // Show a brief message to the user
+    alert(`${data.reason}`);
     
-    // The socket will be disconnected by the server
-    // The existing disconnect handlers will take care of cleanup
+    // Clear user state and show auth screen (don't make API call since server already logged us out)
+    currentUser = null;
+    showAuthScreen();
+    updateToolbarVisibility(); // Update toolbar for auth state change
   });
 
   // Send periodic activity pings when spectating (for menu interactions)
