@@ -611,13 +611,24 @@ app.post('/api/auth/logout', (req, res) => {
 
 app.get('/api/auth/session', (req, res) => {
   if (req.session.username) {
+    let userResponse = {
+      id: req.session.userId,
+      username: req.session.username,
+      isGuest: req.session.isGuest || false
+    };
+
+    // For registered users, get full user data including XP and isDev
+    if (req.session.userId && !req.session.isGuest) {
+      const userData = userDb.getUserById(req.session.userId);
+      if (userData) {
+        userResponse.xp = userData.xp || 0;
+        userResponse.isDev = !!userData.isDev;
+      }
+    }
+
     res.json({
       authenticated: true,
-      user: {
-        id: req.session.userId,
-        username: req.session.username,
-        isGuest: req.session.isGuest || false
-      }
+      user: userResponse
     });
   } else {
     res.json({ authenticated: false });
@@ -3002,6 +3013,19 @@ function gameLoop() {
       }
         if (roundWinner && !room.winMessageSent) {
           const winnerName = roundWinner.name;
+          
+          // Award XP to registered user winners
+          const winnerSocket = io.sockets.sockets.get(roundWinner.socketId);
+          if (winnerSocket && winnerSocket.request.session && winnerSocket.request.session.userId && !winnerSocket.request.session.isGuest) {
+            const userId = winnerSocket.request.session.userId;
+            const xpAwarded = userDb.addXP(userId, 10);
+            if (xpAwarded) {
+              console.log(`Awarded 10 XP to user ${userId} (${winnerName}) for race win`);
+              
+              // Notify the winner about XP gain
+              winnerSocket.emit('xpGained', { amount: 10, reason: 'Race Win' });
+            }
+          }
           
           // Broadcast win message to kill feed (only once per race)
           for (const [sid, car] of room.players.entries()) {

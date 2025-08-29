@@ -18,7 +18,9 @@ class UserDatabase {
         email TEXT UNIQUE NOT NULL COLLATE NOCASE,
         password_hash TEXT NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        last_login DATETIME
+        last_login DATETIME,
+        xp INTEGER DEFAULT 0,
+        isDev BOOLEAN DEFAULT 0
       )
     `);
     
@@ -40,7 +42,44 @@ class UserDatabase {
     
     createUsersTable.run();
     createMapsTable.run();
+    
+    // Migration: Add new columns to existing users table if they don't exist
+    this.migrateUsersTable();
+    
     console.log('Database initialized');
+  }
+
+  migrateUsersTable() {
+    try {
+      // Check if xp column exists, if not add it
+      const checkXpColumn = this.db.prepare(`
+        PRAGMA table_info(users)
+      `);
+      const columns = checkXpColumn.all();
+      const hasXpColumn = columns.some(col => col.name === 'xp');
+      const hasIsDevColumn = columns.some(col => col.name === 'isDev');
+
+      if (!hasXpColumn) {
+        console.log('Adding xp column to users table...');
+        this.db.exec('ALTER TABLE users ADD COLUMN xp INTEGER DEFAULT 0');
+      }
+
+      if (!hasIsDevColumn) {
+        console.log('Adding isDev column to users table...');
+        this.db.exec('ALTER TABLE users ADD COLUMN isDev BOOLEAN DEFAULT 0');
+      }
+
+      // Set user ID 1 as developer if it exists
+      const setDevUser = this.db.prepare(`
+        UPDATE users SET isDev = 1 WHERE id = 1
+      `);
+      const result = setDevUser.run();
+      if (result.changes > 0) {
+        console.log('Set user ID 1 as developer');
+      }
+    } catch (error) {
+      console.error('Migration error:', error);
+    }
   }
 
   async hashPassword(password) {
@@ -80,7 +119,7 @@ class UserDatabase {
   async loginUser(email, password) {
     try {
       const getUser = this.db.prepare(`
-        SELECT id, username, email, password_hash
+        SELECT id, username, email, password_hash, xp, isDev
         FROM users 
         WHERE email = ? COLLATE NOCASE
       `);
@@ -108,7 +147,9 @@ class UserDatabase {
         user: {
           id: user.id,
           username: user.username,
-          email: user.email
+          email: user.email,
+          xp: user.xp || 0,
+          isDev: !!user.isDev
         }
       };
     } catch (error) {
@@ -121,7 +162,7 @@ class UserDatabase {
   getUserById(userId) {
     try {
       const getUser = this.db.prepare(`
-        SELECT id, username, email, created_at, last_login
+        SELECT id, username, email, created_at, last_login, xp, isDev
         FROM users 
         WHERE id = ?
       `);
@@ -130,6 +171,21 @@ class UserDatabase {
     } catch (error) {
       console.error('Get user error:', error);
       return null;
+    }
+  }
+
+  // Add XP to user account
+  addXP(userId, amount) {
+    try {
+      const addXpToUser = this.db.prepare(`
+        UPDATE users SET xp = xp + ? WHERE id = ?
+      `);
+      
+      const result = addXpToUser.run(amount, userId);
+      return result.changes > 0;
+    } catch (error) {
+      console.error('Add XP error:', error);
+      return false;
     }
   }
 

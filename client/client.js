@@ -285,7 +285,15 @@
 
   function updatePlayerInfo() {
     if (currentUser) {
-      const displayName = currentUser.username + (currentUser.isGuest ? ' (Guest)' : '');
+      let displayName = currentUser.username;
+      
+      if (currentUser.isGuest) {
+        displayName += ' (Guest)';
+      } else {
+        // Show XP for registered users
+        displayName += ` (XP: ${currentUser.xp || 0})`;
+      }
+      
       toolbarPlayerName.textContent = displayName;
       
       // Also set the player name for chat
@@ -2899,6 +2907,23 @@
     currentUser = null;
     showAuthScreen();
     updateToolbarVisibility(); // Update toolbar for auth state change
+  });
+
+  // Handle XP gained notifications
+  socket.on('xpGained', (data) => {
+    if (currentUser && !currentUser.isGuest) {
+      // Update current user's XP
+      currentUser.xp = (currentUser.xp || 0) + data.amount;
+      
+      // Update display
+      updatePlayerInfo();
+      
+      // Show XP gain message
+      console.log(`+${data.amount} XP: ${data.reason}`);
+      
+      // Could add a visual notification here later
+      // For now, we'll just update the toolbar display
+    }
   });
 
   // Send periodic activity pings when spectating (for menu interactions)
