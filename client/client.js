@@ -198,34 +198,13 @@
     authScreen.classList.add('hidden');
     menu.classList.remove('hidden');
     miniLeaderboard.classList.remove('hidden');
-    loadCarTypes();
+    
+    // Initialize settings system when the main menu is shown
+    loadSettings();
   }
   
   
-  async function loadCarTypes() {
-    try {
-      const response = await fetch('/api/cars');
-      if (response.ok) {
-        const carTypes = await response.json();
-        if (carTypes && carTypes.length > 0) {
-          // Load the first car type as default
-          updateCarCard(carTypes[0]);
-        }
-      }
-      
-      // Initialize settings system when the main menu is shown
-      loadSettings();
-    } catch (error) {
-      console.error('Failed to load car types:', error);
-    }
-  }
   
-  function updateCarCard(carType) {
-    if (carType) {
-      carName.textContent = carType.name || 'Unknown Car';
-      // Update other car display elements as needed
-    }
-  }
 
   function refreshSocketSession() {
     console.log('Refreshing socket session after authentication...');
