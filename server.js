@@ -963,6 +963,83 @@ const MIN_DAMAGE_VELOCITY = 0;  // Ignore very slow collisions
 const MAX_DAMAGE_MULTIPLIER = 5.0;  // Cap damage to prevent one-hit kills
 const MIN_DAMAGE_MULTIPLIER = 1.0;  // Minimum damage scaling
 
+// Angle-based collision damage constants
+const MIN_ANGLE_MULTIPLIER = 0.12;  // Minimum damage for grazing impacts (20%)
+const MAX_ANGLE_MULTIPLIER = 1.0;  // Maximum damage for head-on impacts (100%)
+const ANGLE_CURVE_POWER = 1.0;     // Power for cosine curve shaping (1.0 = linear cosine)
+
+// Helper functions for angle-based damage calculation
+function calculateImpactAngle(relativeVelocity, collisionNormal) {
+  // Calculate the angle between relative velocity vector and collision normal
+  const velMagnitude = Math.sqrt(relativeVelocity.x * relativeVelocity.x + relativeVelocity.y * relativeVelocity.y);
+  
+  // Avoid division by zero
+  if (velMagnitude < 0.001) {
+    return Math.PI / 2; // Assume 90-degree angle for very slow collisions
+  }
+  
+  // Calculate dot product between velocity and normal
+  const dotProduct = relativeVelocity.x * collisionNormal.x + relativeVelocity.y * collisionNormal.y;
+  
+  // Calculate angle (0 = head-on, PI/2 = grazing)
+  const cosAngle = Math.abs(dotProduct) / velMagnitude;
+  return Math.acos(Math.max(0, Math.min(1, cosAngle))); // Clamp to prevent NaN
+}
+
+function getAngleDamageMultiplier(impactAngle) {
+  // Convert angle to damage multiplier using cosine curve
+  // 0 degrees (head-on) = MAX_ANGLE_MULTIPLIER
+  // 90 degrees (grazing) = MIN_ANGLE_MULTIPLIER
+  const cosValue = Math.cos(impactAngle);
+  const normalizedCos = Math.pow(Math.max(0, cosValue), ANGLE_CURVE_POWER);
+  
+  return MIN_ANGLE_MULTIPLIER + (MAX_ANGLE_MULTIPLIER - MIN_ANGLE_MULTIPLIER) * normalizedCos;
+}
+
+function getCollisionNormal(pair, bodyA, bodyB) {
+  // Extract collision normal from Matter.js collision pair
+  if (pair.collision && pair.collision.normal) {
+    // Use the collision normal, ensuring it points from bodyA to bodyB
+    let normal = pair.collision.normal;
+    
+    // Matter.js collision normal might need to be flipped based on body order
+    if (pair.bodyA === bodyB) {
+      normal = { x: -normal.x, y: -normal.y };
+    }
+    
+    return normal;
+  }
+  
+  // Fallback: calculate normal from body positions (for static bodies like walls)
+  if (bodyB.isStatic && !bodyA.isStatic) {
+    // For wall collisions, calculate normal from car center to contact point
+    if (pair.collision && pair.collision.supports && pair.collision.supports[0]) {
+      const contactPoint = pair.collision.supports[0];
+      const carCenter = bodyA.position;
+      
+      const dx = contactPoint.x - carCenter.x;
+      const dy = contactPoint.y - carCenter.y;
+      const length = Math.sqrt(dx * dx + dy * dy);
+      
+      if (length > 0.001) {
+        return { x: dx / length, y: dy / length };
+      }
+    }
+  }
+  
+  // Final fallback: use vector between body centers
+  const dx = bodyB.position.x - bodyA.position.x;
+  const dy = bodyB.position.y - bodyA.position.y;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  
+  if (length > 0.001) {
+    return { x: dx / length, y: dy / length };
+  }
+  
+  // Default to horizontal normal if all else fails
+  return { x: 1, y: 0 };
+}
+
 class Car {
   constructor(id, type, roomId, socketId, name, room = null) {
     this.id = id;
@@ -1326,7 +1403,7 @@ class Car {
     Matter.Body.setAngularVelocity(this.body, 0);
     Matter.Body.setAngle(this.body, 0);
   }
-  applyCollisionDamage(otherBody, relativeSpeed, damageScale = 1.0) {
+  applyCollisionDamage(otherBody, relativeSpeed, damageScale = 1.0, collisionPair = null) {
     // Don't take damage if god mode is enabled
     if (this.godMode) return;
     
@@ -1341,17 +1418,34 @@ class Car {
     // Cap the damage multiplier to prevent one-hit kills
     const damageMultiplier = Math.max(MIN_DAMAGE_MULTIPLIER, Math.min(MAX_DAMAGE_MULTIPLIER, densityRatio));
     
-    // Pure velocity-based damage calculation
+    // Calculate angle-based damage multiplier
+    let angleMultiplier = 1.0; // Default to full damage if no collision pair data
+    if (collisionPair) {
+      // Calculate relative velocity vector
+      const thisVelocity = this.body.velocity;
+      const otherVelocity = otherBody.velocity || { x: 0, y: 0 }; // Static bodies have no velocity
+      const relativeVelocity = {
+        x: thisVelocity.x - otherVelocity.x,
+        y: thisVelocity.y - otherVelocity.y
+      };
+      
+      // Get collision normal and calculate impact angle
+      const collisionNormal = getCollisionNormal(collisionPair, this.body, otherBody);
+      const impactAngle = calculateImpactAngle(relativeVelocity, collisionNormal);
+      angleMultiplier = getAngleDamageMultiplier(impactAngle);
+    }
+    
+    // Velocity-based damage calculation with angle scaling
     let damage;
     if (otherBody.isStatic) {
       // Static wall collisions use different scale
-      damage = (relativeSpeed * 1.5) * WALL_VELOCITY_DAMAGE_SCALE * damageMultiplier * damageScale;
+      damage = (relativeSpeed * 1.5) * WALL_VELOCITY_DAMAGE_SCALE * damageMultiplier * damageScale * angleMultiplier;
     } else {
       // Dynamic body collisions (car vs car, car vs dynamic object)
-      damage = (relativeSpeed * 1.5) * BASE_VELOCITY_DAMAGE_SCALE * damageMultiplier * damageScale;
+      damage = (relativeSpeed * 1.5) * BASE_VELOCITY_DAMAGE_SCALE * damageMultiplier * damageScale * angleMultiplier;
     }
 
-    console.log(`Collision damage: ${damage.toFixed(2)} (relativeSpeed=${relativeSpeed.toFixed(2)}, densityRatio=${densityRatio.toFixed(2)}, damageScale=${damageScale})`);
+    console.log(`Collision damage: ${damage.toFixed(2)} (relativeSpeed=${relativeSpeed.toFixed(2)}, densityRatio=${densityRatio.toFixed(2)}, angleMultiplier=${angleMultiplier.toFixed(2)}, damageScale=${damageScale})`);
     
     this.currentHealth -= damage;
 
@@ -1606,20 +1700,20 @@ class Room {
           
           // Apply mutual collision damage with overflow mechanics
           if (carA && carB && !carA.isGhost && !carB.isGhost) {
-            this.applyMutualCollisionDamage(carA, carB, relativeSpeed);
+            this.applyMutualCollisionDamage(carA, carB, relativeSpeed, pair);
           } else {
             // Handle single car collisions (with walls, etc.)
             if (carA && !carA.isGhost) {
               // Check if bodyB is a dynamic object with damageScale
               const damageScale = (bodyB.dynamicObject && typeof bodyB.dynamicObject.damageScale === 'number') 
                 ? bodyB.dynamicObject.damageScale : 1.0;
-              carA.applyCollisionDamage(bodyB, relativeSpeed, damageScale);
+              carA.applyCollisionDamage(bodyB, relativeSpeed, damageScale, pair);
             }
             if (carB && !carB.isGhost) {
               // Check if bodyA is a dynamic object with damageScale
               const damageScale = (bodyA.dynamicObject && typeof bodyA.dynamicObject.damageScale === 'number') 
                 ? bodyA.dynamicObject.damageScale : 1.0;
-              carB.applyCollisionDamage(bodyA, relativeSpeed, damageScale);
+              carB.applyCollisionDamage(bodyA, relativeSpeed, damageScale, pair);
             }
           }
           
@@ -1639,7 +1733,7 @@ class Room {
   }
   
   // Move collision damage methods from global scope to Room scope
-  applyMutualCollisionDamage(carA, carB, relativeSpeed) {
+  applyMutualCollisionDamage(carA, carB, relativeSpeed, collisionPair = null) {
     if (!carA || !carB || carA.godMode || carB.godMode || carA.isGhost || carB.isGhost) return;
     
     // Ignore very slow collisions
@@ -1649,9 +1743,9 @@ class Room {
     const carAInitialHealth = carA.currentHealth;
     const carBInitialHealth = carB.currentHealth;
     
-    // Calculate potential damage for both cars using velocity-based formulas
-    const damageA = this.calculateCollisionDamage(carA, carB.body, relativeSpeed);
-    const damageB = this.calculateCollisionDamage(carB, carA.body, relativeSpeed);
+    // Calculate potential damage for both cars using velocity-based formulas with angle scaling
+    const damageA = this.calculateCollisionDamage(carA, carB.body, relativeSpeed, collisionPair);
+    const damageB = this.calculateCollisionDamage(carB, carA.body, relativeSpeed, collisionPair);
     
     // Determine which car has less remaining health
     const carAHealthRemaining = carA.currentHealth;
@@ -1721,7 +1815,7 @@ class Room {
     }
   }
   
-  calculateCollisionDamage(car, otherBody, relativeSpeed, damageScale = 1.0) {
+  calculateCollisionDamage(car, otherBody, relativeSpeed, collisionPair = null, damageScale = 1.0) {
     // Ignore very slow collisions
     if (relativeSpeed < MIN_DAMAGE_VELOCITY) return 0;
     
@@ -1733,13 +1827,30 @@ class Room {
     // Cap the damage multiplier to prevent one-hit kills
     const damageMultiplier = Math.max(MIN_DAMAGE_MULTIPLIER, Math.min(MAX_DAMAGE_MULTIPLIER, densityRatio));
     
-    // Pure velocity-based damage calculation
+    // Calculate angle-based damage multiplier
+    let angleMultiplier = 1.0; // Default to full damage if no collision pair data
+    if (collisionPair) {
+      // Calculate relative velocity vector
+      const thisVelocity = car.body.velocity;
+      const otherVelocity = otherBody.velocity || { x: 0, y: 0 }; // Static bodies have no velocity
+      const relativeVelocity = {
+        x: thisVelocity.x - otherVelocity.x,
+        y: thisVelocity.y - otherVelocity.y
+      };
+      
+      // Get collision normal and calculate impact angle
+      const collisionNormal = getCollisionNormal(collisionPair, car.body, otherBody);
+      const impactAngle = calculateImpactAngle(relativeVelocity, collisionNormal);
+      angleMultiplier = getAngleDamageMultiplier(impactAngle);
+    }
+    
+    // Velocity-based damage calculation with angle scaling
     if (otherBody.isStatic) {
       // Static wall collisions use different scale
-      return relativeSpeed * WALL_VELOCITY_DAMAGE_SCALE * damageMultiplier * damageScale;
+      return relativeSpeed * WALL_VELOCITY_DAMAGE_SCALE * damageMultiplier * damageScale * angleMultiplier;
     } else {
       // Dynamic body collisions (car vs car, car vs dynamic object)
-      return relativeSpeed * BASE_VELOCITY_DAMAGE_SCALE * damageMultiplier * damageScale;
+      return relativeSpeed * BASE_VELOCITY_DAMAGE_SCALE * damageMultiplier * damageScale * angleMultiplier;
     }
   }
   
