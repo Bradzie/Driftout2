@@ -5,7 +5,7 @@ const CAR_TYPES = {
     displayHealth: 40,
     displayHandling: 50,
     maxHealth: 10,
-    acceleration: 0.015,
+    acceleration: 0.012,
     boost: 50,
     regen: 0.05,
     color: { fill: [255, 95, 95], stroke: [153, 57, 57], strokeWidth: 4 },
@@ -24,7 +24,7 @@ const CAR_TYPES = {
       }
     ],
     bodyOptions: {
-      frictionAir: 0.012
+      frictionAir: 0.0014
     },
     upgrades: {
       maxHealth: {
@@ -53,7 +53,7 @@ const CAR_TYPES = {
     displayHealth: 25,
     displayHandling: 40,
     maxHealth: 6,
-    acceleration: 0.015,
+    acceleration: 0.012,
     boost: 60,
     regen: 0.05,
     color: { fill: [47, 152, 206], stroke: [28, 89, 121], strokeWidth: 4 },
@@ -72,7 +72,7 @@ const CAR_TYPES = {
       }
     ],
     bodyOptions: {
-      frictionAir: 0.004
+      frictionAir: 0.0001
     },
     upgrades: {
       maxHealth: {
@@ -101,7 +101,7 @@ const CAR_TYPES = {
     displayHealth: 80,
     displayHandling: 70,
     maxHealth: 16,
-    acceleration: 0.07,
+    acceleration: 0.025,
     boost: 40,
     regen: 0.05,
     color: { fill: [157, 230, 160], stroke: [99, 145, 101], strokeWidth: 4 },
@@ -116,7 +116,7 @@ const CAR_TYPES = {
       }
     ],
     bodyOptions: {
-      frictionAir: 0.020
+      frictionAir: 0.0008
     },
     upgrades: {
       maxHealth: {
