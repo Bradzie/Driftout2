@@ -356,20 +356,68 @@ app.get('/api/debug', (req, res) => {
 
 // Room management API
 app.get('/api/rooms', (req, res) => {
-  const roomList = rooms.map(room => ({
-    id: room.id,
-    name: room.name,
-    currentMap: room.currentMapKey,
-    activePlayerCount: room.activePlayerCount,
-    spectatorCount: room.spectatorCount,
-    totalOccupancy: room.totalOccupancy,
-    maxPlayers: room.maxPlayers,
-    isPrivate: room.isPrivate,
-    isOfficial: room.isOfficial,
-    isJoinable: room.isJoinable,
-    // Legacy field for backward compatibility
-    playerCount: room.activePlayerCount
-  }));
+  const roomList = rooms.map(room => {
+    // Get map display name and preview URL
+    let mapDisplayName = room.currentMapKey || 'Unknown';
+    let mapPreviewUrl = null;
+    
+    if (room.currentMapKey) {
+      // Parse category and key from currentMapKey if it contains '/'
+      let mapCategory = null;
+      let mapKey = room.currentMapKey;
+      if (room.currentMapKey.includes('/')) {
+        const parts = room.currentMapKey.split('/');
+        mapCategory = parts[0];
+        mapKey = parts[1];
+      }
+      
+      // Get map data from mapManager
+      const mapData = mapManager.getMap(mapKey, mapCategory);
+      if (mapData && mapData.displayName) {
+        mapDisplayName = mapData.displayName;
+      }
+      
+      // Set preview URL using the map key (UUID)
+      mapPreviewUrl = `/previews/${mapKey}.png`;
+    }
+    
+    // Get list of current players and spectators
+    const roomMembers = room.getRoomMembersData();
+    
+    // Debug logging (can be removed later)
+    if (roomMembers.length > 0) {
+      console.log(`Room ${room.name} members:`, roomMembers.map(m => ({ name: m.name, state: m.state })));
+    }
+    
+    const playersList = roomMembers
+      .filter(member => member.name && member.name !== 'Connecting...' && member.name.trim() !== '')
+      .map(member => {
+        // Clean up the name by removing " in lobby..." suffix for display
+        let displayName = member.name;
+        if (displayName.endsWith(' in lobby...')) {
+          displayName = displayName.replace(' in lobby...', '');
+        }
+        return displayName;
+      });
+    
+    return {
+      id: room.id,
+      name: room.name,
+      currentMap: room.currentMapKey,
+      mapDisplayName: mapDisplayName,
+      mapPreviewUrl: mapPreviewUrl,
+      playersList: playersList,
+      activePlayerCount: room.activePlayerCount,
+      spectatorCount: room.spectatorCount,
+      totalOccupancy: room.totalOccupancy,
+      maxPlayers: room.maxPlayers,
+      isPrivate: room.isPrivate,
+      isOfficial: room.isOfficial,
+      isJoinable: room.isJoinable,
+      // Legacy field for backward compatibility
+      playerCount: room.activePlayerCount
+    };
+  });
   res.json(roomList);
 });
 

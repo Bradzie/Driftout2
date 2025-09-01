@@ -1485,20 +1485,49 @@
       const isJoinable = room.isJoinable && !room.isPrivate;
       const isFull = room.totalOccupancy >= room.maxPlayers;
       
+      // Generate players list HTML - simple list format
+      const playersList = room.playersList || [];
+      let playersHtml = '';
+      
+      if (playersList.length === 0) {
+        playersHtml = '<div class="no-players">No players online</div>';
+      } else {
+        playersHtml = playersList.map(player => escapeHtml(player)).join(', ');
+        if (playersList.length > 5) {
+          const displayedPlayers = playersList.slice(0, 5);
+          const remainingCount = playersList.length - 5;
+          playersHtml = displayedPlayers.map(player => escapeHtml(player)).join(', ') + `, +${remainingCount} more`;
+        }
+      }
+      
       roomCard.innerHTML = `
-        <div class="room-name">
-          ${escapeHtml(room.name)}
-          ${room.isPrivate ? '<span class="room-private-badge">Private</span>' : ''}
-          ${isFull ? '<span class="room-full-badge">Full</span>' : ''}
-        </div>
-        <div class="room-info">
-          <div class="room-info-row">
-            <span>Map:</span>
-            <span>${escapeHtml(room.currentMap || 'Unknown')}</span>
+        <div class="room-card-content">
+          <div class="room-preview-container">
+            <img class="room-map-preview" src="${room.mapPreviewUrl || ''}" alt="Map preview" 
+                 onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
+            <div class="room-map-placeholder" style="display: none;">
+              <span>No Preview</span>
+            </div>
           </div>
-          <div class="room-info-row">
-            <span>Players:</span>
-            <span>${room.totalOccupancy || room.playerCount || 0}/${room.maxPlayers}</span>
+          <div class="room-details">
+            <div class="room-name">
+              ${escapeHtml(room.name)}
+              ${room.isPrivate ? '<span class="room-private-badge">Private</span>' : ''}
+              ${isFull ? '<span class="room-full-badge">Full</span>' : ''}
+            </div>
+            <div class="room-info">
+              <div class="room-info-row">
+                <span>Map:</span>
+                <span>${escapeHtml(room.mapDisplayName || 'Unknown')}</span>
+              </div>
+              <div class="room-info-row">
+                <span>Players:</span>
+                <span>${room.totalOccupancy || room.playerCount || 0}/${room.maxPlayers}</span>
+              </div>
+            </div>
+            <div class="room-players-list">
+              ${playersHtml}
+            </div>
           </div>
         </div>
         <button class="room-join-button" 
