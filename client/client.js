@@ -49,6 +49,52 @@
     showPing: false
   };
   
+  // Level system functions
+  function getXPRequiredForLevel(level) {
+    // Level 1 requires 10 XP, each subsequent level requires 20% more XP
+    return Math.round(10 * Math.pow(1.2, level - 1));
+  }
+  
+  function calculateLevel(totalXP) {
+    if (totalXP < 10) return 1;
+    
+    let level = 1;
+    let xpForCurrentLevel = 0;
+    
+    while (true) {
+      const xpRequiredForNextLevel = getXPRequiredForLevel(level);
+      if (xpForCurrentLevel + xpRequiredForNextLevel > totalXP) {
+        break;
+      }
+      xpForCurrentLevel += xpRequiredForNextLevel;
+      level++;
+    }
+    
+    return level;
+  }
+  
+  function getXPProgress(totalXP) {
+    const currentLevel = calculateLevel(totalXP);
+    
+    // Calculate total XP required for current level
+    let xpForCurrentLevel = 0;
+    for (let i = 1; i < currentLevel; i++) {
+      xpForCurrentLevel += getXPRequiredForLevel(i);
+    }
+    
+    // XP needed for next level
+    const xpRequiredForNextLevel = getXPRequiredForLevel(currentLevel);
+    const xpInCurrentLevel = totalXP - xpForCurrentLevel;
+    const progressPercent = (xpInCurrentLevel / xpRequiredForNextLevel) * 100;
+    
+    return {
+      currentLevel,
+      xpInCurrentLevel,
+      xpRequiredForNextLevel,
+      progressPercent: Math.min(100, Math.max(0, progressPercent))
+    };
+  }
+  
   // Performance tracking
   let fpsCounter = 0;
   let lastFpsUpdate = 0;
@@ -68,6 +114,9 @@
   const topToolbar = document.getElementById('topToolbar');
   const toolbarHoverZone = document.getElementById('toolbarHoverZone');
   const toolbarPlayerName = document.getElementById('toolbarPlayerName');
+  const toolbarLevelProgress = document.getElementById('toolbarLevelProgress');
+  const levelProgressFill = document.getElementById('levelProgressFill');
+  const toolbarLevelInfo = document.getElementById('toolbarLevelInfo');
   const toolbarBackBtn = document.getElementById('toolbarBackBtn');
   const toolbarLogoutBtn = document.getElementById('toolbarLogoutBtn');
   const toolbarSettingsBtn = document.getElementById('toolbarSettingsBtn');
@@ -296,9 +345,19 @@
       
       if (currentUser.isGuest) {
         displayName += ' (Guest)';
+        // Hide level progress for guests
+        toolbarLevelProgress.classList.add('hidden');
       } else {
-        // Show XP for registered users
-        displayName += ` (XP: ${currentUser.xp || 0})`;
+        // Show level for registered users
+        const totalXP = currentUser.xp || 0;
+        const progress = getXPProgress(totalXP);
+        
+        displayName += ` (Level ${progress.currentLevel})`;
+        
+        // Show and update level progress bar
+        toolbarLevelProgress.classList.remove('hidden');
+        levelProgressFill.style.width = `${progress.progressPercent}%`;
+        toolbarLevelInfo.textContent = `${progress.xpInCurrentLevel}/${progress.xpRequiredForNextLevel}`;
       }
       
       toolbarPlayerName.textContent = displayName;
@@ -311,6 +370,8 @@
     } else {
       // Hide chat when not authenticated
       chatContainer.classList.add('hidden');
+      // Hide level progress when not authenticated
+      toolbarLevelProgress.classList.add('hidden');
     }
   }
 
@@ -2940,17 +3001,35 @@
   // Handle XP gained notifications
   socket.on('xpGained', (data) => {
     if (currentUser && !currentUser.isGuest) {
+      // Calculate level before XP gain
+      const oldLevel = calculateLevel(currentUser.xp || 0);
+      
       // Update current user's XP
       currentUser.xp = (currentUser.xp || 0) + data.amount;
+      
+      // Calculate level after XP gain
+      const newLevel = calculateLevel(currentUser.xp);
       
       // Update display
       updatePlayerInfo();
       
+      // Check for level up
+      if (newLevel > oldLevel) {
+        // Level up detected!
+        console.log(`🎉 Level up! Reached level ${newLevel}`);
+        
+        // Add a visual celebration effect to the progress bar
+        levelProgressFill.style.background = 'linear-gradient(90deg, #FFD700, #FFA500)';
+        setTimeout(() => {
+          levelProgressFill.style.background = 'linear-gradient(90deg, #4CAF50, #8BC34A)';
+        }, 2000);
+        
+        // Could add more elaborate level up notifications here later
+        // For now, we show it in the console and briefly change progress bar color
+      }
+      
       // Show XP gain message
       console.log(`+${data.amount} XP: ${data.reason}`);
-      
-      // Could add a visual notification here later
-      // For now, we'll just update the toolbar display
     }
   });
 

@@ -2603,10 +2603,45 @@ input[type="number"]:focus {
   padding: 0 30px;
 }
 
+.toolbar-player-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
 .toolbar-player-name {
   color: #ffffff;
   font-weight: bold;
   font-size: 1.1rem;
+}
+
+.toolbar-level-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.level-progress-bar {
+  width: 120px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.level-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4CAF50, #8BC34A);
+  border-radius: 2px;
+  transition: width 0.5s ease;
+  width: 0%;
+}
+
+.toolbar-level-info {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.8rem;
+  font-weight: 500;
 }
 
 .toolbar-logout-btn,
@@ -2670,6 +2705,15 @@ input[type="number"]:focus {
   
   .toolbar-player-name {
     font-size: 1rem;
+  }
+  
+  .level-progress-bar {
+    width: 80px;
+    height: 3px;
+  }
+  
+  .toolbar-level-info {
+    font-size: 0.7rem;
   }
   
   .toolbar-logout-btn,

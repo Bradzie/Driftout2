@@ -14,7 +14,15 @@
   <div id="toolbarHoverZone" class="toolbar-hover-zone"></div>
   <div id="topToolbar" class="top-toolbar">
     <div class="toolbar-left">
-      <span id="toolbarPlayerName" class="toolbar-player-name"></span>
+      <div class="toolbar-player-info">
+        <span id="toolbarPlayerName" class="toolbar-player-name"></span>
+        <div id="toolbarLevelProgress" class="toolbar-level-progress hidden">
+          <div class="level-progress-bar">
+            <div id="levelProgressFill" class="level-progress-fill"></div>
+          </div>
+          <span id="toolbarLevelInfo" class="toolbar-level-info"></span>
+        </div>
+      </div>
     </div>
     <div class="toolbar-right">
       <button id="toolbarBackBtn" class="toolbar-back-btn hidden" title="Back to Game">
