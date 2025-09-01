@@ -3650,7 +3650,7 @@
           
           ctx.fillStyle = `rgba(${shapeColor.fill.join(',')}, ${ctx.globalAlpha || 1})`;
           ctx.strokeStyle = `rgba(${shapeColor.stroke.join(',')}, ${ctx.globalAlpha || 1})`;
-          ctx.lineWidth = shapeColor.strokeWidth || 2;
+          ctx.lineWidth = (shapeColor.strokeWidth || 2) * scale;
           
           const vertices = shape.vertices;
           if (vertices && vertices.length) {
