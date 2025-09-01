@@ -199,6 +199,13 @@
     menu.classList.remove('hidden');
     miniLeaderboard.classList.remove('hidden');
     
+    // Hide map editor button for guest users
+    if (currentUser && currentUser.isGuest) {
+      mapEditorButton.style.display = 'none';
+    } else {
+      mapEditorButton.style.display = 'block';
+    }
+    
     // Initialize settings system when the main menu is shown
     loadSettings();
   }
@@ -415,18 +422,33 @@
     menu.classList.remove('hidden');
     toolbarBackBtn.classList.add('hidden'); // Hide back button when leaving map editor
     
-    // Always attempt to connect to official room when returning from map editor
+    // Reset room state and reconnect for smart room assignment
     try {
-      // Disconnect current connection if it exists
-      if (socket && socket.connected) {
-        socket.disconnect();
-      }
+      // Clear current room ID to force smart assignment
+      currentRoomId = null;
       
-      // Connect to official room in spectator mode
-      connectToRoom('official');
+      // If socket is not connected (which happens when entering map editor), reconnect
+      if (!socket || !socket.connected) {
+        // Reconnect the socket
+        socket.connect();
+        
+        // Wait for connection to establish, then start spectating (use once to avoid duplicate listeners)
+        socket.once('connect', () => {
+          startSpectating(); // This will use smart assignment since currentRoomId is null
+        });
+        
+        // Fallback timeout in case connection takes too long
+        setTimeout(() => {
+          if (!socket || !socket.connected) {
+            showMenuDisconnectionWarning();
+          }
+        }, 3000);
+      } else {
+        // Socket is connected, start spectating immediately
+        startSpectating();
+      }
     } catch (error) {
-      console.error('Failed to reconnect to official room:', error);
-      // Show disconnect warning if connection fails
+      console.error('Failed to start spectating after leaving map editor:', error);
       showMenuDisconnectionWarning();
     }
   }
@@ -2746,7 +2768,13 @@
     switchButton.style.display = 'block';
     joinButton.style.display = 'block';
     roomBrowserButton.style.display = 'block'; // Show Browse Rooms button
-    mapEditorButton.style.display = 'block'; // Show Map Editor button
+    
+    // Only show Map Editor button for non-guest users
+    if (currentUser && currentUser.isGuest) {
+      mapEditorButton.style.display = 'none';
+    } else {
+      mapEditorButton.style.display = 'block';
+    }
     
     // Hide the warning template
     menuDisconnectionWarning.classList.add('hidden');
