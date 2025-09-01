@@ -21,6 +21,21 @@ const DEBUG_MODE = false;
 // Initialize database
 const userDb = new UserDatabase();
 
+// Session management for preventing multiple logins
+// Track active sessions: userId -> Set of socketIds
+const activeUserSessions = new Map();
+// Track guest sessions: sessionId -> socketId
+const activeGuestSessions = new Map();
+
+// Configuration for duplicate login handling
+const DUPLICATE_LOGIN_POLICY = {
+  KICK_EXISTING: 'kick_existing',    // Disconnect existing sessions and allow new login
+  REJECT_NEW: 'reject_new'           // Reject new login attempt
+};
+
+// Current policy - can be changed as needed
+const currentDuplicateLoginPolicy = DUPLICATE_LOGIN_POLICY.KICK_EXISTING;
+
 // Configure session middleware
 const sessionMiddleware = session({
   secret: process.env.SESSION_SECRET || 'driftout-secret-key-change-in-production',
@@ -341,20 +356,68 @@ app.get('/api/debug', (req, res) => {
 
 // Room management API
 app.get('/api/rooms', (req, res) => {
-  const roomList = rooms.map(room => ({
-    id: room.id,
-    name: room.name,
-    currentMap: room.currentMapKey,
-    activePlayerCount: room.activePlayerCount,
-    spectatorCount: room.spectatorCount,
-    totalOccupancy: room.totalOccupancy,
-    maxPlayers: room.maxPlayers,
-    isPrivate: room.isPrivate,
-    isOfficial: room.isOfficial,
-    isJoinable: room.isJoinable,
-    // Legacy field for backward compatibility
-    playerCount: room.activePlayerCount
-  }));
+  const roomList = rooms.map(room => {
+    // Get map display name and preview URL
+    let mapDisplayName = room.currentMapKey || 'Unknown';
+    let mapPreviewUrl = null;
+    
+    if (room.currentMapKey) {
+      // Parse category and key from currentMapKey if it contains '/'
+      let mapCategory = null;
+      let mapKey = room.currentMapKey;
+      if (room.currentMapKey.includes('/')) {
+        const parts = room.currentMapKey.split('/');
+        mapCategory = parts[0];
+        mapKey = parts[1];
+      }
+      
+      // Get map data from mapManager
+      const mapData = mapManager.getMap(mapKey, mapCategory);
+      if (mapData && mapData.displayName) {
+        mapDisplayName = mapData.displayName;
+      }
+      
+      // Set preview URL using the map key (UUID)
+      mapPreviewUrl = `/previews/${mapKey}.png`;
+    }
+    
+    // Get list of current players and spectators
+    const roomMembers = room.getRoomMembersData();
+    
+    // Debug logging (can be removed later)
+    if (roomMembers.length > 0) {
+      console.log(`Room ${room.name} members:`, roomMembers.map(m => ({ name: m.name, state: m.state })));
+    }
+    
+    const playersList = roomMembers
+      .filter(member => member.name && member.name !== 'Connecting...' && member.name.trim() !== '')
+      .map(member => {
+        // Clean up the name by removing " in lobby..." suffix for display
+        let displayName = member.name;
+        if (displayName.endsWith(' in lobby...')) {
+          displayName = displayName.replace(' in lobby...', '');
+        }
+        return displayName;
+      });
+    
+    return {
+      id: room.id,
+      name: room.name,
+      currentMap: room.currentMapKey,
+      mapDisplayName: mapDisplayName,
+      mapPreviewUrl: mapPreviewUrl,
+      playersList: playersList,
+      activePlayerCount: room.activePlayerCount,
+      spectatorCount: room.spectatorCount,
+      totalOccupancy: room.totalOccupancy,
+      maxPlayers: room.maxPlayers,
+      isPrivate: room.isPrivate,
+      isOfficial: room.isOfficial,
+      isJoinable: room.isJoinable,
+      // Legacy field for backward compatibility
+      playerCount: room.activePlayerCount
+    };
+  });
   res.json(roomList);
 });
 
@@ -481,6 +544,24 @@ app.post('/api/auth/login', async (req, res) => {
     const result = await userDb.loginUser(email, password);
     
     if (result.success) {
+      const userId = result.user.id;
+      const existingSessions = getUserActiveSessions(userId);
+      
+      // Check for existing active sessions
+      if (existingSessions.size > 0) {
+        console.log(`User ${userId} attempting to login with ${existingSessions.size} existing active sessions`);
+        
+        if (currentDuplicateLoginPolicy === DUPLICATE_LOGIN_POLICY.REJECT_NEW) {
+          return res.status(409).json({ 
+            error: 'Account is already logged in from another location. Please log out from the other session first.',
+            errorCode: 'ALREADY_LOGGED_IN'
+          });
+        } else if (currentDuplicateLoginPolicy === DUPLICATE_LOGIN_POLICY.KICK_EXISTING) {
+          // We'll kick existing sessions after socket connection is established
+          console.log(`Will kick existing sessions for user ${userId} after socket connection`);
+        }
+      }
+      
       req.session.userId = result.user.id;
       req.session.username = result.user.username;
       req.session.isGuest = false;
@@ -516,7 +597,7 @@ app.post('/api/auth/guest', (req, res) => {
       return res.status(400).json({ error: 'Guest name must be between 1 and 20 characters' });
     }
     
-    // Generate guest session
+    // Generate guest session (allow multiple guests and guest name changes)
     req.session.userId = null;
     req.session.username = name;
     req.session.isGuest = true;
@@ -542,6 +623,31 @@ app.post('/api/auth/guest', (req, res) => {
 });
 
 app.post('/api/auth/logout', (req, res) => {
+  // Clean up active sessions before destroying the session
+  if (req.session && req.session.username) {
+    const session = req.session;
+    if (session.isGuest) {
+      // Clean up guest session
+      unregisterGuestSession(req.sessionID);
+    } else if (session.userId) {
+      // Clean up all active sessions for this user
+      const userId = session.userId;
+      const activeSessions = getUserActiveSessions(userId);
+      for (const socketId of activeSessions) {
+        const socket = io.sockets.sockets.get(socketId);
+        if (socket) {
+          console.log(`Logging out user ${userId}, gracefully logging out socket ${socketId}`);
+          socket.emit('forceLogout', { 
+            reason: 'You have been logged out.' 
+          });
+          // Note: We don't disconnect the socket, just log them out gracefully
+        }
+      }
+      // Clear all sessions for this user
+      activeUserSessions.delete(userId);
+    }
+  }
+
   req.session.destroy((err) => {
     if (err) {
       console.error('Logout error:', err);
@@ -553,18 +659,52 @@ app.post('/api/auth/logout', (req, res) => {
 
 app.get('/api/auth/session', (req, res) => {
   if (req.session.username) {
+    let userResponse = {
+      id: req.session.userId,
+      username: req.session.username,
+      isGuest: req.session.isGuest || false
+    };
+
+    // For registered users, get full user data including XP and isDev
+    if (req.session.userId && !req.session.isGuest) {
+      const userData = userDb.getUserById(req.session.userId);
+      if (userData) {
+        userResponse.xp = userData.xp || 0;
+        userResponse.isDev = !!userData.isDev;
+      }
+    }
+
     res.json({
       authenticated: true,
-      user: {
-        id: req.session.userId,
-        username: req.session.username,
-        isGuest: req.session.isGuest || false
-      }
+      user: userResponse
     });
   } else {
     res.json({ authenticated: false });
   }
 });
+
+// Debug endpoint to check active sessions (only available in debug mode)
+if (DEBUG_MODE) {
+  app.get('/api/debug/sessions', (req, res) => {
+    const userSessionsInfo = {};
+    for (const [userId, sockets] of activeUserSessions.entries()) {
+      userSessionsInfo[userId] = Array.from(sockets);
+    }
+    
+    const guestSessionsInfo = {};
+    for (const [sessionId, socketId] of activeGuestSessions.entries()) {
+      guestSessionsInfo[sessionId] = socketId;
+    }
+    
+    res.json({
+      userSessions: userSessionsInfo,
+      guestSessions: guestSessionsInfo,
+      totalUserSessions: activeUserSessions.size,
+      totalGuestSessions: activeGuestSessions.size,
+      currentPolicy: currentDuplicateLoginPolicy
+    });
+  });
+}
 
 const PORT = process.env.PORT || 3000;
 
@@ -574,6 +714,64 @@ const { abilityRegistry, SpikeTrapAbility } = require('./abilities');
 const MapManager = require('./MapManager');
 const mapManager = new MapManager('./maps');
 // Legacy global track bodies removed - now handled per room
+
+// Session management utility functions
+function registerUserSession(userId, socketId) {
+  if (!activeUserSessions.has(userId)) {
+    activeUserSessions.set(userId, new Set());
+  }
+  activeUserSessions.get(userId).add(socketId);
+  console.log(`Registered session for user ${userId}, socket ${socketId}`);
+}
+
+function unregisterUserSession(userId, socketId) {
+  if (activeUserSessions.has(userId)) {
+    activeUserSessions.get(userId).delete(socketId);
+    if (activeUserSessions.get(userId).size === 0) {
+      activeUserSessions.delete(userId);
+    }
+    console.log(`Unregistered session for user ${userId}, socket ${socketId}`);
+  }
+}
+
+function getUserActiveSessions(userId) {
+  return activeUserSessions.get(userId) || new Set();
+}
+
+function registerGuestSession(sessionId, socketId) {
+  activeGuestSessions.set(sessionId, socketId);
+  console.log(`Registered guest session ${sessionId}, socket ${socketId}`);
+}
+
+function unregisterGuestSession(sessionId) {
+  if (activeGuestSessions.has(sessionId)) {
+    const socketId = activeGuestSessions.get(sessionId);
+    activeGuestSessions.delete(sessionId);
+    console.log(`Unregistered guest session ${sessionId}, socket ${socketId}`);
+  }
+}
+
+function isGuestSessionActive(sessionId) {
+  return activeGuestSessions.has(sessionId);
+}
+
+function kickExistingSessions(userId, currentSocketId) {
+  const existingSessions = getUserActiveSessions(userId);
+  for (const socketId of existingSessions) {
+    if (socketId !== currentSocketId) {
+      const socket = io.sockets.sockets.get(socketId);
+      if (socket) {
+        console.log(`Logging out existing session: user ${userId}, socket ${socketId}`);
+        socket.emit('forceLogout', { 
+          reason: 'Your account has been logged in from another location.' 
+        });
+        // Note: We don't disconnect the socket, just log them out gracefully
+      }
+      // Clean up the session tracking
+      unregisterUserSession(userId, socketId);
+    }
+  }
+}
 
 function pointInPolygon(x, y, vertices) {
   let inside = false;
@@ -765,6 +963,83 @@ const MIN_DAMAGE_VELOCITY = 0;  // Ignore very slow collisions
 const MAX_DAMAGE_MULTIPLIER = 5.0;  // Cap damage to prevent one-hit kills
 const MIN_DAMAGE_MULTIPLIER = 1.0;  // Minimum damage scaling
 
+// Angle-based collision damage constants
+const MIN_ANGLE_MULTIPLIER = 0.12;  // Minimum damage for grazing impacts (20%)
+const MAX_ANGLE_MULTIPLIER = 1.0;  // Maximum damage for head-on impacts (100%)
+const ANGLE_CURVE_POWER = 1.0;     // Power for cosine curve shaping (1.0 = linear cosine)
+
+// Helper functions for angle-based damage calculation
+function calculateImpactAngle(relativeVelocity, collisionNormal) {
+  // Calculate the angle between relative velocity vector and collision normal
+  const velMagnitude = Math.sqrt(relativeVelocity.x * relativeVelocity.x + relativeVelocity.y * relativeVelocity.y);
+  
+  // Avoid division by zero
+  if (velMagnitude < 0.001) {
+    return Math.PI / 2; // Assume 90-degree angle for very slow collisions
+  }
+  
+  // Calculate dot product between velocity and normal
+  const dotProduct = relativeVelocity.x * collisionNormal.x + relativeVelocity.y * collisionNormal.y;
+  
+  // Calculate angle (0 = head-on, PI/2 = grazing)
+  const cosAngle = Math.abs(dotProduct) / velMagnitude;
+  return Math.acos(Math.max(0, Math.min(1, cosAngle))); // Clamp to prevent NaN
+}
+
+function getAngleDamageMultiplier(impactAngle) {
+  // Convert angle to damage multiplier using cosine curve
+  // 0 degrees (head-on) = MAX_ANGLE_MULTIPLIER
+  // 90 degrees (grazing) = MIN_ANGLE_MULTIPLIER
+  const cosValue = Math.cos(impactAngle);
+  const normalizedCos = Math.pow(Math.max(0, cosValue), ANGLE_CURVE_POWER);
+  
+  return MIN_ANGLE_MULTIPLIER + (MAX_ANGLE_MULTIPLIER - MIN_ANGLE_MULTIPLIER) * normalizedCos;
+}
+
+function getCollisionNormal(pair, bodyA, bodyB) {
+  // Extract collision normal from Matter.js collision pair
+  if (pair.collision && pair.collision.normal) {
+    // Use the collision normal, ensuring it points from bodyA to bodyB
+    let normal = pair.collision.normal;
+    
+    // Matter.js collision normal might need to be flipped based on body order
+    if (pair.bodyA === bodyB) {
+      normal = { x: -normal.x, y: -normal.y };
+    }
+    
+    return normal;
+  }
+  
+  // Fallback: calculate normal from body positions (for static bodies like walls)
+  if (bodyB.isStatic && !bodyA.isStatic) {
+    // For wall collisions, calculate normal from car center to contact point
+    if (pair.collision && pair.collision.supports && pair.collision.supports[0]) {
+      const contactPoint = pair.collision.supports[0];
+      const carCenter = bodyA.position;
+      
+      const dx = contactPoint.x - carCenter.x;
+      const dy = contactPoint.y - carCenter.y;
+      const length = Math.sqrt(dx * dx + dy * dy);
+      
+      if (length > 0.001) {
+        return { x: dx / length, y: dy / length };
+      }
+    }
+  }
+  
+  // Final fallback: use vector between body centers
+  const dx = bodyB.position.x - bodyA.position.x;
+  const dy = bodyB.position.y - bodyA.position.y;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  
+  if (length > 0.001) {
+    return { x: dx / length, y: dy / length };
+  }
+  
+  // Default to horizontal normal if all else fails
+  return { x: 1, y: 0 };
+}
+
 class Car {
   constructor(id, type, roomId, socketId, name, room = null) {
     this.id = id;
@@ -807,11 +1082,22 @@ class Car {
     this.isGhost = false;
     this.trapDamageHistory = new Map();
     const roomMapKey = this.room ? this.room.currentMapKey : 'square'; // fallback
-    const mapDef = mapManager.getMap(roomMapKey);
+    
+    // Parse category and key from roomMapKey if it contains '/'
+    let mapCategory = null;
+    let mapKey = roomMapKey;
+    if (roomMapKey && roomMapKey.includes('/')) {
+      const parts = roomMapKey.split('/');
+      mapCategory = parts[0];
+      mapKey = parts[1];
+    }
+    
+    const mapDef = mapManager.getMap(mapKey, mapCategory);
     let startPos = { x: 0, y: 0 };
     this.checkpointsVisited = new Set()
     this._cpLastSides = new Map()
     this.hasLeftStartSinceLap = false
+    
     if (mapDef && mapDef.start) {
       if (mapDef.start.vertices && mapDef.start.vertices.length) {
         const verts = mapDef.start.vertices;
@@ -821,6 +1107,14 @@ class Car {
       } else if (typeof mapDef.start.x === 'number' && typeof mapDef.start.y === 'number') {
         startPos = mapDef.start;
       }
+    } else if (mapDef) {
+      // No start area defined, calculate a reasonable spawn position
+      console.log(`⚠️ Map ${roomMapKey} has no start area defined, calculating fallback spawn position`);
+      startPos = this.calculateFallbackSpawnPosition(mapDef);
+    } else {
+      // No map found at all, use safe default
+      console.log(`⚠️ Map ${roomMapKey} not found, using default spawn position`);
+      startPos = { x: 100, y: 0 }; // Better than (0,0)
     }
     this.checkpointsVisited = new Set();
     const def = CAR_TYPES[this.type]
@@ -974,7 +1268,17 @@ class Car {
 
     const pos = this.body.position
     const roomMapKey = this.room ? this.room.currentMapKey : currentMapKey;
-    const map = mapManager.getMap(roomMapKey);
+    
+    // Parse category and key from roomMapKey if it contains '/'
+    let mapCategory = null;
+    let mapKey = roomMapKey;
+    if (roomMapKey && roomMapKey.includes('/')) {
+      const parts = roomMapKey.split('/');
+      mapCategory = parts[0];
+      mapKey = parts[1];
+    }
+    
+    const map = mapManager.getMap(mapKey, mapCategory);
     const checkpoints = map?.checkpoints || []
 
     for (let i = 0; i < checkpoints.length; i++) {
@@ -1015,7 +1319,7 @@ class Car {
       this._cpLastSides.set(cp.id, side)
     }
     let insideStart = false
-    const mapDef = mapManager.getMap(roomMapKey)
+    const mapDef = mapManager.getMap(mapKey, mapCategory)
     if (mapDef?.start?.vertices?.length) {
       insideStart = pointInPolygon(this.body.position.x, this.body.position.y, mapDef.start.vertices)
     }
@@ -1055,7 +1359,17 @@ class Car {
   }
   resetCar() {
     const roomMapKey = this.room ? this.room.currentMapKey : currentMapKey;
-    const map = mapManager.getMap(roomMapKey);
+    
+    // Parse category and key from roomMapKey if it contains '/'
+    let mapCategory = null;
+    let mapKey = roomMapKey;
+    if (roomMapKey && roomMapKey.includes('/')) {
+      const parts = roomMapKey.split('/');
+      mapCategory = parts[0];
+      mapKey = parts[1];
+    }
+    
+    const map = mapManager.getMap(mapKey, mapCategory);
     let startPos = { x: 0, y: 0 }
     if (map.start?.vertices?.length) {
       const verts = map.start.vertices
@@ -1089,7 +1403,7 @@ class Car {
     Matter.Body.setAngularVelocity(this.body, 0);
     Matter.Body.setAngle(this.body, 0);
   }
-  applyCollisionDamage(otherBody, relativeSpeed, damageScale = 1.0) {
+  applyCollisionDamage(otherBody, relativeSpeed, damageScale = 1.0, collisionPair = null) {
     // Don't take damage if god mode is enabled
     if (this.godMode) return;
     
@@ -1104,17 +1418,34 @@ class Car {
     // Cap the damage multiplier to prevent one-hit kills
     const damageMultiplier = Math.max(MIN_DAMAGE_MULTIPLIER, Math.min(MAX_DAMAGE_MULTIPLIER, densityRatio));
     
-    // Pure velocity-based damage calculation
+    // Calculate angle-based damage multiplier
+    let angleMultiplier = 1.0; // Default to full damage if no collision pair data
+    if (collisionPair) {
+      // Calculate relative velocity vector
+      const thisVelocity = this.body.velocity;
+      const otherVelocity = otherBody.velocity || { x: 0, y: 0 }; // Static bodies have no velocity
+      const relativeVelocity = {
+        x: thisVelocity.x - otherVelocity.x,
+        y: thisVelocity.y - otherVelocity.y
+      };
+      
+      // Get collision normal and calculate impact angle
+      const collisionNormal = getCollisionNormal(collisionPair, this.body, otherBody);
+      const impactAngle = calculateImpactAngle(relativeVelocity, collisionNormal);
+      angleMultiplier = getAngleDamageMultiplier(impactAngle);
+    }
+    
+    // Velocity-based damage calculation with angle scaling
     let damage;
     if (otherBody.isStatic) {
       // Static wall collisions use different scale
-      damage = (relativeSpeed * 1.5) * WALL_VELOCITY_DAMAGE_SCALE * damageMultiplier * damageScale;
+      damage = (relativeSpeed * 1.5) * WALL_VELOCITY_DAMAGE_SCALE * damageMultiplier * damageScale * angleMultiplier;
     } else {
       // Dynamic body collisions (car vs car, car vs dynamic object)
-      damage = (relativeSpeed * 1.5) * BASE_VELOCITY_DAMAGE_SCALE * damageMultiplier * damageScale;
+      damage = (relativeSpeed * 1.5) * BASE_VELOCITY_DAMAGE_SCALE * damageMultiplier * damageScale * angleMultiplier;
     }
 
-    console.log(`Collision damage: ${damage.toFixed(2)} (relativeSpeed=${relativeSpeed.toFixed(2)}, densityRatio=${densityRatio.toFixed(2)}, damageScale=${damageScale})`);
+    console.log(`Collision damage: ${damage.toFixed(2)} (relativeSpeed=${relativeSpeed.toFixed(2)}, densityRatio=${densityRatio.toFixed(2)}, angleMultiplier=${angleMultiplier.toFixed(2)}, damageScale=${damageScale})`);
     
     this.currentHealth -= damage;
 
@@ -1142,6 +1473,59 @@ class Car {
         bestLapTime: this.bestLapTime
       });
     }
+  }
+  
+  // Calculate a reasonable spawn position when no start area is defined
+  calculateFallbackSpawnPosition(mapDef) {
+    if (!mapDef || !mapDef.shapes || !Array.isArray(mapDef.shapes)) {
+      // No shapes to work with, use a safe default
+      return { x: 100, y: 0 };
+    }
+    
+    // Find all vertices from all shapes to calculate map bounds
+    let allVertices = [];
+    for (const shape of mapDef.shapes) {
+      if (shape.vertices && Array.isArray(shape.vertices)) {
+        allVertices = allVertices.concat(shape.vertices);
+      }
+    }
+    
+    if (allVertices.length === 0) {
+      // No vertices found, use safe default
+      return { x: 100, y: 0 };
+    }
+    
+    // Calculate map center
+    const avgX = allVertices.reduce((sum, v) => sum + v.x, 0) / allVertices.length;
+    const avgY = allVertices.reduce((sum, v) => sum + v.y, 0) / allVertices.length;
+    
+    // Find map bounds
+    const minX = Math.min(...allVertices.map(v => v.x));
+    const maxX = Math.max(...allVertices.map(v => v.x));
+    const minY = Math.min(...allVertices.map(v => v.y));
+    const maxY = Math.max(...allVertices.map(v => v.y));
+    
+    // Try to find a position that's likely to be in open space
+    // Use the center, but offset towards the top or bottom to avoid walls
+    const mapWidth = maxX - minX;
+    const mapHeight = maxY - minY;
+    
+    // Offset from center towards what's likely to be open space
+    let spawnX = avgX;
+    let spawnY = avgY - mapHeight * 0.2; // Offset towards top of map
+    
+    // If the offset puts us too close to boundaries, try other positions
+    if (spawnY < minY + 50) {
+      spawnY = avgY + mapHeight * 0.2; // Try bottom
+    }
+    
+    // Ensure we're not too close to map edges
+    spawnX = Math.max(minX + 100, Math.min(maxX - 100, spawnX));
+    spawnY = Math.max(minY + 100, Math.min(maxY - 100, spawnY));
+    
+    console.log(`📍 Calculated fallback spawn position: (${Math.round(spawnX)}, ${Math.round(spawnY)}) for map center: (${Math.round(avgX)}, ${Math.round(avgY)})`);
+    
+    return { x: spawnX, y: spawnY };
   }
 }
 
@@ -1316,20 +1700,20 @@ class Room {
           
           // Apply mutual collision damage with overflow mechanics
           if (carA && carB && !carA.isGhost && !carB.isGhost) {
-            this.applyMutualCollisionDamage(carA, carB, relativeSpeed);
+            this.applyMutualCollisionDamage(carA, carB, relativeSpeed, pair);
           } else {
             // Handle single car collisions (with walls, etc.)
             if (carA && !carA.isGhost) {
               // Check if bodyB is a dynamic object with damageScale
               const damageScale = (bodyB.dynamicObject && typeof bodyB.dynamicObject.damageScale === 'number') 
                 ? bodyB.dynamicObject.damageScale : 1.0;
-              carA.applyCollisionDamage(bodyB, relativeSpeed, damageScale);
+              carA.applyCollisionDamage(bodyB, relativeSpeed, damageScale, pair);
             }
             if (carB && !carB.isGhost) {
               // Check if bodyA is a dynamic object with damageScale
               const damageScale = (bodyA.dynamicObject && typeof bodyA.dynamicObject.damageScale === 'number') 
                 ? bodyA.dynamicObject.damageScale : 1.0;
-              carB.applyCollisionDamage(bodyA, relativeSpeed, damageScale);
+              carB.applyCollisionDamage(bodyA, relativeSpeed, damageScale, pair);
             }
           }
           
@@ -1349,7 +1733,7 @@ class Room {
   }
   
   // Move collision damage methods from global scope to Room scope
-  applyMutualCollisionDamage(carA, carB, relativeSpeed) {
+  applyMutualCollisionDamage(carA, carB, relativeSpeed, collisionPair = null) {
     if (!carA || !carB || carA.godMode || carB.godMode || carA.isGhost || carB.isGhost) return;
     
     // Ignore very slow collisions
@@ -1359,9 +1743,9 @@ class Room {
     const carAInitialHealth = carA.currentHealth;
     const carBInitialHealth = carB.currentHealth;
     
-    // Calculate potential damage for both cars using velocity-based formulas
-    const damageA = this.calculateCollisionDamage(carA, carB.body, relativeSpeed);
-    const damageB = this.calculateCollisionDamage(carB, carA.body, relativeSpeed);
+    // Calculate potential damage for both cars using velocity-based formulas with angle scaling
+    const damageA = this.calculateCollisionDamage(carA, carB.body, relativeSpeed, collisionPair);
+    const damageB = this.calculateCollisionDamage(carB, carA.body, relativeSpeed, collisionPair);
     
     // Determine which car has less remaining health
     const carAHealthRemaining = carA.currentHealth;
@@ -1431,7 +1815,7 @@ class Room {
     }
   }
   
-  calculateCollisionDamage(car, otherBody, relativeSpeed, damageScale = 1.0) {
+  calculateCollisionDamage(car, otherBody, relativeSpeed, collisionPair = null, damageScale = 1.0) {
     // Ignore very slow collisions
     if (relativeSpeed < MIN_DAMAGE_VELOCITY) return 0;
     
@@ -1443,13 +1827,30 @@ class Room {
     // Cap the damage multiplier to prevent one-hit kills
     const damageMultiplier = Math.max(MIN_DAMAGE_MULTIPLIER, Math.min(MAX_DAMAGE_MULTIPLIER, densityRatio));
     
-    // Pure velocity-based damage calculation
+    // Calculate angle-based damage multiplier
+    let angleMultiplier = 1.0; // Default to full damage if no collision pair data
+    if (collisionPair) {
+      // Calculate relative velocity vector
+      const thisVelocity = car.body.velocity;
+      const otherVelocity = otherBody.velocity || { x: 0, y: 0 }; // Static bodies have no velocity
+      const relativeVelocity = {
+        x: thisVelocity.x - otherVelocity.x,
+        y: thisVelocity.y - otherVelocity.y
+      };
+      
+      // Get collision normal and calculate impact angle
+      const collisionNormal = getCollisionNormal(collisionPair, car.body, otherBody);
+      const impactAngle = calculateImpactAngle(relativeVelocity, collisionNormal);
+      angleMultiplier = getAngleDamageMultiplier(impactAngle);
+    }
+    
+    // Velocity-based damage calculation with angle scaling
     if (otherBody.isStatic) {
       // Static wall collisions use different scale
-      return relativeSpeed * WALL_VELOCITY_DAMAGE_SCALE * damageMultiplier * damageScale;
+      return relativeSpeed * WALL_VELOCITY_DAMAGE_SCALE * damageMultiplier * damageScale * angleMultiplier;
     } else {
       // Dynamic body collisions (car vs car, car vs dynamic object)
-      return relativeSpeed * BASE_VELOCITY_DAMAGE_SCALE * damageMultiplier * damageScale;
+      return relativeSpeed * BASE_VELOCITY_DAMAGE_SCALE * damageMultiplier * damageScale * angleMultiplier;
     }
   }
   
@@ -2073,6 +2474,24 @@ io.on('connection', (socket) => {
     isGuest: socket.request.session?.isGuest
   });
   
+  // Register session for duplicate login prevention
+  if (socket.request.session && socket.request.session.username) {
+    const session = socket.request.session;
+    if (session.isGuest) {
+      // Register guest session
+      registerGuestSession(socket.request.sessionID, socket.id);
+    } else if (session.userId) {
+      // Register user session and handle existing sessions
+      const userId = session.userId;
+      registerUserSession(userId, socket.id);
+      
+      // If policy is to kick existing sessions, do it now
+      if (currentDuplicateLoginPolicy === DUPLICATE_LOGIN_POLICY.KICK_EXISTING) {
+        kickExistingSessions(userId, socket.id);
+      }
+    }
+  }
+  
   let currentRoom = null;
   let myCar = null;
   let clientSupportsBinary = false;
@@ -2687,6 +3106,18 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
+    // Clean up session tracking for duplicate login prevention
+    if (socket.request.session && socket.request.session.username) {
+      const session = socket.request.session;
+      if (session.isGuest) {
+        // Clean up guest session
+        unregisterGuestSession(socket.request.sessionID);
+      } else if (session.userId) {
+        // Clean up user session
+        unregisterUserSession(session.userId, socket.id);
+      }
+    }
+    
     // Clean up from all rooms using new membership system
     for (const room of rooms) {
       if (room.hasMember(socket.id)) {
@@ -2741,6 +3172,19 @@ function gameLoop() {
       }
         if (roundWinner && !room.winMessageSent) {
           const winnerName = roundWinner.name;
+          
+          // Award XP to registered user winners
+          const winnerSocket = io.sockets.sockets.get(roundWinner.socketId);
+          if (winnerSocket && winnerSocket.request.session && winnerSocket.request.session.userId && !winnerSocket.request.session.isGuest) {
+            const userId = winnerSocket.request.session.userId;
+            const xpAwarded = userDb.addXP(userId, 10);
+            if (xpAwarded) {
+              console.log(`Awarded 10 XP to user ${userId} (${winnerName}) for race win`);
+              
+              // Notify the winner about XP gain
+              winnerSocket.emit('xpGained', { amount: 10, reason: 'Race Win' });
+            }
+          }
           
           // Broadcast win message to kill feed (only once per race)
           for (const [sid, car] of room.players.entries()) {

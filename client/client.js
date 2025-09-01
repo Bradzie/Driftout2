@@ -2,6 +2,7 @@
   let socket = io();
   let currentMap = null;
   let currentUser = null;
+  let needSessionRefresh = false;
   
   // Fake ping functionality
   let fakePingEnabled = false;
@@ -48,6 +49,52 @@
     showPing: false
   };
   
+  // Level system functions
+  function getXPRequiredForLevel(level) {
+    // Level 1 requires 10 XP, each subsequent level requires 20% more XP
+    return Math.round(10 * Math.pow(1.2, level - 1));
+  }
+  
+  function calculateLevel(totalXP) {
+    if (totalXP < 10) return 1;
+    
+    let level = 1;
+    let xpForCurrentLevel = 0;
+    
+    while (true) {
+      const xpRequiredForNextLevel = getXPRequiredForLevel(level);
+      if (xpForCurrentLevel + xpRequiredForNextLevel > totalXP) {
+        break;
+      }
+      xpForCurrentLevel += xpRequiredForNextLevel;
+      level++;
+    }
+    
+    return level;
+  }
+  
+  function getXPProgress(totalXP) {
+    const currentLevel = calculateLevel(totalXP);
+    
+    // Calculate total XP required for current level
+    let xpForCurrentLevel = 0;
+    for (let i = 1; i < currentLevel; i++) {
+      xpForCurrentLevel += getXPRequiredForLevel(i);
+    }
+    
+    // XP needed for next level
+    const xpRequiredForNextLevel = getXPRequiredForLevel(currentLevel);
+    const xpInCurrentLevel = totalXP - xpForCurrentLevel;
+    const progressPercent = (xpInCurrentLevel / xpRequiredForNextLevel) * 100;
+    
+    return {
+      currentLevel,
+      xpInCurrentLevel,
+      xpRequiredForNextLevel,
+      progressPercent: Math.min(100, Math.max(0, progressPercent))
+    };
+  }
+  
   // Performance tracking
   let fpsCounter = 0;
   let lastFpsUpdate = 0;
@@ -67,6 +114,9 @@
   const topToolbar = document.getElementById('topToolbar');
   const toolbarHoverZone = document.getElementById('toolbarHoverZone');
   const toolbarPlayerName = document.getElementById('toolbarPlayerName');
+  const toolbarLevelProgress = document.getElementById('toolbarLevelProgress');
+  const levelProgressFill = document.getElementById('levelProgressFill');
+  const toolbarLevelInfo = document.getElementById('toolbarLevelInfo');
   const toolbarBackBtn = document.getElementById('toolbarBackBtn');
   const toolbarLogoutBtn = document.getElementById('toolbarLogoutBtn');
   const toolbarSettingsBtn = document.getElementById('toolbarSettingsBtn');
@@ -197,34 +247,20 @@
     authScreen.classList.add('hidden');
     menu.classList.remove('hidden');
     miniLeaderboard.classList.remove('hidden');
-    loadCarTypes();
-  }
-  
-  
-  async function loadCarTypes() {
-    try {
-      const response = await fetch('/api/cars');
-      if (response.ok) {
-        const carTypes = await response.json();
-        if (carTypes && carTypes.length > 0) {
-          // Load the first car type as default
-          updateCarCard(carTypes[0]);
-        }
-      }
-      
-      // Initialize settings system when the main menu is shown
-      loadSettings();
-    } catch (error) {
-      console.error('Failed to load car types:', error);
+    
+    // Hide map editor button for guest users
+    if (currentUser && currentUser.isGuest) {
+      mapEditorButton.style.display = 'none';
+    } else {
+      mapEditorButton.style.display = 'block';
     }
+    
+    // Initialize settings system when the main menu is shown
+    loadSettings();
   }
   
-  function updateCarCard(carType) {
-    if (carType) {
-      carName.textContent = carType.name || 'Unknown Car';
-      // Update other car display elements as needed
-    }
-  }
+  
+  
 
   function refreshSocketSession() {
     console.log('Refreshing socket session after authentication...');
@@ -305,7 +341,25 @@
 
   function updatePlayerInfo() {
     if (currentUser) {
-      const displayName = currentUser.username + (currentUser.isGuest ? ' (Guest)' : '');
+      let displayName = currentUser.username;
+      
+      if (currentUser.isGuest) {
+        displayName += ' (Guest)';
+        // Hide level progress for guests
+        toolbarLevelProgress.classList.add('hidden');
+      } else {
+        // Show level for registered users
+        const totalXP = currentUser.xp || 0;
+        const progress = getXPProgress(totalXP);
+        
+        displayName += ` (Level ${progress.currentLevel})`;
+        
+        // Show and update level progress bar
+        toolbarLevelProgress.classList.remove('hidden');
+        levelProgressFill.style.width = `${progress.progressPercent}%`;
+        toolbarLevelInfo.textContent = `${progress.xpInCurrentLevel}/${progress.xpRequiredForNextLevel}`;
+      }
+      
       toolbarPlayerName.textContent = displayName;
       
       // Also set the player name for chat
@@ -316,6 +370,8 @@
     } else {
       // Hide chat when not authenticated
       chatContainer.classList.add('hidden');
+      // Hide level progress when not authenticated
+      toolbarLevelProgress.classList.add('hidden');
     }
   }
 
@@ -427,18 +483,33 @@
     menu.classList.remove('hidden');
     toolbarBackBtn.classList.add('hidden'); // Hide back button when leaving map editor
     
-    // Always attempt to connect to official room when returning from map editor
+    // Reset room state and reconnect for smart room assignment
     try {
-      // Disconnect current connection if it exists
-      if (socket && socket.connected) {
-        socket.disconnect();
-      }
+      // Clear current room ID to force smart assignment
+      currentRoomId = null;
       
-      // Connect to official room in spectator mode
-      connectToRoom('official');
+      // If socket is not connected (which happens when entering map editor), reconnect
+      if (!socket || !socket.connected) {
+        // Reconnect the socket
+        socket.connect();
+        
+        // Wait for connection to establish, then start spectating (use once to avoid duplicate listeners)
+        socket.once('connect', () => {
+          startSpectating(); // This will use smart assignment since currentRoomId is null
+        });
+        
+        // Fallback timeout in case connection takes too long
+        setTimeout(() => {
+          if (!socket || !socket.connected) {
+            showMenuDisconnectionWarning();
+          }
+        }, 3000);
+      } else {
+        // Socket is connected, start spectating immediately
+        startSpectating();
+      }
     } catch (error) {
-      console.error('Failed to reconnect to official room:', error);
-      // Show disconnect warning if connection fails
+      console.error('Failed to start spectating after leaving map editor:', error);
       showMenuDisconnectionWarning();
     }
   }
@@ -1414,20 +1485,49 @@
       const isJoinable = room.isJoinable && !room.isPrivate;
       const isFull = room.totalOccupancy >= room.maxPlayers;
       
+      // Generate players list HTML - simple list format
+      const playersList = room.playersList || [];
+      let playersHtml = '';
+      
+      if (playersList.length === 0) {
+        playersHtml = '<div class="no-players">No players online</div>';
+      } else {
+        playersHtml = playersList.map(player => escapeHtml(player)).join(', ');
+        if (playersList.length > 5) {
+          const displayedPlayers = playersList.slice(0, 5);
+          const remainingCount = playersList.length - 5;
+          playersHtml = displayedPlayers.map(player => escapeHtml(player)).join(', ') + `, +${remainingCount} more`;
+        }
+      }
+      
       roomCard.innerHTML = `
-        <div class="room-name">
-          ${escapeHtml(room.name)}
-          ${room.isPrivate ? '<span class="room-private-badge">Private</span>' : ''}
-          ${isFull ? '<span class="room-full-badge">Full</span>' : ''}
-        </div>
-        <div class="room-info">
-          <div class="room-info-row">
-            <span>Map:</span>
-            <span>${escapeHtml(room.currentMap || 'Unknown')}</span>
+        <div class="room-card-content">
+          <div class="room-preview-container">
+            <img class="room-map-preview" src="${room.mapPreviewUrl || ''}" alt="Map preview" 
+                 onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
+            <div class="room-map-placeholder" style="display: none;">
+              <span>No Preview</span>
+            </div>
           </div>
-          <div class="room-info-row">
-            <span>Players:</span>
-            <span>${room.totalOccupancy || room.playerCount || 0}/${room.maxPlayers}</span>
+          <div class="room-details">
+            <div class="room-name">
+              ${escapeHtml(room.name)}
+              ${room.isPrivate ? '<span class="room-private-badge">Private</span>' : ''}
+              ${isFull ? '<span class="room-full-badge">Full</span>' : ''}
+            </div>
+            <div class="room-info">
+              <div class="room-info-row">
+                <span>Map:</span>
+                <span>${escapeHtml(room.mapDisplayName || 'Unknown')}</span>
+              </div>
+              <div class="room-info-row">
+                <span>Players:</span>
+                <span>${room.totalOccupancy || room.playerCount || 0}/${room.maxPlayers}</span>
+              </div>
+            </div>
+            <div class="room-players-list">
+              ${playersHtml}
+            </div>
           </div>
         </div>
         <button class="room-join-button" 
@@ -1758,7 +1858,6 @@
     // Enable binary encoding if server supports it
     if (data.binarySupport) {
       useBinaryEncoding = true;
-      console.log('Binary input encoding enabled');
     } else {
       useBinaryEncoding = false;
     }
@@ -2047,7 +2146,6 @@
     
     // Update current room ID from spectator state
     if (data.roomId && data.roomId !== currentRoomId) {
-      console.log(`🏠 Room ID updated from spectatorState: ${currentRoomId} -> ${data.roomId}`);
       currentRoomId = data.roomId;
     }
     
@@ -2165,17 +2263,14 @@
     const message = chatInput.value.trim();
     
     if (!message) {
-      console.log('Chat message blocked: empty message');
       return;
     }
     
     if (!playerName) {
-      console.log('Chat message blocked: no player name set');
       
       // Try to get player name from currentUser first
       if (currentUser) {
         playerName = currentUser.name || currentUser.username || 'Player';
-        console.log('Retrieved player name from currentUser:', playerName);
       }
       
       // If still no name, try to get from game state
@@ -2192,12 +2287,10 @@
       
       // Still no name? Block the message
       if (!playerName) {
-        console.log('Still no player name available, blocking message');
         return;
       }
     }
     
-    console.log('Sending chat message:', { playerName, message });
     socket.emit('chatMessage', { message: message });
     chatInput.value = '';
     toggleChatInput();
@@ -2765,7 +2858,13 @@
     switchButton.style.display = 'block';
     joinButton.style.display = 'block';
     roomBrowserButton.style.display = 'block'; // Show Browse Rooms button
-    mapEditorButton.style.display = 'block'; // Show Map Editor button
+    
+    // Only show Map Editor button for non-guest users
+    if (currentUser && currentUser.isGuest) {
+      mapEditorButton.style.display = 'none';
+    } else {
+      mapEditorButton.style.display = 'block';
+    }
     
     // Hide the warning template
     menuDisconnectionWarning.classList.add('hidden');
@@ -2910,22 +3009,57 @@
 
   // Handle AFK warning from server
   socket.on('afkWarning', (data) => {
-    console.log('⚠️ AFK Warning received:', data);
     showAFKWarning(data.reason, data.countdown);
   });
 
-  // Handle force disconnect from server
-  socket.on('forceDisconnect', (data) => {
-    console.log('🚫 Force disconnect:', data.reason);
+  // Handle graceful logout from server (when logged in from another location)
+  socket.on('forceLogout', (data) => {
     
     // Hide any existing warnings
     hideAFKWarning();
     
-    // Show disconnect message to user
-    alert(`You have been disconnected: ${data.reason}`);
+    // Show a brief message to the user
+    alert(`${data.reason}`);
     
-    // The socket will be disconnected by the server
-    // The existing disconnect handlers will take care of cleanup
+    // Clear user state and show auth screen (don't make API call since server already logged us out)
+    currentUser = null;
+    showAuthScreen();
+    updateToolbarVisibility(); // Update toolbar for auth state change
+  });
+
+  // Handle XP gained notifications
+  socket.on('xpGained', (data) => {
+    if (currentUser && !currentUser.isGuest) {
+      // Calculate level before XP gain
+      const oldLevel = calculateLevel(currentUser.xp || 0);
+      
+      // Update current user's XP
+      currentUser.xp = (currentUser.xp || 0) + data.amount;
+      
+      // Calculate level after XP gain
+      const newLevel = calculateLevel(currentUser.xp);
+      
+      // Update display
+      updatePlayerInfo();
+      
+      // Check for level up
+      if (newLevel > oldLevel) {
+        // Level up detected!
+        console.log(`🎉 Level up! Reached level ${newLevel}`);
+        
+        // Add a visual celebration effect to the progress bar
+        levelProgressFill.style.background = 'linear-gradient(90deg, #FFD700, #FFA500)';
+        setTimeout(() => {
+          levelProgressFill.style.background = 'linear-gradient(90deg, #4CAF50, #8BC34A)';
+        }, 2000);
+        
+        // Could add more elaborate level up notifications here later
+        // For now, we show it in the console and briefly change progress bar color
+      }
+      
+      // Show XP gain message
+      console.log(`+${data.amount} XP: ${data.reason}`);
+    }
   });
 
   // Send periodic activity pings when spectating (for menu interactions)
@@ -3516,7 +3650,7 @@
           
           ctx.fillStyle = `rgba(${shapeColor.fill.join(',')}, ${ctx.globalAlpha || 1})`;
           ctx.strokeStyle = `rgba(${shapeColor.stroke.join(',')}, ${ctx.globalAlpha || 1})`;
-          ctx.lineWidth = shapeColor.strokeWidth || 2;
+          ctx.lineWidth = (shapeColor.strokeWidth || 2) * scale;
           
           const vertices = shape.vertices;
           if (vertices && vertices.length) {
