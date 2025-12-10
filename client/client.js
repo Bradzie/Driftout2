@@ -1,58 +1,72 @@
 (() => {
+  // DOM helper functions
+  function show(element) {
+    if (element) element.classList.remove('hidden');
+  }
+
+  function hide(element) {
+    if (element) element.classList.add('hidden');
+  }
+
+  function toggle(element, visible) {
+    if (element) element.classList.toggle('hidden', !visible);
+  }
+
+  // Constants
+  const DEFAULT_FAKE_PING_LATENCY = 100;
+  const PING_ONE_WAY_DIVISOR = 2;
+  const BASE_XP_LEVEL_1 = 10;
+  const XP_SCALE_PER_LEVEL = 1.2;
+
   let socket = io();
   let currentMap = null;
   let currentUser = null;
   let needSessionRefresh = false;
-  
-  // Fake ping functionality
+
   let fakePingEnabled = false;
-  let fakePingLatency = 100; // Default 100ms
+  let fakePingLatency = DEFAULT_FAKE_PING_LATENCY;
   const originalSocketEmit = socket.emit.bind(socket);
-  
-  // Wrap socket.emit to add artificial delay when fake ping is enabled
+
   socket.emit = function(...args) {
     if (fakePingEnabled && fakePingLatency > 0) {
       setTimeout(() => {
         originalSocketEmit(...args);
-      }, fakePingLatency / 2); // Half the latency for one-way delay
+      }, fakePingLatency / PING_ONE_WAY_DIVISOR);
     } else {
       originalSocketEmit(...args);
     }
   };
-  
-  // Store original socket.on to wrap incoming messages with delay
+
   const originalSocketOn = socket.on.bind(socket);
   const wrappedHandlers = new Map();
-  
+
   socket.on = function(event, handler) {
     if (wrappedHandlers.has(handler)) {
       return originalSocketOn(event, wrappedHandlers.get(handler));
     }
-    
+
     const wrappedHandler = function(...args) {
       if (fakePingEnabled && fakePingLatency > 0 && event !== 'ping') {
         setTimeout(() => {
           handler(...args);
-        }, fakePingLatency / 2); // Half the latency for incoming messages
+        }, fakePingLatency / PING_ONE_WAY_DIVISOR);
       } else {
         handler(...args);
       }
     };
-    
+
     wrappedHandlers.set(handler, wrappedHandler);
     return originalSocketOn(event, wrappedHandler);
   };
 
-  // Settings system
   let settings = {
     showFPS: false,
     showPing: false
   };
-  
-  // Level system functions
+
   function getXPRequiredForLevel(level) {
     // Level 1 requires 10 XP, each subsequent level requires 20% more XP
-    return Math.round(10 * Math.pow(1.2, level - 1));
+    return Math.round(BASE_XP_LEVEL_1 * Math.pow(XP_SCALE_PER_LEVEL, level - 1));
   }
   
   function calculateLevel(totalXP) {
@@ -76,7 +90,6 @@
   function getXPProgress(totalXP) {
     const currentLevel = calculateLevel(totalXP);
     
-    // Calculate total XP required for current level
     let xpForCurrentLevel = 0;
     for (let i = 1; i < currentLevel; i++) {
       xpForCurrentLevel += getXPRequiredForLevel(i);
@@ -95,7 +108,6 @@
     };
   }
   
-  // Performance tracking
   let fpsCounter = 0;
   let lastFpsUpdate = 0;
   let frameCount = 0;
@@ -103,14 +115,12 @@
   let pingValue = 0;
   let lastPingTime = 0;
 
-  // Authentication elements
   const authScreen = document.getElementById('authScreen');
   const authSelection = document.getElementById('authSelection');
   const loginForm = document.getElementById('loginForm');
   const registerForm = document.getElementById('registerForm');
   const authLoading = document.getElementById('authLoading');
 
-  // Toolbar elements
   const topToolbar = document.getElementById('topToolbar');
   const toolbarHoverZone = document.getElementById('toolbarHoverZone');
   const toolbarPlayerName = document.getElementById('toolbarPlayerName');
@@ -133,36 +143,29 @@
   const abilityHud = document.getElementById('abilityHud');
   const abilityName = document.getElementById('abilityName');
   
-  // Get references to lap counter and timer elements
   const lapCounter = document.getElementById('lapCounter');
   const lapTimer = document.getElementById('lapTimer');
   const currentLapTimeSpan = document.getElementById('currentLapTime');
   const bestLapTimeSpan = document.getElementById('bestLapTime');
   
-  // Get boost display elements
   const boostDisplay = document.getElementById('boostDisplay');
   const boostBar = document.getElementById('boostBar');
   const boostText = document.getElementById('boostText');
   
-  // Get kill feed element
   const killFeed = document.getElementById('killFeed');
   
-  // Get leaderboard elements
   const miniLeaderboard = document.getElementById('miniLeaderboard');
   const miniLeaderboardContent = document.getElementById('miniLeaderboard').querySelector('.mini-leaderboard-content');
   const detailedLeaderboard = document.getElementById('detailedLeaderboard');
   const leaderboardTableBody = document.getElementById('leaderboardTableBody');
   
-  // Get spectator canvas
   const spectatorCanvas = document.getElementById('spectatorCanvas');
   const spectatorCtx = spectatorCanvas.getContext('2d');
 
-  // Get references to template elements
   const loadingScreen = document.getElementById('loadingScreen');
   const disconnectionOverlay = document.getElementById('disconnectionOverlay');
   const menuDisconnectionWarning = document.getElementById('menuDisconnectionWarning');
   
-  // Get settings elements
   const settingsModal = document.getElementById('settingsModal');
   const settingsCloseBtn = document.getElementById('settingsCloseBtn');
   const fpsToggle = document.getElementById('fpsToggle');
@@ -171,7 +174,6 @@
   const fpsDisplay = document.getElementById('fpsDisplay');
   const pingDisplay = document.getElementById('pingDisplay');
   
-  // Get room browser elements
   const roomBrowserButton = document.getElementById('roomBrowserButton');
   const roomBrowserModal = document.getElementById('roomBrowserModal');
   const roomBrowserCloseBtn = document.getElementById('roomBrowserCloseBtn');
@@ -179,7 +181,6 @@
   const roomsList = document.getElementById('roomsList');
   const openCreateRoomButton = document.getElementById('openCreateRoomButton');
   
-  // Get create room modal elements
   const createRoomModal = document.getElementById('createRoomModal');
   const createRoomCloseBtn = document.getElementById('createRoomCloseBtn');
   const createRoomName = document.getElementById('createRoomName');
@@ -187,14 +188,12 @@
   const browseMapButton = document.getElementById('browseMapButton');
   const createRoomMaxPlayers = document.getElementById('createRoomMaxPlayers');
 
-  // Map editor elements
   const mapEditorButton = document.getElementById('mapEditorButton');
   const mapEditorContainer = document.getElementById('mapEditorContainer');
   const maxPlayersValue = document.getElementById('maxPlayersValue');
   const createRoomPrivate = document.getElementById('createRoomPrivate');
   const createRoomButton = document.getElementById('createRoomButton');
   
-  // Get references to car card template elements
   const carRadioInput = document.querySelector('input[name="car"]');
   const carName = document.getElementById('carName');
   const carShape = document.getElementById('carShape');
@@ -202,18 +201,15 @@
   const healthFill = document.getElementById('healthFill');
   const handlingFill = document.getElementById('handlingFill');
   
-  // Add click handlers to refresh buttons
   document.getElementById('disconnectRefreshBtn').addEventListener('click', () => location.reload());
   document.getElementById('menuRefreshBtn').addEventListener('click', () => location.reload());
 
-  // Authentication functionality
   async function checkAuthSession() {
     try {
       const response = await fetch('/api/auth/session');
       const data = await response.json();
       
       if (data.authenticated) {
-        // Check if user is a guest - if so, make them re-authenticate
         if (data.user.isGuest) {
           console.log('Guest user detected - requiring re-authentication');
           currentUser = null; // Clear the current user
@@ -237,16 +233,16 @@
   }
 
   function showAuthScreen() {
-    authScreen.classList.remove('hidden');
-    menu.classList.add('hidden');
-    miniLeaderboard.classList.add('hidden');
+    show(authScreen);
+    hide(menu);
+    hide(miniLeaderboard);
     showAuthSelection();
   }
 
   function showMainMenu() {
-    authScreen.classList.add('hidden');
-    menu.classList.remove('hidden');
-    miniLeaderboard.classList.remove('hidden');
+    hide(authScreen);
+    show(menu);
+    show(miniLeaderboard);
     
     // Hide map editor button for guest users
     if (currentUser && currentUser.isGuest) {
@@ -255,7 +251,6 @@
       mapEditorButton.style.display = 'block';
     }
     
-    // Initialize settings system when the main menu is shown
     loadSettings();
   }
   
@@ -264,9 +259,7 @@
 
   function refreshSocketSession() {
     console.log('Refreshing socket session after authentication...');
-    // Update player info immediately after authentication
     updatePlayerInfo();
-    // Add a small delay to ensure the HTTP session is properly set
     setTimeout(() => {
       if (socket) {
         socket.emit('refreshSession');
@@ -283,7 +276,6 @@
       const data = await response.json();
       
       if (data.authenticated) {
-        // Session is valid - update current user data
         currentUser = data.user;
         return true;
       } else {
@@ -301,42 +293,42 @@
   }
 
   function showAuthSelection() {
-    authSelection.classList.remove('hidden');
-    loginForm.classList.add('hidden');
-    registerForm.classList.add('hidden');
-    authLoading.classList.add('hidden');
+    show(authSelection);
+    hide(loginForm);
+    hide(registerForm);
+    hide(authLoading);
     document.getElementById('quickPlayName').focus();
   }
 
   function showLoginForm() {
-    authSelection.classList.add('hidden');
-    loginForm.classList.remove('hidden');
+    hide(authSelection);
+    show(loginForm);
     document.getElementById('loginEmail').focus();
   }
 
   function showRegisterForm() {
-    authSelection.classList.add('hidden');
-    registerForm.classList.remove('hidden');
+    hide(authSelection);
+    show(registerForm);
     document.getElementById('registerUsername').focus();
   }
 
 
   function showAuthLoading() {
-    authSelection.classList.add('hidden');
-    loginForm.classList.add('hidden');
-    registerForm.classList.add('hidden');
-    authLoading.classList.remove('hidden');
+    hide(authSelection);
+    hide(loginForm);
+    hide(registerForm);
+    show(authLoading);
   }
 
   function showError(elementId, message) {
     const errorElement = document.getElementById(elementId);
     errorElement.textContent = message;
-    errorElement.classList.remove('hidden');
+    show(errorElement);
   }
 
   function hideError(elementId) {
     const errorElement = document.getElementById(elementId);
-    errorElement.classList.add('hidden');
+    hide(errorElement);
   }
 
   function updatePlayerInfo() {
@@ -346,7 +338,7 @@
       if (currentUser.isGuest) {
         displayName += ' (Guest)';
         // Hide level progress for guests
-        toolbarLevelProgress.classList.add('hidden');
+        hide(toolbarLevelProgress);
       } else {
         // Show level for registered users
         const totalXP = currentUser.xp || 0;
@@ -355,7 +347,7 @@
         displayName += ` (Level ${progress.currentLevel})`;
         
         // Show and update level progress bar
-        toolbarLevelProgress.classList.remove('hidden');
+        show(toolbarLevelProgress);
         levelProgressFill.style.width = `${progress.progressPercent}%`;
         toolbarLevelInfo.textContent = `${progress.xpInCurrentLevel}/${progress.xpRequiredForNextLevel}`;
       }
@@ -366,12 +358,12 @@
       playerName = currentUser.username;
       
       // Show chat when authenticated
-      chatContainer.classList.remove('hidden');
+      show(chatContainer);
     } else {
       // Hide chat when not authenticated
-      chatContainer.classList.add('hidden');
+      hide(chatContainer);
       // Hide level progress when not authenticated
-      toolbarLevelProgress.classList.add('hidden');
+      hide(toolbarLevelProgress);
     }
   }
 
@@ -479,18 +471,16 @@
 
   function handleBackToGame() {
     // Hide map editor and show menu
-    mapEditorContainer.classList.add('hidden');
-    menu.classList.remove('hidden');
-    toolbarBackBtn.classList.add('hidden'); // Hide back button when leaving map editor
+    hide(mapEditorContainer);
+    show(menu);
+    hide(toolbarBackBtn); // Hide back button when leaving map editor
     
     // Reset room state and reconnect for smart room assignment
     try {
       // Clear current room ID to force smart assignment
       currentRoomId = null;
       
-      // If socket is not connected (which happens when entering map editor), reconnect
       if (!socket || !socket.connected) {
-        // Reconnect the socket
         socket.connect();
         
         // Wait for connection to establish, then start spectating (use once to avoid duplicate listeners)
@@ -514,7 +504,6 @@
     }
   }
 
-  // Authentication event listeners
   document.getElementById('showLoginBtn').addEventListener('click', showLoginForm);
   document.getElementById('showRegisterBtn').addEventListener('click', showRegisterForm);
   
@@ -547,23 +536,17 @@
   });
 
 
-  // Toolbar event listeners
   toolbarBackBtn.addEventListener('click', handleBackToGame);
   toolbarLogoutBtn.addEventListener('click', handleLogout);
   toolbarSettingsBtn.addEventListener('click', openSettings);
 
-  // Check authentication on page load
   checkAuthSession();
   
-  // Initialize settings system
   loadSettings();
   
-  // Update kill feed position on window resize
   window.addEventListener('resize', updateKillFeedPosition);
 
-  // Session validation removed - let server handle session expiration naturally
 
-  // Toolbar functionality
   let toolbarVisible = false;
   let toolbarTimeout = null;
 
@@ -589,9 +572,9 @@
     
     if (roomName && isSpectating) {
       roomNameText.textContent = roomName;
-      roomNameDisplay.classList.remove('hidden');
+      show(roomNameDisplay);
     } else {
-      roomNameDisplay.classList.add('hidden');
+      hide(roomNameDisplay);
     }
   }
 
@@ -667,7 +650,6 @@
   // Keep toolbar visible when hovering over it
   topToolbar.addEventListener('mouseenter', showToolbar);
   topToolbar.addEventListener('mouseleave', () => {
-    // Check if cursor is still in top area
     setTimeout(() => {
       const rect = topToolbar.getBoundingClientRect();
       const isInTopArea = window.event && window.event.clientY <= 120;
@@ -677,10 +659,8 @@
     }, 100);
   });
 
-  // Initialize toolbar visibility after all variables are ready
   updateToolbarVisibility();
 
-  // Settings event listeners
   settingsCloseBtn.addEventListener('click', closeSettings);
   
   // Close settings when clicking outside modal
@@ -690,7 +670,6 @@
     }
   });
   
-  // Settings toggle handlers
   function handleToggleChange(toggleElement, settingKey) {
     return (e) => {
       settings[settingKey] = e.target.checked;
@@ -711,7 +690,6 @@
     };
   }
   
-  // Setup FPS toggle
   if (fpsToggle) {
     fpsToggle.addEventListener('change', handleToggleChange(fpsToggle, 'showFPS'));
     
@@ -723,7 +701,6 @@
     console.error('fpsToggle element not found!');
   }
   
-  // Setup Ping toggle  
   if (pingToggle) {
     pingToggle.addEventListener('change', handleToggleChange(pingToggle, 'showPing'));
     
@@ -735,25 +712,22 @@
     console.error('pingToggle element not found!');
   }
   
-  // Room browser event listeners
   roomBrowserButton.addEventListener('click', openRoomBrowser);
   roomBrowserCloseBtn.addEventListener('click', closeRoomBrowser);
   refreshRoomsButton.addEventListener('click', loadRooms);
   openCreateRoomButton.addEventListener('click', openCreateRoomModal);
   
-  // Create room modal event listeners
   createRoomCloseBtn.addEventListener('click', closeCreateRoomModal);
   createRoomButton.addEventListener('click', handleCreateRoom);
   browseMapButton.addEventListener('click', openMapBrowserForRoom);
 
-  // Map editor button
   mapEditorButton.addEventListener('click', () => {
     if (socket && socket.connected) {
       socket.disconnect();
     }
-    menu.classList.add('hidden');
-    mapEditorContainer.classList.remove('hidden');
-    toolbarBackBtn.classList.remove('hidden'); // Show back button in map editor
+    hide(menu);
+    show(mapEditorContainer);
+    show(toolbarBackBtn); // Show back button in map editor
     if (typeof initMapEditor === 'function') {
       initMapEditor();
     }
@@ -779,23 +753,22 @@
   
   if (browseMapModal && closeBrowseModalBtn) {
     closeBrowseModalBtn.addEventListener('click', () => {
-      browseMapModal.classList.add('hidden');
+      hide(browseMapModal);
     });
     
     browseMapModal.addEventListener('click', (e) => {
       if (e.target === browseMapModal) {
-        browseMapModal.classList.add('hidden');
+        hide(browseMapModal);
       }
     });
     
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !browseMapModal.classList.contains('hidden')) {
-        browseMapModal.classList.add('hidden');
+        hide(browseMapModal);
       }
     });
   }
   
-  // Update max players value display
   createRoomMaxPlayers.addEventListener('input', (e) => {
     maxPlayersValue.textContent = e.target.value;
   });
@@ -814,13 +787,11 @@
   let sendInputInterval = null;
   let hasReceivedFirstState = false; // Flag to prevent rendering before first server data
   
-  // Binary encoding support
   let useBinaryEncoding = false;
   let inputSequenceNumber = 0;
   
   // Binary input encoding function
   function encodeBinaryInput(inputData) {
-    // Create a compact binary format for input data
     // Structure: [cursorX(4)] [cursorY(4)] [boost(1)] [timestamp(8)] [sequence(4)]
     const buffer = new ArrayBuffer(21);
     const view = new DataView(buffer);
@@ -833,7 +804,6 @@
     // Boost state (1 byte)
     view.setUint8(offset, inputData.boostActive ? 1 : 0); offset += 1;
     
-    // Timestamp (8 bytes)
     view.setBigUint64(offset, BigInt(inputData.timestamp), true); offset += 8;
     
     // Sequence number (4 bytes)
@@ -889,7 +859,6 @@
           crashedAt = Number(view.getBigUint64(offset, true)); offset += 8;
         }
         
-        // Stats (4 bytes)
         const kills = view.getUint16(offset, true); offset += 2;
         const deaths = view.getUint16(offset, true); offset += 2;
         
@@ -916,7 +885,6 @@
           crashedAt: crashedAt, // Critical for client crash detection
           kills: kills,
           deaths: deaths,
-          // Add default values for properties that client expects
           color: CAR_TYPES[typeName] ? CAR_TYPES[typeName].color : { fill: [100, 100, 100], stroke: [50, 50, 50], strokeWidth: 2 },
           shape: CAR_TYPES[typeName] ? CAR_TYPES[typeName].shape : null,
           vertices: [], // Will be calculated client-side if needed
@@ -929,7 +897,6 @@
         players.push(player);
       }
       
-      // For now, return simplified state structure
       return {
         players: players,
         timestamp: timestamp,
@@ -944,7 +911,6 @@
     }
   }
   
-  // Connection monitoring
   let connectionLostTimeout = null;
   let lastServerMessage = Date.now();
   let currentCarIndex = 0;
@@ -953,7 +919,6 @@
   let myAbility = null;
   let lastAbilityUse = 0;
   
-  // Lap timer state
   let currentLapStartTime = 0;
   let bestLapTime = null;
   let previousLapCount = 0;
@@ -965,10 +930,8 @@
   // Leaderboard TAB hold state
   let isTabHeld = false;
   
-  // Per-map statistics tracking
   let currentMapKey = null;
   
-  // Spectator state management
   let spectatorState = null;
   let isSpectating = false;
 
@@ -983,7 +946,6 @@
     const now = Date.now();
     const currentPlayerIds = new Set(currentPlayers.map(p => p.id));
     
-    // Check if the player's own car just crashed
     const myPlayer = currentPlayers.find(p => p.socketId === mySocketId);
     if (myPlayer && myPlayer.crashed && !playerCrashTime) {
       playerCrashTime = now;
@@ -997,7 +959,6 @@
     // Find players that were in the last state but not in current state (crashed)
     for (const previousPlayer of lastKnownPlayers) {
       if (!currentPlayerIds.has(previousPlayer.id) && !crashedCars.has(previousPlayer.id)) {
-        // Car crashed - add to fade queue
         crashedCars.set(previousPlayer.id, {
           car: previousPlayer,
           fadeStartTime: now
@@ -1008,7 +969,6 @@
     // Also check for players currently marked as crashed (but still in game state)
     for (const currentPlayer of currentPlayers) {
       if (currentPlayer.crashed && !crashedCars.has(currentPlayer.id)) {
-        // Car just crashed - add to fade queue
         crashedCars.set(currentPlayer.id, {
           car: currentPlayer,
           fadeStartTime: now
@@ -1016,23 +976,19 @@
       }
     }
     
-    // Update last known players
     lastKnownPlayers = [...currentPlayers];
     
-    // Clean up expired crashed cars
     for (const [carId, crashData] of crashedCars.entries()) {
       if (now - crashData.fadeStartTime > CRASH_FADE_DURATION) {
         crashedCars.delete(carId);
       }
     }
     
-    // Handle player's own crash fade completion
     if (playerCrashTime && (now - playerCrashTime) > CRASH_FADE_DURATION) {
       returnToMenuAfterCrash();
     }
   }
   
-  // Handle returning to menu after player crash fade
   function returnToMenu() {
     clearInterval(sendInputInterval);
     sendInputInterval = null;
@@ -1045,12 +1001,11 @@
     hideUpgradeCards();
     
     // Hide all game-specific UI elements
-    abilityHud.classList.add('hidden');
-    lapCounter.classList.add('hidden');
-    lapTimer.classList.add('hidden');
-    boostDisplay.classList.add('hidden');
+    hide(abilityHud);
+    hide(lapCounter);
+    hide(lapTimer);
+    hide(boostDisplay);
     
-    // Reset ability state
     myAbility = null;
     lastAbilityUse = 0;
     
@@ -1071,7 +1026,7 @@
     mySocketId = null;
     
     // Hide loading screen when returning to menu
-    loadingScreen.classList.add('hidden');
+    hide(loadingScreen);
     
     // Restart spectating when back in menu
     setTimeout(() => startSpectating(), 100); // Small delay to ensure UI is ready
@@ -1128,7 +1083,6 @@
     const allEntries = [];
     const playerSocketIds = new Set();
     
-    // Add active players first
     if (players && players.length > 0) {
       const sortedPlayers = [...players].sort((a, b) => {
         if (a.laps !== b.laps) return b.laps - a.laps;
@@ -1148,7 +1102,6 @@
       });
     }
     
-    // Add non-playing room members (spectators)
     if (roomMembers && roomMembers.length > 0) {
       const spectators = roomMembers
         .filter(member => member.state === 'spectating' && !playerSocketIds.has(member.socketId))
@@ -1223,14 +1176,13 @@
   }
 
   function showDetailedLeaderboard() {
-    detailedLeaderboard.classList.remove('hidden');
+    show(detailedLeaderboard);
   }
   
   function hideDetailedLeaderboard() {
-    detailedLeaderboard.classList.add('hidden');
+    hide(detailedLeaderboard);
   }
 
-  // Settings system functions
   function loadSettings() {
     try {
       const savedSettings = localStorage.getItem('driftz-settings');
@@ -1241,7 +1193,6 @@
       console.warn('Failed to load settings from localStorage:', e);
     }
     
-    // Apply loaded settings to UI
     fpsToggle.checked = settings.showFPS;
     pingToggle.checked = settings.showPing;
     updatePerformanceOverlay();
@@ -1258,25 +1209,23 @@
   function updatePerformanceOverlay() {
     // Show/hide performance overlay based on settings
     if (settings.showFPS || settings.showPing) {
-      performanceOverlay.classList.remove('hidden');
+      show(performanceOverlay);
     } else {
-      performanceOverlay.classList.add('hidden');
+      hide(performanceOverlay);
     }
     
-    // Show/hide individual displays
     if (settings.showFPS) {
-      fpsDisplay.classList.remove('hidden');
+      show(fpsDisplay);
     } else {
-      fpsDisplay.classList.add('hidden');
+      hide(fpsDisplay);
     }
     
     if (settings.showPing) {
-      pingDisplay.classList.remove('hidden');
+      show(pingDisplay);
     } else {
-      pingDisplay.classList.add('hidden');
+      hide(pingDisplay);
     }
     
-    // Update kill feed position based on performance overlay
     updateKillFeedPosition();
   }
   
@@ -1334,25 +1283,22 @@
   }
   
   function openSettings() {
-    settingsModal.classList.remove('hidden');
+    show(settingsModal);
   }
   
   function closeSettings() {
-    settingsModal.classList.add('hidden');
+    hide(settingsModal);
   }
   
-  // Room browser variables
   let roomsRefreshInterval = null;
   let availableMaps = [];
   let availableRooms = [];
   let selectedMapForRoom = null; // Track selected map for room creation
   
-  // Room browser functions
   function openRoomBrowser() {
-    roomBrowserModal.classList.remove('hidden');
+    show(roomBrowserModal);
     loadRooms();
     
-    // Start auto-refresh
     if (roomsRefreshInterval) {
       clearInterval(roomsRefreshInterval);
     }
@@ -1360,31 +1306,28 @@
   }
   
   function closeRoomBrowser() {
-    roomBrowserModal.classList.add('hidden');
+    hide(roomBrowserModal);
     
-    // Stop auto-refresh
     if (roomsRefreshInterval) {
       clearInterval(roomsRefreshInterval);
       roomsRefreshInterval = null;
     }
   }
   
-  // Create room modal functions
   function openCreateRoomModal() {
-    createRoomModal.classList.remove('hidden');
-    // Reset selected map
+    show(createRoomModal);
     selectedMapForRoom = null;
     updateSelectedMapDisplay();
     document.getElementById('createRoomName').focus();
   }
   
   function closeCreateRoomModal() {
-    createRoomModal.classList.add('hidden');
+    hide(createRoomModal);
   }
   
   function openMapBrowserForRoom() {
     const modal = document.getElementById('browseMapModal');
-    modal.classList.remove('hidden');
+    show(modal);
     
     // Load and display maps for room creation
     fetch('/api/maps')
@@ -1539,7 +1482,6 @@
       
       roomsList.appendChild(roomCard);
       
-      // Add event listener to join button
       const joinButton = roomCard.querySelector('.room-join-button');
       if (joinButton && !joinButton.disabled) {
         joinButton.addEventListener('click', () => {
@@ -1553,10 +1495,8 @@
   function joinSpecificRoom(roomId) {
     closeRoomBrowser();
     
-    // Store old room ID for comparison
     const oldRoomId = currentRoomId;
     
-    // Update room ID FIRST, before any operations that depend on it
     currentRoomId = roomId;
     currentMapKey = null; // Force next spectator state to be treated as map change
     
@@ -1570,7 +1510,6 @@
     const maxPlayers = parseInt(createRoomMaxPlayers.value);
     const isPrivate = createRoomPrivate.checked;
     
-    // Validation
     if (!roomName) {
       alert('Please enter a room name');
       return;
@@ -1616,7 +1555,6 @@
       
       const newRoom = await response.json();
       
-      // Clear form
       createRoomName.value = '';
       selectedMapForRoom = null;
       updateSelectedMapDisplay();
@@ -1637,7 +1575,6 @@
       console.error('Failed to create room:', error);
       alert(`Failed to create room: ${error.message}`);
     } finally {
-      // Re-enable button
       createRoomButton.disabled = false;
       createRoomButton.textContent = 'Create Room';
     }
@@ -1650,7 +1587,6 @@
     return div.innerHTML;
   }
   
-  // Kill feed functions
   function addKillFeedMessage(text, type = 'info') {
     const messageId = messageIdCounter++;
     const message = {
@@ -1700,11 +1636,11 @@
     killFeed.innerHTML = '';
     
     if (killFeedMessages.length === 0) {
-      killFeed.classList.add('hidden');
+      hide(killFeed);
       return;
     }
     
-    killFeed.classList.remove('hidden');
+    show(killFeed);
     
     killFeedMessages.forEach(message => {
       const messageDiv = document.createElement('div');
@@ -1715,12 +1651,10 @@
     });
   }
   
-  // Spectator functions
   function startSpectating(roomId) {
     if (!isSpectating) {
       isSpectating = true;
       
-      // Update current room ID if switching
       const targetRoomId = roomId || currentRoomId;
       if (targetRoomId) {
         currentRoomId = targetRoomId;
@@ -1767,7 +1701,6 @@
       currentCarIndex = 0;
       updateCarCard();
       
-      // Initialize settings system
       loadSettings();
     } catch (error) {
       console.error('Failed to load car types:', error);
@@ -1779,11 +1712,9 @@
     const carType = carTypes[currentCarIndex];
     const car = CAR_TYPES[carType];
     
-    // Update template elements with car data
     carRadioInput.value = carType;
     carName.textContent = car.displayName || carType;
     
-    // Update car visual - clear existing shapes and add new ones
     carShape.innerHTML = '';
     car.shapes.forEach((shape, index) => {
       const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
@@ -1798,7 +1729,6 @@
       carShape.appendChild(polygon);
     });
     
-    // Update stat bars
     speedFill.style.width = `${car.displaySpeed}%`;
     healthFill.style.width = `${car.displayHealth}%`;
     handlingFill.style.width = `${car.displayHandling}%`;
@@ -1814,10 +1744,8 @@
   initCarSelection();
 
   function sanitizeName(name) {
-    // Remove control characters and non-printable ASCII
     let sanitized = name.replace(/[\x00-\x1F\x7F]/g, '');
 
-    // Remove excessive combining diacritical marks (glitch text)
     // This regex targets Unicode combining diacritical marks (U+0300 to U+036F)
     // and similar characters that can be spammed.
     sanitized = sanitized.replace(/[\u0300-\u036F\u1AB0-\u1AFF\u1DC0-\u1DFF\u20D0-\u20FF\uFE20-\uFE2F]+/g, '');
@@ -1830,7 +1758,6 @@
 
   joinButton.addEventListener('click', () => {
     
-    // Check if user is authenticated
     if (!currentUser || !currentUser.username) {
       console.error('Cannot join game: User not authenticated or no username');
       alert('Please log in or play as guest first');
@@ -1852,7 +1779,6 @@
   socket.on('joined', (data) => {
     stopSpectating(); // Stop spectating when joining game
     
-    // Track the current room ID for crash handling
     currentRoomId = data.roomId;
     
     // Enable binary encoding if server supports it
@@ -1862,7 +1788,6 @@
       useBinaryEncoding = false;
     }
     
-    // Set player name for chat (we'll get it from the first state update)
     setTimeout(() => {
       const mySocketId = socket.id;
       const latestState = gameStates[gameStates.length - 1];
@@ -1884,11 +1809,10 @@
     hasReceivedFirstState = false;
     
     menu.style.display = 'none';
-    loadingScreen.classList.remove('hidden'); // Show loading screen
+    show(loadingScreen); // Show loading screen
     gameCanvas.style.display = 'block';
     hud.style.display = 'flex';
     
-    // Set up ability HUD and upgrade cards based on selected car
     const selectedCar = document.querySelector('input[name="car"]:checked');
     if (selectedCar && CAR_TYPES[selectedCar.value]) {
       const carType = CAR_TYPES[selectedCar.value];
@@ -1902,11 +1826,11 @@
           name: carType.abilityName || carType.ability,
           cooldown: carType.abilityCooldown || 0,
         };
-        abilityHud.classList.remove('hidden');
+        show(abilityHud);
         updateAbilityHUD();
       } else {
         myAbility = null;
-        abilityHud.classList.add('hidden');
+        hide(abilityHud);
       }
     }
     
@@ -1935,7 +1859,6 @@
   });
 
   socket.on('state', (data) => {
-    // Update last message timestamp for connection monitoring
     lastServerMessage = Date.now();
 
     // Detect crashed cars for fade effect
@@ -1951,7 +1874,6 @@
       map: data.map
     });
 
-    // Update myAbility cooldown if player data is available
     const me = data.players.find(p => p.socketId === data.mySocketId);
     if (me && myAbility) {
       const carDef = CAR_TYPES[me.type];
@@ -1963,7 +1885,7 @@
     hasReceivedFirstState = true;
     
     // Hide loading screen now that we have game data
-    loadingScreen.classList.add('hidden');
+    hide(loadingScreen);
 
     // Keep only last 1 second of states
     const now = Date.now();
@@ -1975,7 +1897,6 @@
       const newMapKey = `${currentRoomId}_${generateMapKey(data.map)}`;
       
       if (newMapKey !== currentMapKey) {
-        // Map has changed - reset per-map statistics
         currentMapKey = newMapKey;
         bestLapTime = null;
         bestLapTimeSpan.textContent = '';
@@ -1988,11 +1909,9 @@
       currentMap = data.map;
     }
     
-    // Update leaderboards with latest player data
     updateMiniLeaderboard(data.players);
     updateDetailedLeaderboard(data.players, data.roomMembers);
     
-    // Update player name for chat if not already set
     if (!playerName && data.players) {
       const mySocketId = socket.id;
       const myPlayer = data.players.find(p => p.socketId === mySocketId);
@@ -2002,9 +1921,7 @@
     }
   });
   
-  // Handle binary state updates
   socket.on('binaryState', (buffer, mySocketId) => {
-    // Update last message timestamp for connection monitoring
     lastServerMessage = Date.now();
     
     try {
@@ -2012,7 +1929,6 @@
       const data = decodeBinaryState(buffer);
       if (!data) return; // Failed to decode
       
-      // Set the socket ID for this client
       data.mySocketId = mySocketId;
       
       // Detect crashed cars for fade effect
@@ -2028,7 +1944,6 @@
         map: currentMap // Use existing map data
       });
       
-      // Update myAbility cooldown if player data is available
       const me = data.players.find(p => p.socketId === mySocketId);
       if (me && myAbility) {
         const carDef = CAR_TYPES[me.type];
@@ -2040,13 +1955,12 @@
       hasReceivedFirstState = true;
       
       // Hide loading screen now that we have game data
-      loadingScreen.classList.add('hidden');
+      hide(loadingScreen);
 
       // Keep only last 1 second of states
       const now = Date.now();
       gameStates = gameStates.filter(state => (now - state.timestamp) < 1000);
       
-      // Update leaderboards with latest player data
       updateMiniLeaderboard(data.players);
       updateDetailedLeaderboard(data.players, data.roomMembers);
       
@@ -2055,29 +1969,24 @@
     }
   });
 
-  // Handle delta updates for better performance
   socket.on('delta', (data) => {
-    // Update last message timestamp for connection monitoring
     lastServerMessage = Date.now();
     
     const lastState = gameStates[gameStates.length - 1];
     if (!lastState) return;
 
-    // Apply delta to last known state
     const newPlayers = [...lastState.players];
     
     data.players.forEach(deltaPlayer => {
       const existingIndex = newPlayers.findIndex(p => p.id === deltaPlayer.id);
       
       if (deltaPlayer.isFullUpdate) {
-        // Full player data
         if (existingIndex >= 0) {
           newPlayers[existingIndex] = deltaPlayer;
         } else {
           newPlayers.push(deltaPlayer);
         }
       } else {
-        // Partial update
         if (existingIndex >= 0) {
           newPlayers[existingIndex] = { ...newPlayers[existingIndex], ...deltaPlayer };
         }
@@ -2087,7 +1996,6 @@
     // Detect crashed cars for fade effect
     detectCrashedCars(newPlayers);
 
-    // Add the delta state to buffer
     gameStates.push({
       players: newPlayers,
       abilityObjects: data.abilityObjects || lastState.abilityObjects,
@@ -2097,7 +2005,6 @@
       map: lastState.map
     });
 
-    // Update myAbility cooldown if player data is available
     const me = newPlayers.find(p => p.socketId === (data.mySocketId || lastState.mySocketId));
     if (me && myAbility) {
       const carDef = CAR_TYPES[me.type];
@@ -2109,20 +2016,17 @@
     hasReceivedFirstState = true;
     
     // Hide loading screen now that we have game data
-    loadingScreen.classList.add('hidden');
+    hide(loadingScreen);
 
     // Keep only last 1 second of states
     const now = Date.now();
     gameStates = gameStates.filter(state => (now - state.timestamp) < 1000);
     
-    // Update leaderboards with latest player data
     updateMiniLeaderboard(newPlayers);
     updateDetailedLeaderboard(newPlayers, data.roomMembers);
   });
 
-  // Handle heartbeat (no data changed)
   socket.on('heartbeat', (data) => {
-    // Update last message timestamp for connection monitoring
     lastServerMessage = Date.now();
     
     // Just update timestamp for interpolation timing
@@ -2135,21 +2039,17 @@
     }
   });
 
-  // Handle kill feed messages
   socket.on('killFeedMessage', ({ text, type }) => {
     addKillFeedMessage(text, type);
   });
 
-  // Handle spectator state
   socket.on('spectatorState', (data) => {
     spectatorState = data;
     
-    // Update current room ID from spectator state
     if (data.roomId && data.roomId !== currentRoomId) {
       currentRoomId = data.roomId;
     }
     
-    // Update room name display
     updateRoomNameDisplay(data.roomName);
     
     // Always update currentMap when we have new map data
@@ -2158,7 +2058,6 @@
       const newMapKey = `${currentRoomId}_${generateMapKey(data.map)}`;
       
       if (newMapKey !== currentMapKey) {
-        // Map has actually changed - reset per-map statistics
         currentMapKey = newMapKey;
         bestLapTime = null;
         bestLapTimeSpan.textContent = '';
@@ -2171,7 +2070,6 @@
       currentMap = data.map;
     }
     
-    // Update leaderboards with spectator data
     updateMiniLeaderboard(data.players);
     updateDetailedLeaderboard(data.players, data.roomMembers);
   });
@@ -2190,12 +2088,11 @@
     hideUpgradeCards();
     
     // Hide all game-specific UI elements
-    abilityHud.classList.add('hidden');
-    lapCounter.classList.add('hidden');
-    lapTimer.classList.add('hidden');
-    boostDisplay.classList.add('hidden');
+    hide(abilityHud);
+    hide(lapCounter);
+    hide(lapTimer);
+    hide(boostDisplay);
     
-    // Reset ability state
     myAbility = null;
     lastAbilityUse = 0;
     
@@ -2212,7 +2109,7 @@
     lastKnownPlayers = [];
     
     // Hide loading screen when returning to menu
-    loadingScreen.classList.add('hidden');
+    hide(loadingScreen);
     
     // Restart spectating when back in menu
     setTimeout(() => startSpectating(), 100); // Small delay to ensure UI is ready
@@ -2226,7 +2123,6 @@
     inputState.cursor.y = e.clientY - cy;
   });
 
-  // Right-click boost handling
   gameCanvas.addEventListener('mousedown', (e) => {
     e.preventDefault();
     inputState.boostActive = true;
@@ -2237,7 +2133,6 @@
     inputState.boostActive = false;
   });
 
-  // Chat functionality
   let isChatFocused = false;
   let playerName = '';
   const chatInputArea = document.getElementById('chatInputArea');
@@ -2248,12 +2143,12 @@
   function toggleChatInput() {
     isChatFocused = !isChatFocused;
     if (isChatFocused) {
-      chatInputArea.classList.remove('hidden');
-      chatPrompt.classList.add('hidden');
+      show(chatInputArea);
+      hide(chatPrompt);
       chatInput.focus();
     } else {
-      chatInputArea.classList.add('hidden');
-      chatPrompt.classList.remove('hidden');
+      hide(chatInputArea);
+      show(chatPrompt);
       chatInput.blur();
       chatInput.value = '';
     }
@@ -2273,7 +2168,6 @@
         playerName = currentUser.name || currentUser.username || 'Player';
       }
       
-      // If still no name, try to get from game state
       if (!playerName) {
         const mySocketId = socket.id;
         const latestState = gameStates[gameStates.length - 1];
@@ -2303,10 +2197,8 @@
     
     chatMessages.appendChild(messageElement);
     
-    // Auto-scroll to bottom
     chatMessages.scrollTop = chatMessages.scrollHeight;
     
-    // Remove old messages if too many (keep last 50)
     while (chatMessages.children.length > 50) {
       chatMessages.removeChild(chatMessages.firstChild);
     }
@@ -2333,31 +2225,26 @@
     }
   });
 
-  // Add click listener to chat prompt
   chatPrompt.addEventListener('click', () => {
     if (!isChatFocused) {
       toggleChatInput();
     }
   });
 
-  // Initialize chat prompt visibility
   function initializeChatState() {
     if (!isChatFocused) {
-      chatPrompt.classList.remove('hidden');
-      chatInputArea.classList.add('hidden');
+      show(chatPrompt);
+      hide(chatInputArea);
     }
   }
 
-  // Initialize chat state when page loads
   initializeChatState();
 
   // Ability and upgrade input handling
   document.addEventListener('keydown', (e) => {
-    // Handle ENTER key for chat
     if (e.code === 'Enter') {
       e.preventDefault();
       
-      // If chat input is focused, let its event handler deal with it
       if (e.target === chatInput) {
         return; // Let the chatInput event handler handle this
       }
@@ -2369,7 +2256,6 @@
       return;
     }
 
-    // Handle ESC key for chat
     if (e.code === 'Escape') {
       if (isChatFocused) {
         toggleChatInput();
@@ -2380,7 +2266,6 @@
     // Don't process game inputs when chat is focused
     if (isChatFocused) return;
 
-    // Handle TAB key for leaderboard (show on hold)
     if (e.code === 'Tab') {
       e.preventDefault();
       if (!isTabHeld) {
@@ -2413,7 +2298,6 @@
             const originalLastAbilityUse = lastAbilityUse; // Store original value
             lastAbilityUse = now; // Update client-side for immediate HUD feedback
             updateAbilityHUD(); // Re-render HUD with new cooldown
-            // Store originalLastAbilityUse for potential rollback
             myAbility._originalLastAbilityUse = originalLastAbilityUse;
           }
         }
@@ -2422,7 +2306,6 @@
       socket.emit('useAbility');
     }
     
-    // Handle upgrade number keys (1-6)
     if (e.key >= '1' && e.key <= '6' && !e.repeat) {
       e.preventDefault();
       
@@ -2434,23 +2317,19 @@
         if (upgradeCard) {
           const stat = upgradeCard.getAttribute('data-stat');
           
-          // Visual feedback
           upgradeCard.style.transform = 'translateY(-3px) scale(1.1)';
           
           setTimeout(() => {
             upgradeCard.style.transform = '';
           }, 200);
           
-          // Send upgrade request
           socket.emit('upgrade', { stat });
         }
       }
     }
   });
 
-  // Handle key release events
   document.addEventListener('keyup', (e) => {
-    // Handle TAB key release for leaderboard (hide on release)
     if (e.code === 'Tab' && isTabHeld) {
       isTabHeld = false;
       hideDetailedLeaderboard();
@@ -2459,7 +2338,6 @@
   });
 
   socket.on('abilityResult', (result) => {
-    // Handle ability activation feedback
     if (result.success) {
       // Use server timestamp if available, otherwise fall back to client time
       lastAbilityUse = result.serverTime || Date.now();
@@ -2474,10 +2352,9 @@
     }
   });
 
-  // Update ability HUD every frame
   function updateAbilityHUD() {
     if (!myAbility) {
-      abilityHud.classList.add('hidden');
+      hide(abilityHud);
       return;
     }
 
@@ -2486,11 +2363,9 @@
     const remaining = Math.max(0, myAbility.cooldown - timeSinceUse);
     const isReady = remaining === 0;
 
-    // Update ability info
     abilityName.textContent = myAbility.name;
-    abilityHud.classList.remove('hidden');
+    show(abilityHud);
 
-    // Get the progress background element
     const progressBg = abilityHud.querySelector('.ability-progress-bg');
     if (!progressBg) {
       return;
@@ -2515,7 +2390,6 @@
     const car = CAR_TYPES[carType];
     if (!car || !car.upgrades) return;
     
-    // Create upgrade points display
     const upgradePointsDisplay = document.createElement('div');
     upgradePointsDisplay.className = 'upgrade-points-display';
     upgradePointsDisplay.innerHTML = `
@@ -2532,7 +2406,6 @@
       upgradeCardContainer.className = 'upgrade-card-container';
       upgradeCardContainer.setAttribute('data-stat', statName);
       
-      // Create progress blocks
       const progressBlocks = document.createElement('div');
       progressBlocks.className = 'upgrade-progress-blocks';
       
@@ -2543,7 +2416,6 @@
         progressBlocks.appendChild(block);
       }
       
-      // Create upgrade card
       const upgradeCard = document.createElement('div');
       upgradeCard.className = 'upgrade-card';
       upgradeCard.setAttribute('data-stat', statName);
@@ -2565,22 +2437,20 @@
 
   // Hide upgrade cards completely
   function hideUpgradeCards() {
-    upgradeCardsContainer.classList.add('hidden');
+    hide(upgradeCardsContainer);
     upgradeCardsContainer.classList.remove('compact');
     
-    // Hide ability HUD
-    abilityHud.classList.add('hidden');
+    hide(abilityHud);
     
     // Hide lap counter, lap timer, and boost display
-    lapCounter.classList.add('hidden');
-    lapTimer.classList.add('hidden');
-    boostDisplay.classList.add('hidden');
+    hide(lapCounter);
+    hide(lapTimer);
+    hide(boostDisplay);
     currentLapStartTime = 0;
     previousLapCount = 0;
     currentLapTimeSpan.textContent = '0:00.000';
   }
 
-  // Update upgrade cards and progress blocks based on current state
   function updateUpgradeDisplay(me, carType) {
     if (!me || !carType) return;
     
@@ -2589,19 +2459,16 @@
     
     const upgradeUsage = me.upgradeUsage || {};
     
-    // Update card availability and progress blocks
     for (const [statName, upgrade] of Object.entries(car.upgrades)) {
       const currentUsage = upgradeUsage[statName] || 0;
       const maxUpgrades = upgrade.maxUpgrades;
       const isMaxed = currentUsage >= maxUpgrades;
       
-      // Update upgrade card
       const upgradeCard = document.querySelector(`.upgrade-card[data-stat="${statName}"]`);
       if (upgradeCard) {
         upgradeCard.classList.toggle('maxed', isMaxed);
       }
       
-      // Update progress blocks
       const container = document.querySelector(`.upgrade-card-container[data-stat="${statName}"]`);
       if (container) {
         const blocks = container.querySelectorAll('.upgrade-progress-block');
@@ -2616,14 +2483,11 @@
     }
   }
 
-  // Update ability HUD regularly
   setInterval(updateAbilityHUD, 100);
 
-  // DEBUG PANEL FUNCTIONALITY
   let debugMode = false;
   let debugPanel = null;
 
-  // Check if debug mode is enabled on server
   async function initDebugPanel() {
     try {
       const response = await fetch('/api/debug');
@@ -2634,7 +2498,7 @@
         debugPanel = document.getElementById('debugPanel');
         if (debugPanel) {
           setupDebugPanel();
-          debugPanel.classList.remove('hidden');
+          show(debugPanel);
         }
       }
     } catch (error) {
@@ -2642,9 +2506,7 @@
     }
   }
 
-  // Set up debug panel event listeners and functionality
   function setupDebugPanel() {
-    // Get debug panel elements
     const debugToggle = document.getElementById('debugToggle');
     const debugContent = document.getElementById('debugContent');
     
@@ -2660,7 +2522,6 @@
     const fakePingSlider = document.getElementById('debugFakePingSlider');
     const fakePingValue = document.getElementById('debugFakePingValue');
     
-    // Buttons
     const givePointsBtn = document.getElementById('debugGivePoints');
     const setLapsBtn = document.getElementById('debugSetLaps');
     const setHealthBtn = document.getElementById('debugSetHealth');
@@ -2673,13 +2534,11 @@
     const getPlayerDataBtn = document.getElementById('debugGetPlayerData');
     const toggleFakePingBtn = document.getElementById('debugToggleFakePing');
     
-    // Collapse/expand functionality
     debugToggle.addEventListener('click', () => {
       const isCollapsed = debugContent.classList.toggle('collapsed');
       debugToggle.textContent = isCollapsed ? '+' : '−';
     });
 
-    // Slider value updates
     healthSlider.addEventListener('input', () => {
       healthValue.textContent = healthSlider.value;
     });
@@ -2697,7 +2556,6 @@
       fakePingLatency = parseInt(fakePingSlider.value);
     });
 
-    // Button event listeners
     givePointsBtn.addEventListener('click', () => {
       const points = parseInt(document.getElementById('debugUpgradePoints').value);
       socket.emit('debug:giveUpgradePoints', { points });
@@ -2751,7 +2609,6 @@
       fakePingSlider.disabled = !fakePingEnabled;
     });
 
-    // F12 toggle shortcut
     document.addEventListener('keydown', (e) => {
       if (e.key === '#' && debugMode) {
         e.preventDefault();
@@ -2760,7 +2617,6 @@
     });
   }
 
-  // Handle debug socket events
   socket.on('debug:godModeStatus', (data) => {
     const godModeBtn = document.getElementById('debugToggleGodMode');
     if (godModeBtn) {
@@ -2786,19 +2642,17 @@
     }
   });
 
-  // Initialize debug panel when page loads
   initDebugPanel();
 
-  // Socket disconnection handlers
   socket.on('disconnect', () => {
     console.log('Socket disconnected');
     hideUpgradeCards();
     
     // Hide all game-specific UI elements on disconnect
-    abilityHud.classList.add('hidden');
-    lapCounter.classList.add('hidden');
-    lapTimer.classList.add('hidden');
-    boostDisplay.classList.add('hidden');
+    hide(abilityHud);
+    hide(lapCounter);
+    hide(lapTimer);
+    hide(boostDisplay);
     
     showDisconnectionOverlay();
   });
@@ -2808,10 +2662,10 @@
     hideUpgradeCards();
     
     // Hide all game-specific UI elements on connection error
-    abilityHud.classList.add('hidden');
-    lapCounter.classList.add('hidden');
-    lapTimer.classList.add('hidden');
-    boostDisplay.classList.add('hidden');
+    hide(abilityHud);
+    hide(lapCounter);
+    hide(lapTimer);
+    hide(boostDisplay);
     
     showDisconnectionOverlay();
   });
@@ -2821,10 +2675,10 @@
     hideUpgradeCards();
     
     // Hide all game-specific UI elements on reconnection failure
-    abilityHud.classList.add('hidden');
-    lapCounter.classList.add('hidden');
-    lapTimer.classList.add('hidden');
-    boostDisplay.classList.add('hidden');
+    hide(abilityHud);
+    hide(lapCounter);
+    hide(lapTimer);
+    hide(boostDisplay);
     
     showDisconnectionOverlay();
   });
@@ -2832,8 +2686,8 @@
   function showDisconnectionOverlay() {
     if (menu.style.display === 'none') {
       // User was in-game - show full overlay
-      disconnectionOverlay.classList.remove('hidden');
-      loadingScreen.classList.add('hidden'); // Hide loading screen if it was showing
+      show(disconnectionOverlay);
+      hide(loadingScreen); // Hide loading screen if it was showing
     } else {
       // User is on menu - show inline disconnection message
       showMenuDisconnectionWarning();
@@ -2849,7 +2703,7 @@
     mapEditorButton.style.display = 'none'; // Hide Map Editor button
     
     // Show the menu disconnection warning template
-    menuDisconnectionWarning.classList.remove('hidden');
+    show(menuDisconnectionWarning);
   }
 
   function hideMenuDisconnectionWarning() {
@@ -2867,7 +2721,7 @@
     }
     
     // Hide the warning template
-    menuDisconnectionWarning.classList.add('hidden');
+    hide(menuDisconnectionWarning);
   }
 
   // Monitor server messages to detect "silent" disconnections
@@ -2879,16 +2733,14 @@
     }
   }
 
-  // Check connection every 5 seconds
   setInterval(monitorConnection, 5000);
 
-  // Handle successful reconnection
   socket.on('connect', () => {
     console.log('Socket connected/reconnected');
     lastServerMessage = Date.now(); // Reset the timer
     
     // Hide disconnection warnings if they were showing
-    disconnectionOverlay.classList.add('hidden');
+    hide(disconnectionOverlay);
     if (menu.style.display !== 'none') {
       hideMenuDisconnectionWarning();
     }
@@ -2901,12 +2753,10 @@
     }
   });
 
-  // AFK Warning System
   let afkWarningActive = false;
   let afkWarningElement = null;
   let afkCountdownInterval = null;
 
-  // Create AFK warning overlay
   function createAFKWarningOverlay() {
     const overlay = document.createElement('div');
     overlay.id = 'afkWarning';
@@ -2948,7 +2798,6 @@
     return overlay;
   }
 
-  // Show AFK warning
   function showAFKWarning(reason, countdown) {
     if (afkWarningActive) return;
     
@@ -2956,13 +2805,11 @@
     afkWarningElement = createAFKWarningOverlay();
     document.body.appendChild(afkWarningElement);
     
-    // Set the reason
     const reasonElement = afkWarningElement.querySelector('#afkReason');
     if (reasonElement) {
       reasonElement.textContent = reason;
     }
     
-    // Start countdown
     let timeLeft = countdown;
     const countdownElement = afkWarningElement.querySelector('#afkCountdown');
     
@@ -2977,20 +2824,17 @@
       }
     }, 1000);
     
-    // Send activity ping on any user interaction to dismiss warning
     const dismissWarning = () => {
       socket.emit('activityPing');
       hideAFKWarning();
     };
     
-    // Add event listeners for user activity
     document.addEventListener('keydown', dismissWarning, { once: true });
     document.addEventListener('mousedown', dismissWarning, { once: true });
     document.addEventListener('mousemove', dismissWarning, { once: true });
     document.addEventListener('touchstart', dismissWarning, { once: true });
   }
 
-  // Hide AFK warning
   function hideAFKWarning() {
     if (!afkWarningActive) return;
     
@@ -3007,12 +2851,10 @@
     }
   }
 
-  // Handle AFK warning from server
   socket.on('afkWarning', (data) => {
     showAFKWarning(data.reason, data.countdown);
   });
 
-  // Handle graceful logout from server (when logged in from another location)
   socket.on('forceLogout', (data) => {
     
     // Hide any existing warnings
@@ -3027,34 +2869,25 @@
     updateToolbarVisibility(); // Update toolbar for auth state change
   });
 
-  // Handle XP gained notifications
   socket.on('xpGained', (data) => {
     if (currentUser && !currentUser.isGuest) {
-      // Calculate level before XP gain
       const oldLevel = calculateLevel(currentUser.xp || 0);
       
-      // Update current user's XP
       currentUser.xp = (currentUser.xp || 0) + data.amount;
       
-      // Calculate level after XP gain
       const newLevel = calculateLevel(currentUser.xp);
       
-      // Update display
       updatePlayerInfo();
       
-      // Check for level up
       if (newLevel > oldLevel) {
-        // Level up detected!
         console.log(`🎉 Level up! Reached level ${newLevel}`);
         
-        // Add a visual celebration effect to the progress bar
         levelProgressFill.style.background = 'linear-gradient(90deg, #FFD700, #FFA500)';
         setTimeout(() => {
           levelProgressFill.style.background = 'linear-gradient(90deg, #4CAF50, #8BC34A)';
         }, 2000);
         
         // Could add more elaborate level up notifications here later
-        // For now, we show it in the console and briefly change progress bar color
       }
       
       // Show XP gain message
@@ -3062,14 +2895,12 @@
     }
   });
 
-  // Send periodic activity pings when spectating (for menu interactions)
   setInterval(() => {
     if (isSpectating && socket.connected) {
       socket.emit('activityPing');
     }
   }, 30000); // Every 30 seconds when spectating
 
-  // Spectator rendering function
   function drawSpectatorView() {
     if (!spectatorState || !isSpectating) {
       // Show "waiting for game" message when no spectator data
@@ -3104,7 +2935,6 @@
       spectatorCtx.strokeStyle = '#000000';
       spectatorCtx.strokeText('Waiting for players...', spectatorCanvas.width / 2, spectatorCanvas.height - 50);
       
-      // White fill text
       spectatorCtx.fillStyle = 'rgba(255, 255, 255, 1)';
       spectatorCtx.fillText('Waiting for players...', spectatorCanvas.width / 2, spectatorCanvas.height - 50);
     }
@@ -3112,7 +2942,6 @@
 
   // Continuous rendering for smooth interpolation
   function renderLoop() {
-    // Update performance metrics
     updateFPS();
     updatePing();
     
@@ -3125,20 +2954,17 @@
   }
   renderLoop();
 
-  // Handle upgrade card clicks
   upgradeCardsContainer.addEventListener('click', (e) => {
     const upgradeCard = e.target.closest('.upgrade-card');
     if (upgradeCard && !upgradeCardsContainer.classList.contains('hidden')) {
       const stat = upgradeCard.getAttribute('data-stat');
       
-      // Visual feedback
       upgradeCard.style.transform = 'translateY(-3px) scale(1.1)';
       
       setTimeout(() => {
         upgradeCard.style.transform = '';
       }, 200);
       
-      // Send upgrade request
       socket.emit('upgrade', { stat });
     }
   });
@@ -3167,14 +2993,12 @@
   }
 
 
-  // Get interpolated game state for current time
   function getInterpolatedState() {
     if (gameStates.length === 0) return null;
     
     const now = Date.now();
     const renderTime = now - interpolationDelay;
 
-    // For single state, use it directly
     if (gameStates.length < 2) {
       return gameStates[gameStates.length - 1];
     }
@@ -3199,7 +3023,6 @@
     return interpolateStates(state1, state2, t);
   }
 
-  // Camera system functions
   function calculateMapBounds(mapShapes) {
     if (!mapShapes || !Array.isArray(mapShapes)) {
       return { minX: -100, maxX: 100, minY: -100, maxY: 100 };
@@ -3222,7 +3045,6 @@
   }
   
   function calculateScale(canvas, mapBounds, mode = 'player', mapData = null) {
-    // If mapData has predefined scale, use it
     if (mapData && mapData.scale && mapData.scale[mode]) {
       return mapData.scale[mode] * Math.min(canvas.width, canvas.height);
     }
@@ -3237,7 +3059,6 @@
       // Zoom out more to fit entire map in spectator view
       return (Math.min(canvas.width, canvas.height) * 0.9) / size;
     } else {
-      // Player mode - closer zoom
       return (Math.min(canvas.width, canvas.height) * 2.5) / size;
     }
   }
@@ -3251,11 +3072,9 @@
     let focusY = 0;
     
     if (mode === 'player' && centerPlayer) {
-      // Player-centered camera
       focusX = centerPlayer.x;
       focusY = centerPlayer.y;
     } else if (mode === 'spectator' && mapBounds) {
-      // Map-centered camera
       focusX = (mapBounds.minX + mapBounds.maxX) / 2;
       focusY = (mapBounds.minY + mapBounds.maxY) / 2;
     }
@@ -3283,13 +3102,11 @@
     const height = canvas.height;
     ctx.clearRect(0, 0, width, height);
     
-    // Set global alpha for spectator mode
     ctx.globalAlpha = alpha;
     
     // Get map data (prioritize passed mapData, fallback to currentMap)
     const mapToUse = mapData || currentMap;
     
-    // Calculate camera transform
     const mapBounds = calculateMapBounds(mapToUse?.shapes);
     const { centerX, centerY, focusX, focusY, scale } = getCameraTransform({
       canvas,
@@ -3299,12 +3116,10 @@
       mapData: mapToUse
     });
     
-    // Extract game objects
     const players = gameState.players || [];
     const abilityObjects = gameState.abilityObjects || [];
     const dynamicObjects = gameState.dynamicObjects || [];
     
-    // Render map
     if (mapToUse && Array.isArray(mapToUse.shapes)) {
       for (const shape of mapToUse.shapes) {
         ctx.beginPath();
@@ -3388,7 +3203,6 @@
       drawCheckerboard(ctx, screenVerts, 20, { x: 0, y: 0 }, scale, { x: focusX, y: focusY }, centerX, centerY);
     }
 
-    // Checkpoints (only show in player mode and if we have a center player)
     if (showCheckpoints && mapToUse && mapToUse.checkpoints && centerPlayer) {
       for (const cp of mapToUse.checkpoints) {
         if (cp.type === 'line' && cp.vertices.length >= 2) {
@@ -3407,13 +3221,11 @@
       }
     }
 
-    // Area effects
     if (mapToUse && Array.isArray(mapToUse.areaEffects)) {
       for (const areaEffect of mapToUse.areaEffects) {
         if (Array.isArray(areaEffect.vertices)) {
           ctx.beginPath();
           
-          // Set fill color with transparency
           const fillColor = Array.isArray(areaEffect.fillColor) 
             ? `rgba(${areaEffect.fillColor[0]}, ${areaEffect.fillColor[1]}, ${areaEffect.fillColor[2]}, 0.3)`
             : 'rgba(173, 216, 230, 0.3)'; // Default light blue with transparency
@@ -3437,7 +3249,6 @@
       }
     }
 
-    // Dynamic objects
     dynamicObjects.forEach((obj) => {
       if (obj.vertices && obj.vertices.length) {
         ctx.save();
@@ -3470,7 +3281,6 @@
         let fillColor = obj.fillColor || [139, 69, 19];
         let strokeColor = obj.strokeColor || [101, 67, 33];
         
-        // Visual damage feedback
         if (obj.health !== undefined && obj.maxHealth !== undefined) {
           const healthRatio = obj.health / obj.maxHealth;
           if (healthRatio <= 0) {
@@ -3485,13 +3295,11 @@
           }
         }
         
-        // Fill color
         if (fillColor && Array.isArray(fillColor)) {
           ctx.fillStyle = `rgb(${fillColor[0]}, ${fillColor[1]}, ${fillColor[2]})`;
           ctx.fill();
         }
         
-        // Stroke color
         if (strokeColor && Array.isArray(strokeColor)) {
           ctx.strokeStyle = `rgb(${strokeColor[0]}, ${strokeColor[1]}, ${strokeColor[2]})`;
           ctx.lineWidth = (obj.strokeWidth || 2) * scale;
@@ -3512,15 +3320,12 @@
           
           const healthRatio = Math.max(0, obj.health / obj.maxHealth);
           
-          // Background
           ctx.fillStyle = '#333';
           ctx.fillRect(barX, barY, barWidth, barHeight);
           
-          // Health bar
           ctx.fillStyle = healthRatio > 0.5 ? '#0a0' : healthRatio > 0.25 ? '#aa0' : '#a00';
           ctx.fillRect(barX, barY, barWidth * healthRatio, barHeight);
           
-          // Border
           ctx.strokeStyle = '#000';
           ctx.lineWidth = 1;
           ctx.strokeRect(barX, barY, barWidth, barHeight);
@@ -3572,19 +3377,16 @@
     // Start with all active players (non-crashed)
     const allPlayersToRender = [];
     
-    // Add active players (not crashed)
     for (const player of players) {
       if (!player.crashed) {
         allPlayersToRender.push(player);
       }
     }
     
-    // Add crashed cars with fade effect (only render these, don't use server crashed cars)
     const now = Date.now();
     for (const [carId, crashData] of crashedCars.entries()) {
       const fadeElapsed = now - crashData.fadeStartTime;
       if (fadeElapsed < CRASH_FADE_DURATION) {
-        // Add crashed car with fade info - use the stored car data, not server data
         allPlayersToRender.push({
           ...crashData.car,
           _isCrashed: true,
@@ -3593,7 +3395,6 @@
       }
     }
     
-    // Players (including fading crashed cars)
     allPlayersToRender.forEach((p) => {
       const dx = p.x - focusX;
       const dy = p.y - focusY;
@@ -3602,22 +3403,18 @@
       
       ctx.save();
       
-      // Apply fade alpha for crashed cars or player's own crashed car
       if (p._isCrashed && p._fadeAlpha !== undefined) {
         ctx.globalAlpha = p._fadeAlpha;
       } else if (playerCrashTime && p.socketId === mySocketId && p.crashed) {
-        // Apply fade to player's own crashed car (only if server says it's crashed)
         const fadeElapsed = Date.now() - playerCrashTime;
         if (fadeElapsed < CRASH_FADE_DURATION) {
           ctx.globalAlpha = 1 - (fadeElapsed / CRASH_FADE_DURATION);
         }
       }
       
-      // Get car type definition
       const carDef = CAR_TYPES[p.type];
       if (!carDef) return;
 
-      // Check if this is a multi-shape car (always use CAR_TYPES rendering for multi-shape)
       const isMultiShape = carDef.shapes && carDef.shapes.length > 1;
       const useCAR_TYPESRendering = isMultiShape || !p.vertices || !p.vertices.length;
 
@@ -3661,7 +3458,6 @@
               const flippedX = -v.x;
               const originalY = v.y;
               
-              // Apply rotation to flipped coordinates
               let rotatedX, rotatedY;
               if (p.angle !== undefined) {
                 const cos = Math.cos(p.angle);
@@ -3681,7 +3477,6 @@
             ctx.closePath();
             ctx.fill();
             
-            // Apply stroke for this shape
             if (shapeColor.stroke) {
               ctx.lineJoin = 'round';
               ctx.stroke();
@@ -3692,18 +3487,15 @@
 
       ctx.restore();
 
-      // Apply fade effect to name and health bar too
       if (p._isCrashed && p._fadeAlpha !== undefined) {
         ctx.globalAlpha = p._fadeAlpha;
       } else if (playerCrashTime && p.socketId === mySocketId && p.crashed) {
-        // Apply fade to player's own crashed car name/health (only if server says it's crashed)
         const fadeElapsed = Date.now() - playerCrashTime;
         if (fadeElapsed < CRASH_FADE_DURATION) {
           ctx.globalAlpha = 1 - (fadeElapsed / CRASH_FADE_DURATION);
         }
       }
 
-      // Player name with black outline and smooth font
       const fontSize = Math.max(6, 10 * scale);
       ctx.font = `bold ${fontSize}px 'Tahoma', 'Arial', sans-serif`;
       ctx.textAlign = 'center';
@@ -3714,7 +3506,6 @@
       ctx.strokeStyle = '#000000';
       ctx.strokeText(p.name || '', screenX, screenY + 20 * scale);
       
-      // White fill text
       ctx.fillStyle = '#ffffff';
       ctx.fillText(p.name || '', screenX, screenY + 20 * scale);
 
@@ -3742,7 +3533,6 @@
           healthColor = '#F44336'; // Red
         }
 
-        // Background (rounded rectangle)
         ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
         ctx.beginPath();
         ctx.roundRect(barX, barY, barWidth, barHeight, cornerRadius);
@@ -3768,26 +3558,21 @@
       ctx.globalAlpha = 1.0;
     });
 
-    // Update HUD elements (only in player mode)
     if (showHUD && centerPlayer && mode === 'player') {
       lapsSpan.textContent = `Lap ${centerPlayer.laps + 1} / ${centerPlayer.maxLaps}`;
       
-      // Update upgrade points counter beside cards
       const upgradePointsCounter = document.getElementById('upgradePointsCounter');
       if (upgradePointsCounter) {
         upgradePointsCounter.textContent = centerPlayer.upgradePoints;
       }
       
-      // Handle lap timer
       const now = Date.now();
       
-      // Check if a new lap was completed
       if (centerPlayer.laps > previousLapCount) {
         // A lap was just completed
         if (currentLapStartTime > 0) {
           const lapTime = now - currentLapStartTime;
           
-          // Update best lap time if this is better or first lap
           if (!bestLapTime || lapTime < bestLapTime) {
             bestLapTime = lapTime;
             bestLapTimeSpan.textContent = formatTime(bestLapTime);
@@ -3807,13 +3592,12 @@
         previousLapCount = 0;
       }
       
-      // Update current lap time display
       if (currentLapStartTime > 0) {
         const currentLapTime = now - currentLapStartTime;
         currentLapTimeSpan.textContent = formatTime(currentLapTime);
-        lapTimer.classList.remove('hidden');
+        show(lapTimer);
       } else {
-        lapTimer.classList.add('hidden');
+        hide(lapTimer);
       }
       
       // Show upgrades if player has points OR has ever earned upgrade points
@@ -3822,37 +3606,33 @@
       const isCompactMode = hasEverHadUpgrades && centerPlayer.upgradePoints === 0;
       
       // Show lap counter, timer, and boost display whenever in game
-      lapCounter.classList.remove('hidden');
-      lapTimer.classList.remove('hidden');
-      boostDisplay.classList.remove('hidden');
+      show(lapCounter);
+      show(lapTimer);
+      show(boostDisplay);
       
-      // Update boost display
       if (centerPlayer.currentBoost !== undefined && centerPlayer.maxBoost !== undefined) {
         const currentBoost = Math.round(centerPlayer.currentBoost);
         const maxBoost = centerPlayer.maxBoost;
         const boostPercentage = (currentBoost / maxBoost) * 100;
         
-        // Update boost text
         boostText.textContent = `${currentBoost}`;
         
       }
       
       if (shouldShowUpgrades) {
-        upgradeCardsContainer.classList.remove('hidden');
+        show(upgradeCardsContainer);
         upgradeCardsContainer.classList.toggle('compact', isCompactMode);
       } else {
-        upgradeCardsContainer.classList.add('hidden');
+        hide(upgradeCardsContainer);
         upgradeCardsContainer.classList.remove('compact');
       }
       
-      // Update upgrade display if we have car type info
       const selectedCar = document.querySelector('input[name="car"]:checked');
       if (selectedCar) {
         updateUpgradeDisplay(centerPlayer, selectedCar.value);
       }
     }
     
-    // Reset global alpha
     ctx.globalAlpha = 1.0;
   }
 
@@ -3866,7 +3646,6 @@
     const currentState = getInterpolatedState();
     if (!currentState) return;
 
-    // Update global state for rendering
     players = currentState.players || [];
     abilityObjects = currentState.abilityObjects || [];
     mySocketId = currentState.mySocketId || mySocketId;
@@ -3890,7 +3669,6 @@
     });
   }
 
-  // HELPERS
 
   // Generate a reliable map identifier
   function generateMapKey(map) {

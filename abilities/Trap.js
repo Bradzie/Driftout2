@@ -81,7 +81,6 @@ class SpikeTrapAbility extends Ability {
   }
 
   createSpikeTrap(position, world, ownerId) {
-    // Create 3-pronged star vertices
     const radius = this.trapRadius;
     const innerRadius = radius * 0.4;
     const vertices = [];
