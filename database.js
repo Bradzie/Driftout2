@@ -4,13 +4,11 @@ const path = require('path');
 
 class UserDatabase {
   constructor() {
-    // Create database in the project root directory
     this.db = new Database(path.join(__dirname, 'users.db'));
     this.init();
   }
 
   init() {
-    // Create users table if it doesn't exist
     const createUsersTable = this.db.prepare(`
       CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -24,7 +22,6 @@ class UserDatabase {
       )
     `);
     
-    // Create maps table for map metadata
     const createMapsTable = this.db.prepare(`
       CREATE TABLE IF NOT EXISTS maps (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,7 +48,6 @@ class UserDatabase {
 
   migrateUsersTable() {
     try {
-      // Check if xp column exists, if not add it
       const checkXpColumn = this.db.prepare(`
         PRAGMA table_info(users)
       `);
@@ -69,7 +65,6 @@ class UserDatabase {
         this.db.exec('ALTER TABLE users ADD COLUMN isDev BOOLEAN DEFAULT 0');
       }
 
-      // Set user ID 1 as developer if it exists
       const setDevUser = this.db.prepare(`
         UPDATE users SET isDev = 1 WHERE id = 1
       `);
@@ -115,7 +110,6 @@ class UserDatabase {
     }
   }
 
-  // Login user
   async loginUser(email, password) {
     try {
       const getUser = this.db.prepare(`
@@ -136,7 +130,6 @@ class UserDatabase {
         return { success: false, error: 'Invalid email or password' };
       }
 
-      // Update last login
       const updateLastLogin = this.db.prepare(`
         UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?
       `);
@@ -158,7 +151,6 @@ class UserDatabase {
     }
   }
 
-  // Get user by ID
   getUserById(userId) {
     try {
       const getUser = this.db.prepare(`
@@ -174,7 +166,6 @@ class UserDatabase {
     }
   }
 
-  // Add XP to user account
   addXP(userId, amount) {
     try {
       const addXpToUser = this.db.prepare(`
@@ -189,7 +180,6 @@ class UserDatabase {
     }
   }
 
-  // Check if username exists
   usernameExists(username) {
     try {
       const checkUsername = this.db.prepare(`
@@ -203,7 +193,6 @@ class UserDatabase {
     }
   }
 
-  // Check if email exists
   emailExists(email) {
     try {
       const checkEmail = this.db.prepare(`
@@ -217,9 +206,7 @@ class UserDatabase {
     }
   }
 
-  // Map database operations
   
-  // Add a map to the database
   addMap(name, authorId, filename, category) {
     try {
       const insertMap = this.db.prepare(`
@@ -235,7 +222,6 @@ class UserDatabase {
     }
   }
 
-  // Update map metadata
   updateMap(mapId, name, authorId) {
     try {
       const updateMap = this.db.prepare(`
@@ -251,7 +237,6 @@ class UserDatabase {
     }
   }
 
-  // Delete map from database
   deleteMap(mapId, authorId) {
     try {
       const deleteMap = this.db.prepare(`
@@ -266,7 +251,6 @@ class UserDatabase {
     }
   }
 
-  // Get map by filename
   getMapByFilename(filename) {
     try {
       const getMap = this.db.prepare(`
@@ -283,7 +267,6 @@ class UserDatabase {
     }
   }
 
-  // Get maps by user
   getMapsByUser(userId) {
     try {
       const getMaps = this.db.prepare(`
@@ -298,7 +281,6 @@ class UserDatabase {
     }
   }
 
-  // Get all public maps
   getAllPublicMaps() {
     try {
       const getMaps = this.db.prepare(`
@@ -316,7 +298,6 @@ class UserDatabase {
     }
   }
 
-  // Increment download count
   incrementDownloadCount(mapId) {
     try {
       const updateDownloads = this.db.prepare(`
@@ -332,7 +313,6 @@ class UserDatabase {
     }
   }
 
-  // Close database connection
   close() {
     this.db.close();
   }

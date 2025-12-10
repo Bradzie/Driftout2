@@ -7,7 +7,6 @@ class MapManager {
     this.cache = new Map();
     this.cacheTimeout = 5 * 60 * 1000; // 5 minutes
     
-    // Ensure maps directories exist
     this.ensureDirectories();
   }
 
@@ -33,7 +32,6 @@ class MapManager {
   getAllMaps() {
     const maps = [];
     
-    // Get official maps
     const officialDir = path.join(this.mapsDir, 'official');
     if (fs.existsSync(officialDir)) {
       const officialFiles = fs.readdirSync(officialDir).filter(f => f.endsWith('.json'));
@@ -46,7 +44,6 @@ class MapManager {
       }
     }
     
-    // Get community maps
     const communityDir = path.join(this.mapsDir, 'community');
     if (fs.existsSync(communityDir)) {
       const communityFiles = fs.readdirSync(communityDir).filter(f => f.endsWith('.json'));
@@ -99,7 +96,6 @@ class MapManager {
     for (const cat of categories) {
       const cacheKey = `${cat}:${key}`;
       
-      // Check cache first
       if (this.cache.has(cacheKey)) {
         const cached = this.cache.get(cacheKey);
         if (Date.now() - cached.timestamp < this.cacheTimeout) {
@@ -108,7 +104,6 @@ class MapManager {
         this.cache.delete(cacheKey);
       }
       
-      // Load from filesystem
       const mapPath = path.join(this.mapsDir, cat, `${key}.json`);
       if (fs.existsSync(mapPath)) {
         try {
@@ -141,7 +136,6 @@ class MapManager {
     try {
       const mapPath = path.join(this.mapsDir, category, `${key}.json`);
       
-      // Add metadata
       const dataToSave = {
         ...mapData,
         created_at: mapData.created_at || new Date().toISOString(),
@@ -150,7 +144,6 @@ class MapManager {
       
       fs.writeFileSync(mapPath, JSON.stringify(dataToSave, null, 2), 'utf8');
       
-      // Update cache
       const cacheKey = `${category}:${key}`;
       this.cache.set(cacheKey, {
         data: dataToSave,
@@ -177,7 +170,6 @@ class MapManager {
       if (fs.existsSync(mapPath)) {
         fs.unlinkSync(mapPath);
         
-        // Remove from cache
         const cacheKey = `${category}:${key}`;
         this.cache.delete(cacheKey);
         
@@ -224,14 +216,12 @@ class MapManager {
   getAllMapKeys() {
     const keys = [];
     
-    // Get official map keys
     const officialDir = path.join(this.mapsDir, 'official');
     if (fs.existsSync(officialDir)) {
       const officialFiles = fs.readdirSync(officialDir).filter(f => f.endsWith('.json'));
       keys.push(...officialFiles.map(f => path.basename(f, '.json')));
     }
     
-    // Get community map keys
     const communityDir = path.join(this.mapsDir, 'community');
     if (fs.existsSync(communityDir)) {
       const communityFiles = fs.readdirSync(communityDir).filter(f => f.endsWith('.json'));

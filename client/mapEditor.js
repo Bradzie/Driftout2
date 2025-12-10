@@ -1,8 +1,6 @@
-// Advanced Map Editor
 let editorCanvas, editorCtx;
 let editorMap = null;
 
-// State management
 let currentTool = 'select';
 let selectedObjects = []; // Changed to array for multi-select
 let selectedObject = null; // Keep for backward compatibility
@@ -20,19 +18,16 @@ let currentMapInfo = {
   isNew: true,
 };
 
-// Grid settings
 let showGrid = true;
 let snapToGrid = true;
 let gridSize = 25;
 
-// View settings
 let panX = 0;
 let panY = 0;
 let zoom = 1;
 let isPanning = false;
 let lastMousePos = { x: 0, y: 0 };
 
-// Object creation state
 let creatingShape = false;
 let newShapeVertices = [];
 let creatingCheckpoint = false;
@@ -42,17 +37,14 @@ let dynamicStartPoint = null;
 let creatingAreaEffect = false;
 let areaEffectVertices = [];
 
-// Preset creation states
 let creatingCircle = false;
 let creatingRectangle = false;
 let creatingTriangle = false;
 let presetStartPoint = null;
 
-// History management
 let historyStack = [];
 let historyIndex = -1;
 
-// UUID generation utility
 function generateUUID() {
   // Use crypto API if available, otherwise fallback to Date-based UUID
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -67,7 +59,6 @@ function generateUUID() {
 }
 const MAX_HISTORY = 50;
 
-// Clipboard
 let clipboardObject = null;
 
 function initMapEditor() {
@@ -83,7 +74,6 @@ function initMapEditor() {
 }
 
 function initEventListeners() {
-  // Map operations
   document.getElementById('newMapButton').addEventListener('click', createNewMap);
   document.getElementById('mapEditorBrowseButton').addEventListener('click', showBrowseModal);
   document.getElementById('closeBrowseModal').addEventListener('click', hideBrowseModal);
@@ -102,14 +92,12 @@ function initEventListeners() {
     }
   });
 
-  // Tool selection
   document.querySelectorAll('.tool-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       selectTool(btn.dataset.tool);
     });
   });
 
-  // Add preset button event listeners
   document.querySelectorAll('.preset-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       handlePresetClick(btn.dataset.preset);
@@ -128,7 +116,6 @@ function initEventListeners() {
     }
   });
 
-  // Grid settings
   document.getElementById('showGrid').addEventListener('change', (e) => {
     showGrid = e.target.checked;
     renderEditor();
@@ -143,28 +130,23 @@ function initEventListeners() {
     renderEditor();
   });
 
-  // File operations
   document.getElementById('saveMapButton')?.addEventListener('click', saveMap);
   document.getElementById('saveAsMapButton')?.addEventListener('click', saveMapAs);
   document.getElementById('setPreviewButton')?.addEventListener('click', generatePreviewImage);
 
-  // Canvas events
   editorCanvas.addEventListener('mousedown', handleMouseDown);
   editorCanvas.addEventListener('mousemove', handleMouseMove);
   editorCanvas.addEventListener('mouseup', handleMouseUp);
   editorCanvas.addEventListener('wheel', handleWheel);
   editorCanvas.addEventListener('contextmenu', handleRightClick);
 
-  // Keyboard events
   window.addEventListener('keydown', handleKeyDown);
   window.addEventListener('resize', resizeEditorCanvas);
   
-  // Initialize status bar
   updateStatusBar();
 }
 
 function selectTool(tool) {
-  // Clean up previous tool
   if (creatingShape) {
     creatingShape = false;
     newShapeVertices = [];
@@ -192,10 +174,8 @@ function selectTool(tool) {
   selectedObject = null;
   selectedVertex = null;
   
-  // Update status bar
   updateStatusBar();
 
-  // Update UI
   document.querySelectorAll('.tool-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tool === tool);
   });
@@ -273,10 +253,8 @@ function handleMouseMove(e) {
   
   lastMousePos = { x: e.clientX, y: e.clientY };
   
-  // Update coordinates in status bar
   updateCoordinates(mousePos);
   
-  // Update hover state (only when not dragging)
   if (!isDragging && currentTool === 'select') {
     const newHoveredVertex = findVertexAtPosition(mousePos, 15);
     const newHoveredEdge = newHoveredVertex ? null : findEdgeAtPosition(mousePos, 10);
@@ -287,7 +265,6 @@ function handleMouseMove(e) {
       hoveredEdge = newHoveredEdge;
       hoveredObject = newHoveredObject;
       
-      // Update cursor
       if (hoveredVertex) {
         editorCanvas.style.cursor = 'grab';
       } else if (hoveredEdge) {
@@ -303,17 +280,14 @@ function handleMouseMove(e) {
   }
 
   if (isDragging && selectedVertex) {
-    // Dragging individual vertex
     const snappedPos = snapToGridPos(mousePos);
     selectedVertex.x = snappedPos.x;
     selectedVertex.y = snappedPos.y;
     renderEditor();
   } else if (isDragging && isDraggingObject && selectedObjects.length > 0) {
-    // Dragging whole object(s)
     const deltaX = mousePos.x - dragStartPos.x;
     const deltaY = mousePos.y - dragStartPos.y;
     
-    // Apply snapping to the drag movement
     let snappedDeltaX = deltaX;
     let snappedDeltaY = deltaY;
     
@@ -333,7 +307,6 @@ function handleMouseMove(e) {
         vertex.y = vertex._originalY + snappedDeltaY;
       });
       
-      // Handle dynamic objects that have position property
       if (obj.type === 'dynamicObject' && objectData.position) {
         objectData.position.x = objectData.position._originalX + snappedDeltaX;
         objectData.position.y = objectData.position._originalY + snappedDeltaY;
@@ -354,7 +327,6 @@ function handleMouseUp(e) {
   if (isDraggingObject && selectedObjects.length > 0) {
     saveToHistory();
     
-    // Clean up original position markers
     selectedObjects.forEach(obj => {
       const objectData = getObjectData(obj);
       if (!objectData || !objectData.vertices) return;
@@ -364,7 +336,6 @@ function handleMouseUp(e) {
         delete vertex._originalY;
       });
       
-      // Handle dynamic objects that have position property
       if (obj.type === 'dynamicObject' && objectData.position) {
         delete objectData.position._originalX;
         delete objectData.position._originalY;
@@ -392,7 +363,6 @@ function handleWheel(e) {
   renderEditor();
 }
 
-// Context menu state
 let contextMenuVisible = false;
 let contextMenuTarget = null;
 
@@ -405,14 +375,12 @@ function handleRightClick(e) {
   
   const mousePos = getMousePos(e);
   
-  // Check if right-clicked on a vertex
   const vertexHit = findVertexAtPosition(mousePos, 15);
   if (vertexHit) {
     showVertexContextMenu(e.clientX, e.clientY, vertexHit, mousePos);
     return;
   }
   
-  // Check if right-clicked on a shape edge
   const edgeHit = findEdgeAtPosition(mousePos, 10);
   if (edgeHit) {
     showEdgeContextMenu(e.clientX, e.clientY, edgeHit, mousePos);
@@ -632,7 +600,6 @@ function handleSelectMouseDown(mousePos, ctrlKey = false) {
     dragStartPos = mousePos;
   } else if (clickedObject) {
     if (ctrlKey) {
-      // Multi-select mode
       const objIndex = selectedObjects.findIndex(obj => 
         obj.type === clickedObject.type && obj.index === clickedObject.index
       );
@@ -641,25 +608,20 @@ function handleSelectMouseDown(mousePos, ctrlKey = false) {
         // Deselect if already selected
         selectedObjects.splice(objIndex, 1);
       } else {
-        // Add to selection
         selectedObjects.push(clickedObject);
       }
       
-      // Update single selection for properties panel
       selectedObject = selectedObjects.length === 1 ? selectedObjects[0] : null;
     } else {
-      // Single select mode
       selectedObject = clickedObject;
       selectedObjects = [clickedObject];
     }
     selectedVertex = null;
     
-    // Enable object dragging
     isDragging = true;
     isDraggingObject = true;
     dragStartPos = mousePos;
     
-    // Store original positions for smooth dragging
     selectedObjects.forEach(obj => {
       const objectData = getObjectData(obj);
       if (!objectData || !objectData.vertices) return;
@@ -669,7 +631,6 @@ function handleSelectMouseDown(mousePos, ctrlKey = false) {
         vertex._originalY = vertex.y;
       });
       
-      // Handle dynamic objects that have position property
       if (obj.type === 'dynamicObject' && objectData.position) {
         objectData.position._originalX = objectData.position.x;
         objectData.position._originalY = objectData.position.y;
@@ -782,7 +743,6 @@ function handleCreateAreaEffectMouseDown(mousePos) {
   renderEditor();
 }
 
-// Shape Preset Functions
 function resetCreationStates() {
   creatingShape = false;
   newShapeVertices = [];
@@ -803,7 +763,6 @@ function handlePresetClick(presetType) {
   // Reset current creation states
   resetCreationStates();
   
-  // Set appropriate tool based on preset
   switch (presetType) {
     case 'circle':
       currentTool = 'createCircle';
@@ -983,14 +942,11 @@ function generateDynamicId() {
   return `dynamicBox${id}`;
 }
 
-// History management functions
 function saveToHistory() {
   if (!editorMap) return;
   
-  // Remove any redo history when we make a new change
   historyStack.splice(historyIndex + 1);
   
-  // Add current state to history
   historyStack.push(JSON.parse(JSON.stringify(editorMap)));
   
   // Limit history size and adjust index accordingly
@@ -1026,7 +982,6 @@ function redo() {
   }
 }
 
-// Copy/Paste functions
 function copySelectedObject() {
   if (!selectedObject) return;
   
@@ -1064,7 +1019,6 @@ function pasteObject() {
     pastedData.id = generateCheckpointId();
   }
   
-  // Add to appropriate array
   switch (clipboardObject.type) {
     case 'shape':
       if (!editorMap.shapes) editorMap.shapes = [];
@@ -1092,7 +1046,6 @@ function pasteObject() {
 function selectAllObjects() {
   selectedObjects = [];
   
-  // Add all objects to selection
   if (editorMap.shapes) {
     editorMap.shapes.forEach((shape, index) => {
       selectedObjects.push({ type: 'shape', index, data: shape });
@@ -1127,18 +1080,15 @@ function selectAllObjects() {
 function duplicateSelectedObject() {
   if (!selectedObject) return;
   
-  // Copy the object to clipboard and paste it
   copySelectedObject();
   pasteObject();
 }
 
-// Alignment functions
 function alignSelectedObjects(alignment) {
   if (selectedObjects.length < 2) return;
   
   saveToHistory();
   
-  // Calculate bounds for alignment
   let minX = Infinity, maxX = -Infinity;
   let minY = Infinity, maxY = -Infinity;
   let centerX = 0, centerY = 0;
@@ -1165,12 +1115,10 @@ function alignSelectedObjects(alignment) {
   centerX /= totalVertices;
   centerY /= totalVertices;
   
-  // Apply alignment
   selectedObjects.forEach(obj => {
     const objectData = getObjectData(obj);
     if (!objectData || !objectData.vertices) return;
     
-    // Calculate object center
     let objCenterX = 0, objCenterY = 0;
     objectData.vertices.forEach(vertex => {
       objCenterX += vertex.x;
@@ -1202,7 +1150,6 @@ function alignSelectedObjects(alignment) {
         break;
     }
     
-    // Apply offset to all vertices
     objectData.vertices.forEach(vertex => {
       vertex.x += offsetX;
       vertex.y += offsetY;
@@ -1247,7 +1194,6 @@ function getObjectData(obj) {
   }
 }
 
-// Layer ordering functions
 function moveToFront() {
   if (selectedObjects.length === 0) return;
   
@@ -1257,12 +1203,10 @@ function moveToFront() {
     const array = getObjectArray(obj.type);
     if (!array || obj.index >= array.length) return;
     
-    // Remove from current position and add to end
     const objData = array.splice(obj.index, 1)[0];
     array.push(objData);
   });
   
-  // Update indices for selected objects
   updateSelectedObjectIndices();
   updateLayersPanel();
   renderEditor();
@@ -1280,12 +1224,10 @@ function moveToBack() {
     const array = getObjectArray(obj.type);
     if (!array || obj.index >= array.length) return;
     
-    // Remove from current position and add to beginning
     const objData = array.splice(obj.index - i, 1)[0]; // Subtract i to account for previous removals
     array.unshift(objData);
   });
   
-  // Update indices for selected objects
   updateSelectedObjectIndices();
   updateLayersPanel();
   renderEditor();
@@ -1343,7 +1285,6 @@ function getObjectArray(type) {
 }
 
 function updateSelectedObjectIndices() {
-  // Update indices in selected objects after array manipulations
   selectedObjects.forEach(obj => {
     const array = getObjectArray(obj.type);
     if (!array) return;
@@ -1361,7 +1302,6 @@ function updateSelectedObjectIndices() {
 function findVertexAtPosition(pos, tolerance = 10) {
   const scaledTolerance = tolerance / zoom;
 
-  // Check shapes
   if (editorMap.shapes) {
     for (let i = 0; i < editorMap.shapes.length; i++) {
       const shape = editorMap.shapes[i];
@@ -1381,7 +1321,6 @@ function findVertexAtPosition(pos, tolerance = 10) {
     }
   }
 
-  // Check checkpoints
   if (editorMap.checkpoints) {
     for (let i = 0; i < editorMap.checkpoints.length; i++) {
       const checkpoint = editorMap.checkpoints[i];
@@ -1401,7 +1340,6 @@ function findVertexAtPosition(pos, tolerance = 10) {
     }
   }
 
-  // Check area effects
   if (editorMap.areaEffects) {
     for (let i = 0; i < editorMap.areaEffects.length; i++) {
       const area = editorMap.areaEffects[i];
@@ -1421,7 +1359,6 @@ function findVertexAtPosition(pos, tolerance = 10) {
     }
   }
 
-  // Check dynamic objects
   if (editorMap.dynamicObjects) {
     for (let i = 0; i < editorMap.dynamicObjects.length; i++) {
       const dynObj = editorMap.dynamicObjects[i];
@@ -1449,7 +1386,6 @@ function findVertexAtPosition(pos, tolerance = 10) {
 function findEdgeAtPosition(pos, tolerance = 10) {
   const scaledTolerance = tolerance / zoom;
 
-  // Check shapes
   if (editorMap.shapes) {
     for (let i = 0; i < editorMap.shapes.length; i++) {
       const shape = editorMap.shapes[i];
@@ -1503,7 +1439,6 @@ function distancePointToLineSegment(point, lineStart, lineEnd) {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-// Context Menu Functions
 function showVertexContextMenu(clientX, clientY, vertexHit, mousePos) {
   const contextMenu = document.getElementById('vertexContextMenu');
   const removeOption = document.getElementById('removeVertexOption');
@@ -1515,7 +1450,6 @@ function showVertexContextMenu(clientX, clientY, vertexHit, mousePos) {
     mousePos: mousePos
   };
   
-  // Check if we can remove this vertex (minimum 3 vertices for polygon)
   const canRemove = vertexHit.object.data.vertices.length > 3;
   
   if (canRemove) {
@@ -1524,7 +1458,6 @@ function showVertexContextMenu(clientX, clientY, vertexHit, mousePos) {
     removeOption.classList.add('disabled');
   }
   
-  // Position the menu
   contextMenu.style.left = clientX + 'px';
   contextMenu.style.top = clientY + 'px';
   contextMenu.classList.remove('hidden');
@@ -1547,7 +1480,6 @@ function showEdgeContextMenu(clientX, clientY, edgeHit, mousePos) {
   document.getElementById('addVertexOption').style.display = 'block';
   document.getElementById('removeVertexOption').style.display = 'none';
   
-  // Position the menu
   contextMenu.style.left = clientX + 'px';
   contextMenu.style.top = clientY + 'px';
   contextMenu.classList.remove('hidden');
@@ -1564,7 +1496,6 @@ function hideContextMenu() {
   document.getElementById('removeVertexOption').style.display = 'block';
 }
 
-// Vertex Operations
 function handleAddVertex() {
   if (!contextMenuTarget || contextMenuTarget.type !== 'edge') {
     hideContextMenu();
@@ -1600,7 +1531,6 @@ function handleRemoveVertex() {
   const shape = vertexHit.object.data;
   const vertexIndex = vertexHit.vertexIndex;
   
-  // Check minimum vertex count (shapes need at least 3 vertices)
   if (shape.vertices.length <= 3) {
     hideContextMenu();
     return;
@@ -1609,7 +1539,6 @@ function handleRemoveVertex() {
   // Save to history before modification
   saveToHistory();
   
-  // Remove the vertex
   shape.vertices.splice(vertexIndex, 1);
   
   hideContextMenu();
@@ -1620,7 +1549,6 @@ function handleRemoveVertex() {
 function findObjectAtPosition(pos) {
   const tolerance = 10 / zoom; // Adjust tolerance based on zoom level
 
-  // Check dynamic objects first (they're on top)
   if (editorMap.dynamicObjects) {
     for (let i = editorMap.dynamicObjects.length - 1; i >= 0; i--) {
       const obj = editorMap.dynamicObjects[i];
@@ -1630,7 +1558,6 @@ function findObjectAtPosition(pos) {
     }
   }
 
-  // Check area effects
   if (editorMap.areaEffects) {
     for (let i = editorMap.areaEffects.length - 1; i >= 0; i--) {
       const area = editorMap.areaEffects[i];
@@ -1640,7 +1567,6 @@ function findObjectAtPosition(pos) {
     }
   }
 
-  // Check checkpoints
   if (editorMap.checkpoints) {
     for (let i = editorMap.checkpoints.length - 1; i >= 0; i--) {
       const checkpoint = editorMap.checkpoints[i];
@@ -1650,7 +1576,6 @@ function findObjectAtPosition(pos) {
           return { type: 'checkpoint', index: i, data: checkpoint };
         }
       } else if (checkpoint.vertices.length > 2) {
-        // Polygon checkpoint
         if (isPointInPolygon(pos, checkpoint.vertices)) {
           return { type: 'checkpoint', index: i, data: checkpoint };
         }
@@ -1658,7 +1583,6 @@ function findObjectAtPosition(pos) {
     }
   }
 
-  // Check shapes last (they're typically the background)
   if (editorMap.shapes) {
     for (let i = editorMap.shapes.length - 1; i >= 0; i--) {
       const shape = editorMap.shapes[i];
@@ -1744,7 +1668,6 @@ function isPointInPolygon(point, vertices) {
 function isPointInDynamicObject(point, obj, tolerance = 0) {
   if (!obj.vertices || !Array.isArray(obj.vertices)) return false;
   
-  // For now, just use point-in-polygon test - tolerance can be added later if needed
   return isPointInPolygon(point, obj.vertices);
 }
 
@@ -1837,7 +1760,6 @@ function renderEditor() {
   editorCtx.translate(editorCanvas.width / 2 + panX, editorCanvas.height / 2 + panY);
   editorCtx.scale(zoom, zoom);
 
-  // Draw grid
   if (showGrid) {
     drawGrid();
   }
@@ -1847,7 +1769,6 @@ function renderEditor() {
     return;
   }
 
-  // Draw shapes
   if (Array.isArray(editorMap.shapes)) {
     editorMap.shapes.forEach((shape, index) => {
       const isSelected = selectedObjects.some(obj => obj.type === 'shape' && obj.index === index);
@@ -1856,7 +1777,6 @@ function renderEditor() {
     });
   }
 
-  // Draw checkpoints
   if (Array.isArray(editorMap.checkpoints)) {
     editorMap.checkpoints.forEach((checkpoint, index) => {
       const isSelected = selectedObjects.some(obj => obj.type === 'checkpoint' && obj.index === index);
@@ -1865,7 +1785,6 @@ function renderEditor() {
     });
   }
 
-  // Draw area effects
   if (Array.isArray(editorMap.areaEffects)) {
     editorMap.areaEffects.forEach((area, index) => {
       const isSelected = selectedObjects.some(obj => obj.type === 'areaEffect' && obj.index === index);
@@ -1874,7 +1793,6 @@ function renderEditor() {
     });
   }
 
-  // Draw dynamic objects
   if (Array.isArray(editorMap.dynamicObjects)) {
     editorMap.dynamicObjects.forEach((obj, index) => {
       const isSelected = selectedObjects.some(selectedObj => selectedObj.type === 'dynamicObject' && selectedObj.index === index);
@@ -1883,7 +1801,6 @@ function renderEditor() {
     });
   }
 
-  // Draw start area
   if (editorMap.start && Array.isArray(editorMap.start.vertices)) {
     drawStartArea(editorMap.start);
   }
@@ -1908,7 +1825,6 @@ function renderEditor() {
     drawNewAreaEffect();
   }
   
-  // Draw preset previews
   if (creatingCircle && presetStartPoint) {
     drawCirclePreview();
   } else if (creatingRectangle && presetStartPoint) {
@@ -1932,7 +1848,6 @@ function drawGrid() {
   editorCtx.lineWidth = 1 / zoom;
   editorCtx.setLineDash([2 / zoom, 2 / zoom]);
 
-  // Vertical lines
   for (let x = startX; x <= endX; x += gridSize) {
     editorCtx.beginPath();
     editorCtx.moveTo(x, startY);
@@ -1940,7 +1855,6 @@ function drawGrid() {
     editorCtx.stroke();
   }
 
-  // Horizontal lines
   for (let y = startY; y <= endY; y += gridSize) {
     editorCtx.beginPath();
     editorCtx.moveTo(startX, y);
@@ -1954,7 +1868,6 @@ function drawGrid() {
 function drawShape(shape, isSelected, isHovered = false) {
   if (!Array.isArray(shape.vertices) || shape.vertices.length === 0) return;
 
-  // Draw filled shape
   editorCtx.beginPath();
   editorCtx.moveTo(shape.vertices[0].x, -shape.vertices[0].y);
   for (let i = 1; i < shape.vertices.length; i++) {
@@ -2010,7 +1923,6 @@ function drawShape(shape, isSelected, isHovered = false) {
         editorCtx.fill();
       }
       
-      // Draw corner caps
       const radius = lineWidth / 2;
       editorCtx.beginPath();
       editorCtx.arc(a.x, a.y, radius, 0, Math.PI * 2);
@@ -2026,14 +1938,12 @@ function drawShape(shape, isSelected, isHovered = false) {
     editorCtx.stroke();
   }
 
-  // Draw hover glow
   if (isHovered && !isSelected) {
     editorCtx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
     editorCtx.lineWidth = 4 / zoom;
     editorCtx.stroke();
   }
 
-  // Draw vertices
   if (isSelected) {
     drawVertices(shape.vertices);
   }
@@ -2077,13 +1987,11 @@ function drawCheckpoint(checkpoint, isSelected, isHovered = false) {
   editorCtx.beginPath();
   
   if (checkpoint.vertices.length === 2) {
-    // Line checkpoint
     editorCtx.moveTo(checkpoint.vertices[0].x, -checkpoint.vertices[0].y);
     editorCtx.lineTo(checkpoint.vertices[1].x, -checkpoint.vertices[1].y);
   }
   editorCtx.stroke();
 
-  // Draw hover glow
   if (isHovered && !isSelected) {
     editorCtx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
     editorCtx.lineWidth = 6 / zoom;
@@ -2126,12 +2034,10 @@ function drawAreaEffect(area, isSelected, isHovered = false) {
     }
   }
   
-  // Apply transparency for better visibility
   const alpha = 0.6;
   editorCtx.fillStyle = `rgba(${fillColor[0]},${fillColor[1]},${fillColor[2]},${alpha})`;
   editorCtx.fill();
 
-  // Draw hover glow
   if (isHovered && !isSelected) {
     editorCtx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
     editorCtx.lineWidth = 3 / zoom;
@@ -2153,7 +2059,6 @@ function drawAreaEffect(area, isSelected, isHovered = false) {
   editorCtx.translate(centerX, -centerY);
   editorCtx.scale(1 / zoom, 1 / zoom);
   
-  // Draw effect-specific icon
   editorCtx.fillStyle = '#fff';
   editorCtx.font = 'bold 16px Arial';
   editorCtx.textAlign = 'center';
@@ -2177,11 +2082,9 @@ function drawAreaEffect(area, isSelected, isHovered = false) {
       icon = '?';
   }
   
-  // Draw icon background
   editorCtx.fillStyle = 'rgba(0, 0, 0, 0.7)';
   editorCtx.fillRect(-12, -10, 24, 20);
   
-  // Draw icon
   editorCtx.fillStyle = '#fff';
   editorCtx.fillText(icon, 0, 0);
   
@@ -2202,26 +2105,22 @@ function drawDynamicObject(obj, isSelected, isHovered = false) {
   });
   editorCtx.closePath();
   
-  // Fill
   editorCtx.fillStyle = obj.fillColor ? 
     `rgb(${obj.fillColor[0]},${obj.fillColor[1]},${obj.fillColor[2]})` : '#ff00ff';
   editorCtx.fill();
   
-  // Stroke
   if (obj.strokeColor && Array.isArray(obj.strokeColor)) {
     editorCtx.strokeStyle = `rgb(${obj.strokeColor[0]},${obj.strokeColor[1]},${obj.strokeColor[2]})`;
     editorCtx.lineWidth = obj.strokeWidth || 2;
     editorCtx.stroke();
   }
 
-  // Draw hover glow
   if (isHovered && !isSelected) {
     editorCtx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
     editorCtx.lineWidth = 4 / zoom;
     editorCtx.stroke();
   }
 
-  // Selection outline
   if (isSelected) {
     editorCtx.strokeStyle = '#ffff00';
     editorCtx.lineWidth = 3 / zoom;
@@ -2261,7 +2160,6 @@ function drawNewShape() {
     editorCtx.fill();
   }
   
-  // Draw outline
   editorCtx.strokeStyle = '#00ff00';
   editorCtx.lineWidth = 2 / zoom;
   editorCtx.setLineDash([3 / zoom, 3 / zoom]);
@@ -2306,13 +2204,11 @@ function drawPlusIcon(x, y, size) {
   editorCtx.strokeStyle = '#00ff00';
   editorCtx.lineWidth = 2 / zoom;
   
-  // Horizontal line
   editorCtx.beginPath();
   editorCtx.moveTo(x - size/2, y);
   editorCtx.lineTo(x + size/2, y);
   editorCtx.stroke();
   
-  // Vertical line
   editorCtx.beginPath();
   editorCtx.moveTo(x, y - size/2);
   editorCtx.lineTo(x, y + size/2);
@@ -2320,7 +2216,6 @@ function drawPlusIcon(x, y, size) {
 }
 
 function getMouseCanvasPos() {
-  // Get the current mouse position from the last known position
   if (!lastMousePos) return null;
   
   const rect = editorCanvas.getBoundingClientRect();
@@ -2333,7 +2228,6 @@ function drawCheckpointPreview() {
   const mousePos = getMouseCanvasPos();
   if (!mousePos) return;
   
-  // Calculate line direction and create a filled area perpendicular to it
   const dx = mousePos.x - checkpointStartPoint.x;
   const dy = mousePos.y - checkpointStartPoint.y;
   const length = Math.sqrt(dx * dx + dy * dy);
@@ -2343,11 +2237,9 @@ function drawCheckpointPreview() {
     const normalX = -dy / length; // Perpendicular direction
     const normalY = dx / length;
     
-    // Create a filled rectangular area showing the checkpoint zone
     const thickness = 20; // Visual thickness of checkpoint zone
     const offset = thickness / 2;
     
-    // Calculate rectangle vertices
     const p1x = checkpointStartPoint.x + normalX * offset;
     const p1y = checkpointStartPoint.y + normalY * offset;
     const p2x = checkpointStartPoint.x - normalX * offset;
@@ -2357,7 +2249,6 @@ function drawCheckpointPreview() {
     const p4x = mousePos.x + normalX * offset;
     const p4y = mousePos.y + normalY * offset;
     
-    // Draw filled area
     editorCtx.fillStyle = 'rgba(0, 255, 0, 0.3)';
     editorCtx.beginPath();
     editorCtx.moveTo(p1x, -p1y);
@@ -2380,7 +2271,6 @@ function drawCheckpointPreview() {
     editorCtx.setLineDash([]);
   }
   
-  // Draw endpoints
   editorCtx.fillStyle = '#00ff00';
   editorCtx.beginPath();
   editorCtx.arc(checkpointStartPoint.x, -checkpointStartPoint.y, 4 / zoom, 0, 2 * Math.PI);
@@ -2400,27 +2290,23 @@ function drawDynamicPreview() {
   const centerX = (dynamicStartPoint.x + mousePos.x) / 2;
   const centerY = (dynamicStartPoint.y + mousePos.y) / 2;
   
-  // Draw filled rectangle
   editorCtx.fillStyle = 'rgba(139, 69, 19, 0.5)';
   editorCtx.beginPath();
   editorCtx.rect(centerX - width/2, -(centerY - height/2), width, -height);
   editorCtx.fill();
   
-  // Draw dashed border
   editorCtx.strokeStyle = '#8b4513';
   editorCtx.lineWidth = 2 / zoom;
   editorCtx.setLineDash([5 / zoom, 5 / zoom]);
   editorCtx.stroke();
   editorCtx.setLineDash([]);
   
-  // Draw dimensions text
   editorCtx.fillStyle = '#8b4513';
   editorCtx.font = `${12 / zoom}px Arial`;
   editorCtx.textAlign = 'center';
   const dimensionsText = `${width.toFixed(0)} × ${height.toFixed(0)}`;
   editorCtx.fillText(dimensionsText, centerX, -(centerY - 8 / zoom));
   
-  // Draw corner handles
   editorCtx.fillStyle = '#8b4513';
   const cornerSize = 6 / zoom;
   
@@ -2436,7 +2322,6 @@ function drawDynamicPreview() {
     editorCtx.fillRect(x - cornerSize/2, -y - cornerSize/2, cornerSize, cornerSize);
   });
   
-  // Draw center cross
   editorCtx.strokeStyle = '#8b4513';
   editorCtx.lineWidth = 1 / zoom;
   editorCtx.beginPath();
@@ -2457,7 +2342,6 @@ function drawCirclePreview() {
     Math.pow(mousePos.y - presetStartPoint.y, 2)
   );
   
-  // Draw preview circle
   editorCtx.strokeStyle = '#00ff00';
   editorCtx.fillStyle = 'rgba(0, 255, 0, 0.2)';
   editorCtx.lineWidth = 2 / zoom;
@@ -2469,13 +2353,11 @@ function drawCirclePreview() {
   editorCtx.stroke();
   editorCtx.setLineDash([]);
   
-  // Draw center point
   editorCtx.fillStyle = '#00ff00';
   editorCtx.beginPath();
   editorCtx.arc(presetStartPoint.x, -presetStartPoint.y, 3 / zoom, 0, 2 * Math.PI);
   editorCtx.fill();
   
-  // Draw radius line
   editorCtx.strokeStyle = '#00ff00';
   editorCtx.lineWidth = 1 / zoom;
   editorCtx.beginPath();
@@ -2483,7 +2365,6 @@ function drawCirclePreview() {
   editorCtx.lineTo(mousePos.x, -mousePos.y);
   editorCtx.stroke();
   
-  // Draw radius text
   editorCtx.fillStyle = '#00ff00';
   editorCtx.font = `${12 / zoom}px Arial`;
   editorCtx.textAlign = 'center';
@@ -2501,7 +2382,6 @@ function drawRectanglePreview() {
   const width = maxX - minX;
   const height = maxY - minY;
   
-  // Draw preview rectangle
   editorCtx.strokeStyle = '#00ff00';
   editorCtx.fillStyle = 'rgba(0, 255, 0, 0.2)';
   editorCtx.lineWidth = 2 / zoom;
@@ -2513,7 +2393,6 @@ function drawRectanglePreview() {
   editorCtx.stroke();
   editorCtx.setLineDash([]);
   
-  // Draw dimensions text
   editorCtx.fillStyle = '#00ff00';
   editorCtx.font = `${12 / zoom}px Arial`;
   editorCtx.textAlign = 'center';
@@ -2530,7 +2409,6 @@ function drawTrianglePreview() {
     Math.pow(mousePos.y - presetStartPoint.y, 2)
   );
   
-  // Calculate triangle vertices
   const vertices = [];
   for (let i = 0; i < 3; i++) {
     const angle = (i / 3) * 2 * Math.PI - Math.PI / 2; // Start from top
@@ -2540,7 +2418,6 @@ function drawTrianglePreview() {
     });
   }
   
-  // Draw preview triangle
   editorCtx.strokeStyle = '#00ff00';
   editorCtx.fillStyle = 'rgba(0, 255, 0, 0.2)';
   editorCtx.lineWidth = 2 / zoom;
@@ -2556,13 +2433,11 @@ function drawTrianglePreview() {
   editorCtx.stroke();
   editorCtx.setLineDash([]);
   
-  // Draw center point
   editorCtx.fillStyle = '#00ff00';
   editorCtx.beginPath();
   editorCtx.arc(presetStartPoint.x, -presetStartPoint.y, 3 / zoom, 0, 2 * Math.PI);
   editorCtx.fill();
   
-  // Draw radius text
   editorCtx.fillStyle = '#00ff00';
   editorCtx.font = `${12 / zoom}px Arial`;
   editorCtx.textAlign = 'center';
@@ -2576,7 +2451,6 @@ function drawNewAreaEffect() {
   editorCtx.setLineDash([3 / zoom, 3 / zoom]);
   
   if (areaEffectVertices.length > 2) {
-    // Draw filled polygon
     editorCtx.beginPath();
     editorCtx.moveTo(areaEffectVertices[0].x, -areaEffectVertices[0].y);
     for (let i = 1; i < areaEffectVertices.length; i++) {
@@ -2586,7 +2460,6 @@ function drawNewAreaEffect() {
     editorCtx.fill();
     editorCtx.stroke();
   } else {
-    // Draw line segments
     editorCtx.beginPath();
     editorCtx.moveTo(areaEffectVertices[0].x, -areaEffectVertices[0].y);
     for (let i = 1; i < areaEffectVertices.length; i++) {
@@ -2597,11 +2470,9 @@ function drawNewAreaEffect() {
   
   editorCtx.setLineDash([]);
   
-  // Draw vertices
   drawVertices(areaEffectVertices, '#add8e6');
 }
 
-// Properties panel management
 function updatePropertiesPanel() {
   const panel = document.getElementById('propertiesPanel');
   
@@ -2774,21 +2645,17 @@ function createSliderInput(label, value, id, min = 0, max = 1, step = 0.01) {
   `;
 }
 
-// Object-specific property builders
 function buildShapeProperties(shape, index) {
   let html = '';
   
-  // Fill Color
   html += createColorInput('Fill Color', shape.fillColor, `shape_fillColor_${index}`);
   
-  // Border Colors (multiple)
   if (shape.borderColors) {
     shape.borderColors.forEach((color, i) => {
       html += createColorInput(`Border ${i + 1}`, hexToRgb(color), `shape_borderColor_${index}_${i}`);
     });
   }
   
-  // Border Width
   html += createNumberInput('Border Width', shape.borderWidth, `shape_borderWidth_${index}`, 0, 100, 1);
   
   return html;
@@ -2797,10 +2664,8 @@ function buildShapeProperties(shape, index) {
 function buildDynamicObjectProperties(obj, index) {
   let html = '';
   
-  // Basic Properties
   html += createTextInput('ID', obj.id, `dynamic_id_${index}`, 'Object identifier');
   
-  // Physics Properties
   html += '<div class="property-group"><h5>Physics</h5>';
   html += createCheckboxInput('Static', obj.isStatic, `dynamic_isStatic_${index}`);
   html += createSliderInput('Density', obj.density, `dynamic_density_${index}`, 0, 5, 0.01);
@@ -2810,7 +2675,6 @@ function buildDynamicObjectProperties(obj, index) {
   html += createSliderInput('Damage Scale', obj.damageScale, `dynamic_damageScale_${index}`, 0, 5, 0.01);
   html += '</div>';
   
-  // Visual Properties
   html += '<div class="property-group"><h5>Appearance</h5>';
   html += createColorInput('Fill Color', obj.fillColor, `dynamic_fillColor_${index}`);
   html += createColorInput('Stroke Color', obj.strokeColor, `dynamic_strokeColor_${index}`);
@@ -2861,7 +2725,6 @@ function buildAreaEffectProperties(area, index) {
   
   html += createSliderInput('Strength', area.strength, `area_strength_${index}`, 0, maxStrength, step);
   
-  // Add help text based on effect type
   let helpText = '';
   switch (area.effect) {
     case 'ice':
@@ -2887,7 +2750,6 @@ function buildAreaEffectProperties(area, index) {
   return html;
 }
 
-// Utility functions
 function rgbToHex(r, g, b) {
   return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
 }
@@ -2901,36 +2763,29 @@ function hexToRgb(hex) {
   ] : [128, 128, 128];
 }
 
-// Event handler attachment
 function attachPropertyEventListeners() {
-  // Color inputs
   document.querySelectorAll('.color-input').forEach(input => {
     input.addEventListener('input', handleColorChange);
   });
   
-  // Number inputs
   document.querySelectorAll('.property-input[type="number"]').forEach(input => {
     input.addEventListener('input', handleNumberChange);
   });
   
-  // Text inputs
   document.querySelectorAll('.property-input[type="text"]').forEach(input => {
     input.addEventListener('input', handleTextChange);
   });
   
-  // Checkboxes
   document.querySelectorAll('.property-checkbox').forEach(input => {
     input.addEventListener('change', handleCheckboxChange);
   });
   
-  // Select dropdowns
   document.querySelectorAll('.property-input[type=""], .property-input:not([type])').forEach(input => {
     if (input.tagName === 'SELECT') {
       input.addEventListener('change', handleSelectChange);
     }
   });
   
-  // Sliders
   document.querySelectorAll('.property-slider').forEach(input => {
     input.addEventListener('input', handleSliderChange);
   });
@@ -2958,7 +2813,6 @@ function handleColorChange(event) {
     objectData[property] = rgb;
   }
   
-  // Update preview color display
   const preview = input.nextElementSibling;
   if (preview && preview.classList.contains('color-preview')) {
     preview.textContent = input.value;
@@ -2978,7 +2832,6 @@ function handleNumberChange(event) {
   const objectData = getSelectedObjectData();
   if (!objectData) return;
   
-  // Handle nested properties
   if (property === 'x' && objectData.position) {
     objectData.position.x = value;
   } else if (property === 'y' && objectData.position) {
@@ -3052,7 +2905,6 @@ function handleSliderChange(event) {
   
   objectData[property] = value;
   
-  // Update value display
   const valueDisplay = document.getElementById(`${input.id}_value`);
   if (valueDisplay) {
     valueDisplay.textContent = value.toFixed(2);
@@ -3065,7 +2917,6 @@ function updateMapAndRender() {
   renderEditor();
 }
 
-// Layers panel management
 function updateLayersPanel() {
   const panel = document.getElementById('layersPanel');
   let html = '';
@@ -3124,9 +2975,7 @@ function updateUI() {
   updateLayersPanel();
 }
 
-// File operations
 function createNewMap() {
-  // Create blank map template with start property and UUID
   editorMap = {
     "id": generateUUID(),
     "displayName": "New Map",
@@ -3158,7 +3007,6 @@ function createNewMap() {
     isNew: true 
   };
   
-  // Initialize history
   historyStack = [JSON.parse(JSON.stringify(editorMap))];
   historyIndex = 0;
   
@@ -3180,7 +3028,6 @@ function loadMap(key) {
   fetch(url)
     .then(res => res.json())
     .then(map => {
-      // Ensure map has UUID for backward compatibility
       if (!map.id) {
         map.id = generateUUID();
         console.log('Generated UUID for existing map:', map.id);
@@ -3197,7 +3044,6 @@ function loadMap(key) {
       console.log('Map loaded successfully. currentMapInfo set to:', currentMapInfo);
       console.log('Map UUID:', editorMap.id);
       
-      // Initialize history
       historyStack = [JSON.parse(JSON.stringify(editorMap))];
       historyIndex = 0;
       
@@ -3228,7 +3074,6 @@ function showSaveMapModal() {
   const mapNameInput = document.getElementById('saveMapName');
   const authorInput = document.getElementById('saveMapAuthor');
   
-  // Pre-fill form
   mapNameInput.value = currentMapInfo.isNew ? '' : currentMapInfo.name;
   authorInput.value = editorMap.author || 'Bradzie';
   if (currentMapInfo.directory === 'official') {
@@ -3240,7 +3085,6 @@ function showSaveMapModal() {
   modal.classList.remove('hidden');
   mapNameInput.focus();
   
-  // Handle Enter key in form inputs
   saveModalHandleEnter = (e) => {
     if (e.key === 'Enter') {
       confirmSaveMap();
@@ -3255,7 +3099,6 @@ function closeSaveMapModal() {
   const modal = document.getElementById('saveMapModal');
   modal.classList.add('hidden');
   
-  // Remove event listeners
   if (saveModalHandleEnter) {
     const mapNameInput = document.getElementById('saveMapName');
     const authorInput = document.getElementById('saveMapAuthor');
@@ -3273,21 +3116,17 @@ function confirmSaveMap() {
   executeSave(mapName, directory, author, null, generatePreview);
 }
 
-// Preview Image Generation
 async function generatePreviewImageInternal() {
   if (!editorMap || !editorCanvas) {
     throw new Error('No map loaded to generate preview from');
   }
 
-  // Create a temporary canvas for the preview
   const previewCanvas = document.createElement('canvas');
   const previewCtx = previewCanvas.getContext('2d');
   
-  // Set preview dimensions (300x200 for good quality)
   previewCanvas.width = 300;
   previewCanvas.height = 200;
   
-  // Store current editor state
   const originalPan = { x: panX, y: panY };
   const originalZoom = zoom;
   const originalShowGrid = showGrid;
@@ -3296,7 +3135,6 @@ async function generatePreviewImageInternal() {
   const originalHoveredVertex = hoveredVertex;
   const originalHoveredEdge = hoveredEdge;
   
-  // Calculate auto-framing
   const bounds = calculateMapBounds();
   if (!bounds) {
     throw new Error('No content found to preview');
@@ -3310,10 +3148,8 @@ async function generatePreviewImageInternal() {
     hoveredEdge = null;
     showGrid = false;
     
-    // Set up preview viewport
     setupPreviewViewport(bounds, previewCanvas);
     
-    // Render the preview
     renderPreview(previewCtx, previewCanvas, bounds);
     
     // Convert to blob and save
@@ -3347,7 +3183,6 @@ function calculateMapBounds() {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   let hasContent = false;
 
-  // Check all shapes
   if (editorMap.shapes && Array.isArray(editorMap.shapes)) {
     editorMap.shapes.forEach(shape => {
       if (shape.vertices && Array.isArray(shape.vertices)) {
@@ -3362,7 +3197,6 @@ function calculateMapBounds() {
     });
   }
 
-  // Check checkpoints
   if (editorMap.checkpoints && Array.isArray(editorMap.checkpoints)) {
     editorMap.checkpoints.forEach(checkpoint => {
       if (checkpoint.vertices && Array.isArray(checkpoint.vertices)) {
@@ -3377,7 +3211,6 @@ function calculateMapBounds() {
     });
   }
 
-  // Check dynamic objects
   if (editorMap.dynamicObjects && Array.isArray(editorMap.dynamicObjects)) {
     editorMap.dynamicObjects.forEach(obj => {
       if (obj.vertices && Array.isArray(obj.vertices)) {
@@ -3392,7 +3225,6 @@ function calculateMapBounds() {
     });
   }
 
-  // Check area effects
   if (editorMap.areaEffects && Array.isArray(editorMap.areaEffects)) {
     editorMap.areaEffects.forEach(area => {
       if (area.vertices && Array.isArray(area.vertices)) {
@@ -3407,7 +3239,6 @@ function calculateMapBounds() {
     });
   }
 
-  // Check start area
   if (editorMap.start && editorMap.start.vertices && Array.isArray(editorMap.start.vertices)) {
     editorMap.start.vertices.forEach(vertex => {
       minX = Math.min(minX, vertex.x);
@@ -3420,7 +3251,6 @@ function calculateMapBounds() {
 
   if (!hasContent) return null;
 
-  // Add some padding
   const padding = Math.max((maxX - minX) * 0.1, (maxY - minY) * 0.1, 50);
   
   return {
@@ -3434,16 +3264,13 @@ function calculateMapBounds() {
 }
 
 function setupPreviewViewport(bounds, previewCanvas) {
-  // Calculate zoom to fit content
   const scaleX = previewCanvas.width / bounds.width;
   const scaleY = previewCanvas.height / bounds.height;
   zoom = Math.min(scaleX, scaleY) * 0.9; // Leave some margin
 
-  // Center the content
   const centerX = (bounds.minX + bounds.maxX) / 2;
   const centerY = (bounds.minY + bounds.maxY) / 2;
   
-  // Calculate pan to center the map bounds in the preview canvas
   panX = -centerX * zoom;
   panY = -centerY * zoom;
 }
@@ -3453,7 +3280,6 @@ function renderPreview(previewCtx, previewCanvas, bounds) {
   previewCtx.fillStyle = '#1a1a1a';
   previewCtx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
   
-  // Set up transformation
   previewCtx.save();
   previewCtx.translate(previewCanvas.width / 2 + panX, previewCanvas.height / 2 + panY);
   previewCtx.scale(zoom, zoom);
@@ -3463,40 +3289,34 @@ function renderPreview(previewCtx, previewCanvas, bounds) {
   editorCtx = previewCtx;
   
   try {
-    // Draw shapes
     if (Array.isArray(editorMap.shapes)) {
       editorMap.shapes.forEach(shape => {
         drawShape(shape, false, false);
       });
     }
 
-    // Draw checkpoints
     if (Array.isArray(editorMap.checkpoints)) {
       editorMap.checkpoints.forEach(checkpoint => {
         drawCheckpoint(checkpoint, false, false);
       });
     }
 
-    // Draw area effects
     if (Array.isArray(editorMap.areaEffects)) {
       editorMap.areaEffects.forEach(area => {
         drawAreaEffect(area, false, false);
       });
     }
 
-    // Draw dynamic objects
     if (Array.isArray(editorMap.dynamicObjects)) {
       editorMap.dynamicObjects.forEach(obj => {
         drawDynamicObject(obj, false, false);
       });
     }
 
-    // Draw start area
     if (editorMap.start && Array.isArray(editorMap.start.vertices)) {
       drawStartArea(editorMap.start);
     }
   } finally {
-    // Restore original context
     editorCtx = originalCtx;
     previewCtx.restore();
   }
@@ -3558,7 +3378,6 @@ async function executeSave(mapName, directory, author, key = null, generatePrevi
   closeSaveMapModal();
   
   try {
-    // Ensure map has UUID
     if (!editorMap.id) {
       editorMap.id = generateUUID();
       console.log('Generated UUID for map being saved:', editorMap.id);
@@ -3684,9 +3503,7 @@ function resizeEditorCanvas() {
   renderEditor();
 }
 
-// Expose global functions
 window.initMapEditor = initMapEditor;
-// Status Bar Functions
 function updateStatusBar() {
   const toolNameElement = document.getElementById('editorToolName');
   const hintElement = document.getElementById('editorHint');
@@ -3718,7 +3535,6 @@ function updateStatusBar() {
   toolNameElement.textContent = toolNames[currentTool] || 'Unknown Tool';
   hintElement.textContent = toolHints[currentTool] || '';
   
-  // Add special hints for creation states
   if (creatingShape && newShapeVertices.length > 2) {
     hintElement.textContent = 'Press Enter to complete the shape, or Escape to cancel.';
   } else if (creatingAreaEffect && areaEffectVertices.length > 2) {
@@ -3760,7 +3576,6 @@ function nudgeSelectedObjects(deltaX, deltaY) {
       vertex.y += deltaY;
     });
     
-    // Handle dynamic objects that have position property
     if (obj.type === 'dynamicObject' && objectData.position) {
       objectData.position.x += deltaX;
       objectData.position.y += deltaY;

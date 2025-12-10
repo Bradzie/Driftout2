@@ -27,7 +27,6 @@ class AbilityRegistry {
    * @param {Class} AbilityClass - The ability class constructor
    */
   register(AbilityClass) {
-    // Create a temporary instance to get the ID
     const tempInstance = new AbilityClass();
     this.abilityClasses.set(tempInstance.id, AbilityClass);
   }
@@ -72,7 +71,6 @@ class AbilityRegistry {
     const AbilityClass = this.abilityClasses.get(abilityId);
     if (!AbilityClass) return null;
 
-    // Create temporary instance to get metadata
     const tempInstance = new AbilityClass();
     return {
       id: tempInstance.id,
@@ -91,7 +89,6 @@ class AbilityRegistry {
   }
 }
 
-// Create singleton instance
 const abilityRegistry = new AbilityRegistry();
 
 module.exports = abilityRegistry;
