@@ -1,42 +1,60 @@
 (() => {
+  // DOM helper functions
+  function show(element) {
+    if (element) element.classList.remove('hidden');
+  }
+
+  function hide(element) {
+    if (element) element.classList.add('hidden');
+  }
+
+  function toggle(element, visible) {
+    if (element) element.classList.toggle('hidden', !visible);
+  }
+
+  // Constants
+  const DEFAULT_FAKE_PING_LATENCY = 100;
+  const PING_ONE_WAY_DIVISOR = 2;
+  const BASE_XP_LEVEL_1 = 10;
+  const XP_SCALE_PER_LEVEL = 1.2;
+
   let socket = io();
   let currentMap = null;
   let currentUser = null;
   let needSessionRefresh = false;
-  
+
   let fakePingEnabled = false;
-  let fakePingLatency = 100; // Default 100ms
+  let fakePingLatency = DEFAULT_FAKE_PING_LATENCY;
   const originalSocketEmit = socket.emit.bind(socket);
-  
-  // Wrap socket.emit to add artificial delay when fake ping is enabled
+
   socket.emit = function(...args) {
     if (fakePingEnabled && fakePingLatency > 0) {
       setTimeout(() => {
         originalSocketEmit(...args);
-      }, fakePingLatency / 2); // Half the latency for one-way delay
+      }, fakePingLatency / PING_ONE_WAY_DIVISOR);
     } else {
       originalSocketEmit(...args);
     }
   };
-  
+
   const originalSocketOn = socket.on.bind(socket);
   const wrappedHandlers = new Map();
-  
+
   socket.on = function(event, handler) {
     if (wrappedHandlers.has(handler)) {
       return originalSocketOn(event, wrappedHandlers.get(handler));
     }
-    
+
     const wrappedHandler = function(...args) {
       if (fakePingEnabled && fakePingLatency > 0 && event !== 'ping') {
         setTimeout(() => {
           handler(...args);
-        }, fakePingLatency / 2); // Half the latency for incoming messages
+        }, fakePingLatency / PING_ONE_WAY_DIVISOR);
       } else {
         handler(...args);
       }
     };
-    
+
     wrappedHandlers.set(handler, wrappedHandler);
     return originalSocketOn(event, wrappedHandler);
   };
@@ -45,10 +63,10 @@
     showFPS: false,
     showPing: false
   };
-  
+
   function getXPRequiredForLevel(level) {
     // Level 1 requires 10 XP, each subsequent level requires 20% more XP
-    return Math.round(10 * Math.pow(1.2, level - 1));
+    return Math.round(BASE_XP_LEVEL_1 * Math.pow(XP_SCALE_PER_LEVEL, level - 1));
   }
   
   function calculateLevel(totalXP) {
@@ -215,16 +233,16 @@
   }
 
   function showAuthScreen() {
-    authScreen.classList.remove('hidden');
-    menu.classList.add('hidden');
-    miniLeaderboard.classList.add('hidden');
+    show(authScreen);
+    hide(menu);
+    hide(miniLeaderboard);
     showAuthSelection();
   }
 
   function showMainMenu() {
-    authScreen.classList.add('hidden');
-    menu.classList.remove('hidden');
-    miniLeaderboard.classList.remove('hidden');
+    hide(authScreen);
+    show(menu);
+    show(miniLeaderboard);
     
     // Hide map editor button for guest users
     if (currentUser && currentUser.isGuest) {
@@ -275,42 +293,42 @@
   }
 
   function showAuthSelection() {
-    authSelection.classList.remove('hidden');
-    loginForm.classList.add('hidden');
-    registerForm.classList.add('hidden');
-    authLoading.classList.add('hidden');
+    show(authSelection);
+    hide(loginForm);
+    hide(registerForm);
+    hide(authLoading);
     document.getElementById('quickPlayName').focus();
   }
 
   function showLoginForm() {
-    authSelection.classList.add('hidden');
-    loginForm.classList.remove('hidden');
+    hide(authSelection);
+    show(loginForm);
     document.getElementById('loginEmail').focus();
   }
 
   function showRegisterForm() {
-    authSelection.classList.add('hidden');
-    registerForm.classList.remove('hidden');
+    hide(authSelection);
+    show(registerForm);
     document.getElementById('registerUsername').focus();
   }
 
 
   function showAuthLoading() {
-    authSelection.classList.add('hidden');
-    loginForm.classList.add('hidden');
-    registerForm.classList.add('hidden');
-    authLoading.classList.remove('hidden');
+    hide(authSelection);
+    hide(loginForm);
+    hide(registerForm);
+    show(authLoading);
   }
 
   function showError(elementId, message) {
     const errorElement = document.getElementById(elementId);
     errorElement.textContent = message;
-    errorElement.classList.remove('hidden');
+    show(errorElement);
   }
 
   function hideError(elementId) {
     const errorElement = document.getElementById(elementId);
-    errorElement.classList.add('hidden');
+    hide(errorElement);
   }
 
   function updatePlayerInfo() {
@@ -320,7 +338,7 @@
       if (currentUser.isGuest) {
         displayName += ' (Guest)';
         // Hide level progress for guests
-        toolbarLevelProgress.classList.add('hidden');
+        hide(toolbarLevelProgress);
       } else {
         // Show level for registered users
         const totalXP = currentUser.xp || 0;
@@ -329,7 +347,7 @@
         displayName += ` (Level ${progress.currentLevel})`;
         
         // Show and update level progress bar
-        toolbarLevelProgress.classList.remove('hidden');
+        show(toolbarLevelProgress);
         levelProgressFill.style.width = `${progress.progressPercent}%`;
         toolbarLevelInfo.textContent = `${progress.xpInCurrentLevel}/${progress.xpRequiredForNextLevel}`;
       }
@@ -340,12 +358,12 @@
       playerName = currentUser.username;
       
       // Show chat when authenticated
-      chatContainer.classList.remove('hidden');
+      show(chatContainer);
     } else {
       // Hide chat when not authenticated
-      chatContainer.classList.add('hidden');
+      hide(chatContainer);
       // Hide level progress when not authenticated
-      toolbarLevelProgress.classList.add('hidden');
+      hide(toolbarLevelProgress);
     }
   }
 
@@ -453,9 +471,9 @@
 
   function handleBackToGame() {
     // Hide map editor and show menu
-    mapEditorContainer.classList.add('hidden');
-    menu.classList.remove('hidden');
-    toolbarBackBtn.classList.add('hidden'); // Hide back button when leaving map editor
+    hide(mapEditorContainer);
+    show(menu);
+    hide(toolbarBackBtn); // Hide back button when leaving map editor
     
     // Reset room state and reconnect for smart room assignment
     try {
@@ -554,9 +572,9 @@
     
     if (roomName && isSpectating) {
       roomNameText.textContent = roomName;
-      roomNameDisplay.classList.remove('hidden');
+      show(roomNameDisplay);
     } else {
-      roomNameDisplay.classList.add('hidden');
+      hide(roomNameDisplay);
     }
   }
 
@@ -707,9 +725,9 @@
     if (socket && socket.connected) {
       socket.disconnect();
     }
-    menu.classList.add('hidden');
-    mapEditorContainer.classList.remove('hidden');
-    toolbarBackBtn.classList.remove('hidden'); // Show back button in map editor
+    hide(menu);
+    show(mapEditorContainer);
+    show(toolbarBackBtn); // Show back button in map editor
     if (typeof initMapEditor === 'function') {
       initMapEditor();
     }
@@ -735,18 +753,18 @@
   
   if (browseMapModal && closeBrowseModalBtn) {
     closeBrowseModalBtn.addEventListener('click', () => {
-      browseMapModal.classList.add('hidden');
+      hide(browseMapModal);
     });
     
     browseMapModal.addEventListener('click', (e) => {
       if (e.target === browseMapModal) {
-        browseMapModal.classList.add('hidden');
+        hide(browseMapModal);
       }
     });
     
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !browseMapModal.classList.contains('hidden')) {
-        browseMapModal.classList.add('hidden');
+        hide(browseMapModal);
       }
     });
   }
@@ -983,10 +1001,10 @@
     hideUpgradeCards();
     
     // Hide all game-specific UI elements
-    abilityHud.classList.add('hidden');
-    lapCounter.classList.add('hidden');
-    lapTimer.classList.add('hidden');
-    boostDisplay.classList.add('hidden');
+    hide(abilityHud);
+    hide(lapCounter);
+    hide(lapTimer);
+    hide(boostDisplay);
     
     myAbility = null;
     lastAbilityUse = 0;
@@ -1008,7 +1026,7 @@
     mySocketId = null;
     
     // Hide loading screen when returning to menu
-    loadingScreen.classList.add('hidden');
+    hide(loadingScreen);
     
     // Restart spectating when back in menu
     setTimeout(() => startSpectating(), 100); // Small delay to ensure UI is ready
@@ -1158,11 +1176,11 @@
   }
 
   function showDetailedLeaderboard() {
-    detailedLeaderboard.classList.remove('hidden');
+    show(detailedLeaderboard);
   }
   
   function hideDetailedLeaderboard() {
-    detailedLeaderboard.classList.add('hidden');
+    hide(detailedLeaderboard);
   }
 
   function loadSettings() {
@@ -1191,21 +1209,21 @@
   function updatePerformanceOverlay() {
     // Show/hide performance overlay based on settings
     if (settings.showFPS || settings.showPing) {
-      performanceOverlay.classList.remove('hidden');
+      show(performanceOverlay);
     } else {
-      performanceOverlay.classList.add('hidden');
+      hide(performanceOverlay);
     }
     
     if (settings.showFPS) {
-      fpsDisplay.classList.remove('hidden');
+      show(fpsDisplay);
     } else {
-      fpsDisplay.classList.add('hidden');
+      hide(fpsDisplay);
     }
     
     if (settings.showPing) {
-      pingDisplay.classList.remove('hidden');
+      show(pingDisplay);
     } else {
-      pingDisplay.classList.add('hidden');
+      hide(pingDisplay);
     }
     
     updateKillFeedPosition();
@@ -1265,11 +1283,11 @@
   }
   
   function openSettings() {
-    settingsModal.classList.remove('hidden');
+    show(settingsModal);
   }
   
   function closeSettings() {
-    settingsModal.classList.add('hidden');
+    hide(settingsModal);
   }
   
   let roomsRefreshInterval = null;
@@ -1278,7 +1296,7 @@
   let selectedMapForRoom = null; // Track selected map for room creation
   
   function openRoomBrowser() {
-    roomBrowserModal.classList.remove('hidden');
+    show(roomBrowserModal);
     loadRooms();
     
     if (roomsRefreshInterval) {
@@ -1288,7 +1306,7 @@
   }
   
   function closeRoomBrowser() {
-    roomBrowserModal.classList.add('hidden');
+    hide(roomBrowserModal);
     
     if (roomsRefreshInterval) {
       clearInterval(roomsRefreshInterval);
@@ -1297,19 +1315,19 @@
   }
   
   function openCreateRoomModal() {
-    createRoomModal.classList.remove('hidden');
+    show(createRoomModal);
     selectedMapForRoom = null;
     updateSelectedMapDisplay();
     document.getElementById('createRoomName').focus();
   }
   
   function closeCreateRoomModal() {
-    createRoomModal.classList.add('hidden');
+    hide(createRoomModal);
   }
   
   function openMapBrowserForRoom() {
     const modal = document.getElementById('browseMapModal');
-    modal.classList.remove('hidden');
+    show(modal);
     
     // Load and display maps for room creation
     fetch('/api/maps')
@@ -1618,11 +1636,11 @@
     killFeed.innerHTML = '';
     
     if (killFeedMessages.length === 0) {
-      killFeed.classList.add('hidden');
+      hide(killFeed);
       return;
     }
     
-    killFeed.classList.remove('hidden');
+    show(killFeed);
     
     killFeedMessages.forEach(message => {
       const messageDiv = document.createElement('div');
@@ -1791,7 +1809,7 @@
     hasReceivedFirstState = false;
     
     menu.style.display = 'none';
-    loadingScreen.classList.remove('hidden'); // Show loading screen
+    show(loadingScreen); // Show loading screen
     gameCanvas.style.display = 'block';
     hud.style.display = 'flex';
     
@@ -1808,11 +1826,11 @@
           name: carType.abilityName || carType.ability,
           cooldown: carType.abilityCooldown || 0,
         };
-        abilityHud.classList.remove('hidden');
+        show(abilityHud);
         updateAbilityHUD();
       } else {
         myAbility = null;
-        abilityHud.classList.add('hidden');
+        hide(abilityHud);
       }
     }
     
@@ -1867,7 +1885,7 @@
     hasReceivedFirstState = true;
     
     // Hide loading screen now that we have game data
-    loadingScreen.classList.add('hidden');
+    hide(loadingScreen);
 
     // Keep only last 1 second of states
     const now = Date.now();
@@ -1937,7 +1955,7 @@
       hasReceivedFirstState = true;
       
       // Hide loading screen now that we have game data
-      loadingScreen.classList.add('hidden');
+      hide(loadingScreen);
 
       // Keep only last 1 second of states
       const now = Date.now();
@@ -1998,7 +2016,7 @@
     hasReceivedFirstState = true;
     
     // Hide loading screen now that we have game data
-    loadingScreen.classList.add('hidden');
+    hide(loadingScreen);
 
     // Keep only last 1 second of states
     const now = Date.now();
@@ -2070,10 +2088,10 @@
     hideUpgradeCards();
     
     // Hide all game-specific UI elements
-    abilityHud.classList.add('hidden');
-    lapCounter.classList.add('hidden');
-    lapTimer.classList.add('hidden');
-    boostDisplay.classList.add('hidden');
+    hide(abilityHud);
+    hide(lapCounter);
+    hide(lapTimer);
+    hide(boostDisplay);
     
     myAbility = null;
     lastAbilityUse = 0;
@@ -2091,7 +2109,7 @@
     lastKnownPlayers = [];
     
     // Hide loading screen when returning to menu
-    loadingScreen.classList.add('hidden');
+    hide(loadingScreen);
     
     // Restart spectating when back in menu
     setTimeout(() => startSpectating(), 100); // Small delay to ensure UI is ready
@@ -2125,12 +2143,12 @@
   function toggleChatInput() {
     isChatFocused = !isChatFocused;
     if (isChatFocused) {
-      chatInputArea.classList.remove('hidden');
-      chatPrompt.classList.add('hidden');
+      show(chatInputArea);
+      hide(chatPrompt);
       chatInput.focus();
     } else {
-      chatInputArea.classList.add('hidden');
-      chatPrompt.classList.remove('hidden');
+      hide(chatInputArea);
+      show(chatPrompt);
       chatInput.blur();
       chatInput.value = '';
     }
@@ -2215,8 +2233,8 @@
 
   function initializeChatState() {
     if (!isChatFocused) {
-      chatPrompt.classList.remove('hidden');
-      chatInputArea.classList.add('hidden');
+      show(chatPrompt);
+      hide(chatInputArea);
     }
   }
 
@@ -2336,7 +2354,7 @@
 
   function updateAbilityHUD() {
     if (!myAbility) {
-      abilityHud.classList.add('hidden');
+      hide(abilityHud);
       return;
     }
 
@@ -2346,7 +2364,7 @@
     const isReady = remaining === 0;
 
     abilityName.textContent = myAbility.name;
-    abilityHud.classList.remove('hidden');
+    show(abilityHud);
 
     const progressBg = abilityHud.querySelector('.ability-progress-bg');
     if (!progressBg) {
@@ -2419,15 +2437,15 @@
 
   // Hide upgrade cards completely
   function hideUpgradeCards() {
-    upgradeCardsContainer.classList.add('hidden');
+    hide(upgradeCardsContainer);
     upgradeCardsContainer.classList.remove('compact');
     
-    abilityHud.classList.add('hidden');
+    hide(abilityHud);
     
     // Hide lap counter, lap timer, and boost display
-    lapCounter.classList.add('hidden');
-    lapTimer.classList.add('hidden');
-    boostDisplay.classList.add('hidden');
+    hide(lapCounter);
+    hide(lapTimer);
+    hide(boostDisplay);
     currentLapStartTime = 0;
     previousLapCount = 0;
     currentLapTimeSpan.textContent = '0:00.000';
@@ -2480,7 +2498,7 @@
         debugPanel = document.getElementById('debugPanel');
         if (debugPanel) {
           setupDebugPanel();
-          debugPanel.classList.remove('hidden');
+          show(debugPanel);
         }
       }
     } catch (error) {
@@ -2631,10 +2649,10 @@
     hideUpgradeCards();
     
     // Hide all game-specific UI elements on disconnect
-    abilityHud.classList.add('hidden');
-    lapCounter.classList.add('hidden');
-    lapTimer.classList.add('hidden');
-    boostDisplay.classList.add('hidden');
+    hide(abilityHud);
+    hide(lapCounter);
+    hide(lapTimer);
+    hide(boostDisplay);
     
     showDisconnectionOverlay();
   });
@@ -2644,10 +2662,10 @@
     hideUpgradeCards();
     
     // Hide all game-specific UI elements on connection error
-    abilityHud.classList.add('hidden');
-    lapCounter.classList.add('hidden');
-    lapTimer.classList.add('hidden');
-    boostDisplay.classList.add('hidden');
+    hide(abilityHud);
+    hide(lapCounter);
+    hide(lapTimer);
+    hide(boostDisplay);
     
     showDisconnectionOverlay();
   });
@@ -2657,10 +2675,10 @@
     hideUpgradeCards();
     
     // Hide all game-specific UI elements on reconnection failure
-    abilityHud.classList.add('hidden');
-    lapCounter.classList.add('hidden');
-    lapTimer.classList.add('hidden');
-    boostDisplay.classList.add('hidden');
+    hide(abilityHud);
+    hide(lapCounter);
+    hide(lapTimer);
+    hide(boostDisplay);
     
     showDisconnectionOverlay();
   });
@@ -2668,8 +2686,8 @@
   function showDisconnectionOverlay() {
     if (menu.style.display === 'none') {
       // User was in-game - show full overlay
-      disconnectionOverlay.classList.remove('hidden');
-      loadingScreen.classList.add('hidden'); // Hide loading screen if it was showing
+      show(disconnectionOverlay);
+      hide(loadingScreen); // Hide loading screen if it was showing
     } else {
       // User is on menu - show inline disconnection message
       showMenuDisconnectionWarning();
@@ -2685,7 +2703,7 @@
     mapEditorButton.style.display = 'none'; // Hide Map Editor button
     
     // Show the menu disconnection warning template
-    menuDisconnectionWarning.classList.remove('hidden');
+    show(menuDisconnectionWarning);
   }
 
   function hideMenuDisconnectionWarning() {
@@ -2703,7 +2721,7 @@
     }
     
     // Hide the warning template
-    menuDisconnectionWarning.classList.add('hidden');
+    hide(menuDisconnectionWarning);
   }
 
   // Monitor server messages to detect "silent" disconnections
@@ -2722,7 +2740,7 @@
     lastServerMessage = Date.now(); // Reset the timer
     
     // Hide disconnection warnings if they were showing
-    disconnectionOverlay.classList.add('hidden');
+    hide(disconnectionOverlay);
     if (menu.style.display !== 'none') {
       hideMenuDisconnectionWarning();
     }
@@ -3577,9 +3595,9 @@
       if (currentLapStartTime > 0) {
         const currentLapTime = now - currentLapStartTime;
         currentLapTimeSpan.textContent = formatTime(currentLapTime);
-        lapTimer.classList.remove('hidden');
+        show(lapTimer);
       } else {
-        lapTimer.classList.add('hidden');
+        hide(lapTimer);
       }
       
       // Show upgrades if player has points OR has ever earned upgrade points
@@ -3588,9 +3606,9 @@
       const isCompactMode = hasEverHadUpgrades && centerPlayer.upgradePoints === 0;
       
       // Show lap counter, timer, and boost display whenever in game
-      lapCounter.classList.remove('hidden');
-      lapTimer.classList.remove('hidden');
-      boostDisplay.classList.remove('hidden');
+      show(lapCounter);
+      show(lapTimer);
+      show(boostDisplay);
       
       if (centerPlayer.currentBoost !== undefined && centerPlayer.maxBoost !== undefined) {
         const currentBoost = Math.round(centerPlayer.currentBoost);
@@ -3602,10 +3620,10 @@
       }
       
       if (shouldShowUpgrades) {
-        upgradeCardsContainer.classList.remove('hidden');
+        show(upgradeCardsContainer);
         upgradeCardsContainer.classList.toggle('compact', isCompactMode);
       } else {
-        upgradeCardsContainer.classList.add('hidden');
+        hide(upgradeCardsContainer);
         upgradeCardsContainer.classList.remove('compact');
       }
       

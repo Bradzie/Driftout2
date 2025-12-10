@@ -70,7 +70,7 @@ app.get('/api/maps', (req, res) => {
     res.json(mapList);
   } catch (error) {
     console.error('Error getting maps:', error);
-    res.status(500).json({ error: 'Failed to load maps' });
+    sendError(res, 500, 'Failed to load maps');
   }
 });
 
@@ -81,11 +81,11 @@ app.get('/api/maps/:category/:key', (req, res) => {
     if (map) {
       res.json(map);
     } else {
-      res.status(404).json({ error: 'Map not found' });
+      sendError(res, 404, 'Map not found');
     }
   } catch (error) {
     console.error('Error getting map:', error);
-    res.status(500).json({ error: 'Failed to load map' });
+    sendError(res, 500, 'Failed to load map');
   }
 });
 
@@ -94,14 +94,14 @@ app.get('/api/maps/:category/:key', (req, res) => {
 // Upload a new community map or overwrite an existing one (authenticated users only)
 app.post('/api/maps', async (req, res) => {
   if (!req.session.userId) {
-    return res.status(401).json({ error: 'Authentication required' });
+    return sendError(res, 401, 'Authentication required');
   }
 
   try {
     const { name, mapData, directory, key } = req.body;
     
     if (!name || !mapData) {
-      return res.status(400).json({ error: 'Name and map data are required' });
+      return sendError(res, 400, 'Name and map data are required');
     }
 
     let filename;
@@ -116,7 +116,7 @@ app.post('/api/maps', async (req, res) => {
       isNewMap = false;
 
       if (!['official', 'community'].includes(targetDirectory)) {
-        return res.status(400).json({ error: 'Invalid directory in key.' });
+        return sendError(res, 400, 'Invalid directory in key.');
       }
       
     } else {
@@ -128,7 +128,7 @@ app.post('/api/maps', async (req, res) => {
 
       // Use UUID as filename for new maps (both official and community)
       if (!mapData.id) {
-        return res.status(400).json({ error: 'Map data must include a UUID (id field)' });
+        return sendError(res, 400, 'Map data must include a UUID (id field)');
       }
       filename = mapData.id;
     }
@@ -145,7 +145,7 @@ app.post('/api/maps', async (req, res) => {
 
     const saved = mapManager.saveMap(filename, targetDirectory, enhancedMapData);
     if (!saved) {
-      return res.status(500).json({ error: 'Failed to save map' });
+      return sendError(res, 500, 'Failed to save map');
     }
 
     if (isNewMap) {
@@ -169,13 +169,13 @@ app.post('/api/maps', async (req, res) => {
     }
   } catch (error) {
     console.error('Map save error:', error);
-    res.status(500).json({ error: 'Map save failed' });
+    sendError(res, 500, 'Map save failed');
   }
 });
 
 app.put('/api/maps/:key', async (req, res) => {
   if (!req.session.userId) {
-    return res.status(401).json({ error: 'Authentication required' });
+    return sendError(res, 401, 'Authentication required');
   }
 
   try {
@@ -184,7 +184,7 @@ app.put('/api/maps/:key', async (req, res) => {
     
     const mapInfo = userDb.getMapByFilename(key);
     if (!mapInfo || mapInfo.author_id !== req.session.userId) {
-      return res.status(403).json({ error: 'You can only edit your own maps' });
+      return sendError(res, 403, 'You can only edit your own maps');
     }
 
     const enhancedMapData = {
@@ -200,24 +200,24 @@ app.put('/api/maps/:key', async (req, res) => {
     // Save updated map file
     const saved = mapManager.saveMap(key, 'community', enhancedMapData);
     if (!saved) {
-      return res.status(500).json({ error: 'Failed to update map' });
+      return sendError(res, 500, 'Failed to update map');
     }
 
     const updated = userDb.updateMap(mapInfo.id, name, req.session.userId);
     if (!updated) {
-      return res.status(500).json({ error: 'Failed to update map metadata' });
+      return sendError(res, 500, 'Failed to update map metadata');
     }
 
     res.json({ success: true });
   } catch (error) {
     console.error('Map update error:', error);
-    res.status(500).json({ error: 'Map update failed' });
+    sendError(res, 500, 'Map update failed');
   }
 });
 
 app.delete('/api/maps/:key', async (req, res) => {
   if (!req.session.userId) {
-    return res.status(401).json({ error: 'Authentication required' });
+    return sendError(res, 401, 'Authentication required');
   }
 
   try {
@@ -225,29 +225,29 @@ app.delete('/api/maps/:key', async (req, res) => {
     
     const mapInfo = userDb.getMapByFilename(key);
     if (!mapInfo || mapInfo.author_id !== req.session.userId) {
-      return res.status(403).json({ error: 'You can only delete your own maps' });
+      return sendError(res, 403, 'You can only delete your own maps');
     }
 
     const deleted = mapManager.deleteMap(key, 'community');
     if (!deleted) {
-      return res.status(500).json({ error: 'Failed to delete map file' });
+      return sendError(res, 500, 'Failed to delete map file');
     }
 
     const dbDeleted = userDb.deleteMap(mapInfo.id, req.session.userId);
     if (!dbDeleted) {
-      return res.status(500).json({ error: 'Failed to delete map metadata' });
+      return sendError(res, 500, 'Failed to delete map metadata');
     }
 
     res.json({ success: true });
   } catch (error) {
     console.error('Map delete error:', error);
-    res.status(500).json({ error: 'Map delete failed' });
+    sendError(res, 500, 'Map delete failed');
   }
 });
 
 app.get('/api/maps/my', async (req, res) => {
   if (!req.session.userId) {
-    return res.status(401).json({ error: 'Authentication required' });
+    return sendError(res, 401, 'Authentication required');
   }
 
   try {
@@ -255,14 +255,14 @@ app.get('/api/maps/my', async (req, res) => {
     res.json(userMaps);
   } catch (error) {
     console.error('Get user maps error:', error);
-    res.status(500).json({ error: 'Failed to get user maps' });
+    sendError(res, 500, 'Failed to get user maps');
   }
 });
 
 // Upload preview image for a map
 app.post('/api/maps/preview', async (req, res) => {
   if (!req.session.userId) {
-    return res.status(401).json({ error: 'Authentication required' });
+    return sendError(res, 401, 'Authentication required');
   }
 
   try {
@@ -273,17 +273,17 @@ app.post('/api/maps/preview', async (req, res) => {
     form.parse(req, async (err, fields, files) => {
       if (err) {
         console.error('Preview upload parse error:', err);
-        return res.status(400).json({ error: 'Failed to parse upload' });
+        return sendError(res, 400, 'Failed to parse upload');
       }
 
       const mapId = Array.isArray(fields.mapId) ? fields.mapId[0] : fields.mapId;
       if (!mapId) {
-        return res.status(400).json({ error: 'Map ID is required' });
+        return sendError(res, 400, 'Map ID is required');
       }
 
       const previewFile = files.preview;
       if (!previewFile) {
-        return res.status(400).json({ error: 'No preview file provided' });
+        return sendError(res, 400, 'No preview file provided');
       }
 
       try {
@@ -316,13 +316,13 @@ app.post('/api/maps/preview', async (req, res) => {
 
       } catch (saveError) {
         console.error('Preview save error:', saveError);
-        res.status(500).json({ error: 'Failed to save preview image' });
+        sendError(res, 500, 'Failed to save preview image');
       }
     });
 
   } catch (error) {
     console.error('Preview upload error:', error);
-    res.status(500).json({ error: 'Failed to upload preview' });
+    sendError(res, 500, 'Failed to upload preview');
   }
 });
 
@@ -396,25 +396,18 @@ app.post('/api/rooms/create', express.json(), (req, res) => {
     const { name, mapKey, maxPlayers, isPrivate } = req.body;
     
     if (name && name.length > 50) {
-      return res.status(400).json({ error: 'Room name too long' });
+      return sendError(res, 400, 'Room name too long');
     }
     if (mapKey) {
       // Parse category/key format if present
-      let keyToCheck = mapKey;
-      let categoryToCheck = null;
-      
-      if (mapKey.includes('/')) {
-        const parts = mapKey.split('/');
-        categoryToCheck = parts[0];
-        keyToCheck = parts[1];
-      }
+      const { category: categoryToCheck, key: keyToCheck } = HELPERS.parseMapKey(mapKey);
       
       if (!mapManager.mapExists(keyToCheck, categoryToCheck)) {
-        return res.status(400).json({ error: 'Invalid map' });
+        return sendError(res, 400, 'Invalid map');
       }
     }
     if (maxPlayers && (maxPlayers < 1 || maxPlayers > 16)) {
-      return res.status(400).json({ error: 'Invalid max players (1-16)' });
+      return sendError(res, 400, 'Invalid max players (1-16)');
     }
     
     const roomId = uuidv4();
@@ -442,7 +435,7 @@ app.post('/api/rooms/create', express.json(), (req, res) => {
     });
   } catch (error) {
     console.error('Error creating room:', error);
-    res.status(500).json({ error: 'Failed to create room' });
+    sendError(res, 500, 'Failed to create room');
   }
 });
 
@@ -451,20 +444,20 @@ app.post('/api/auth/register', async (req, res) => {
     const { username, email, password } = req.body;
     
     if (!username || !email || !password) {
-      return res.status(400).json({ error: 'Username, email, and password are required' });
+      return sendError(res, 400, 'Username, email, and password are required');
     }
     
     if (username.length < 2 || username.length > 20) {
-      return res.status(400).json({ error: 'Username must be between 2 and 20 characters' });
+      return sendError(res, 400, 'Username must be between 2 and 20 characters');
     }
     
     if (password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+      return sendError(res, 400, 'Password must be at least 6 characters long');
     }
     
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      return res.status(400).json({ error: 'Please enter a valid email address' });
+      return sendError(res, 400, 'Please enter a valid email address');
     }
     
     const result = await userDb.registerUser(username, email, password);
@@ -494,7 +487,7 @@ app.post('/api/auth/register', async (req, res) => {
     }
   } catch (error) {
     console.error('Registration error:', error);
-    res.status(500).json({ error: 'Registration failed' });
+    sendError(res, 500, 'Registration failed');
   }
 });
 
@@ -503,7 +496,7 @@ app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body;
     
     if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
+      return sendError(res, 400, 'Email and password are required');
     }
     
     const result = await userDb.loginUser(email, password);
@@ -549,7 +542,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ error: 'Login failed' });
+    sendError(res, 500, 'Login failed');
   }
 });
 
@@ -558,7 +551,7 @@ app.post('/api/auth/guest', (req, res) => {
     const { name } = req.body;
     
     if (!name || name.length < 1 || name.length > 20) {
-      return res.status(400).json({ error: 'Guest name must be between 1 and 20 characters' });
+      return sendError(res, 400, 'Guest name must be between 1 and 20 characters');
     }
     
     // Generate guest session (allow multiple guests and guest name changes)
@@ -582,7 +575,7 @@ app.post('/api/auth/guest', (req, res) => {
     });
   } catch (error) {
     console.error('Guest login error:', error);
-    res.status(500).json({ error: 'Guest login failed' });
+    sendError(res, 500, 'Guest login failed');
   }
 });
 
@@ -612,7 +605,7 @@ app.post('/api/auth/logout', (req, res) => {
   req.session.destroy((err) => {
     if (err) {
       console.error('Logout error:', err);
-      return res.status(500).json({ error: 'Logout failed' });
+      return sendError(res, 500, 'Logout failed');
     }
     res.json({ success: true });
   });
@@ -690,8 +683,21 @@ const MIN_ANGLE_MULTIPLIER = 0.12;  // Minimum damage for grazing impacts (20%)
 const MAX_ANGLE_MULTIPLIER = 1.0;  // Maximum damage for head-on impacts (100%)
 const ANGLE_CURVE_POWER = 1.0;     // Power for cosine curve shaping (1.0 = linear cosine)
 
-const PLAYER_AFK_THRESHOLD = 30 * 1000;
-const WARNING_TIME = 5 * 1000;
+// Timing constants
+const SPAWN_PROTECTION_MS = 1000;
+const RESPAWN_PROTECTION_MS = 1000;
+const LAVA_DAMAGE_INTERVAL_MS = 100;
+const WIN_MESSAGE_DELAY_MS = 1500;
+const CRASH_CLEANUP_DELAY_MS = 300;
+const AFK_CHECK_INTERVAL_MS = 15000;
+const PLAYER_AFK_THRESHOLD_MS = 30 * 1000;
+const AFK_WARNING_TIME_MS = 5 * 1000;
+
+// Gameplay constants
+const BOOST_CONSUMPTION_RATE = 10;
+const LAVA_DAMAGE_SCALE = 0.1;
+const CHECKPOINT_DETECTION_RADIUS = 10;
+const FULL_STATE_BROADCAST_CHANCE = 0.1;
 
 // Legacy global track bodies removed - now handled per room
 
@@ -732,6 +738,10 @@ function unregisterGuestSession(sessionId) {
 
 function isGuestSessionActive(sessionId) {
   return activeGuestSessions.has(sessionId);
+}
+
+function sendError(res, statusCode, message) {
+  return res.status(statusCode).json({ error: message });
 }
 
 function kickExistingSessions(userId, currentSocketId) {
@@ -874,8 +884,8 @@ function applyCurrentEffects(car, currentEffects) {
     
     // Check if we should apply damage (limit to once per 100ms to avoid excessive damage)
     const lastDamageTime = car._lavaDamageTracking.get(effectKey) || 0;
-    if (currentTime - lastDamageTime >= 100) {
-      const damage = maxLavaStrength / 10;
+    if (currentTime - lastDamageTime >= LAVA_DAMAGE_INTERVAL_MS) {
+      const damage = maxLavaStrength * LAVA_DAMAGE_SCALE;
       const oldHealth = car.currentHealth;
       car.currentHealth = Math.max(0, car.currentHealth - damage);
       car._lavaDamageTracking.set(effectKey, currentTime);
@@ -996,7 +1006,7 @@ class Car {
     this.cursor = { x: 0, y: 0 }; // direction and intensity from client
     this.justCrashed = false;
     this.godMode = true; // Spawn protection
-    this.spawnProtectionEnd = Date.now() + 1000; // 1 second of spawn protection
+    this.spawnProtectionEnd = Date.now() + SPAWN_PROTECTION_MS; // 1 second of spawn protection
     
     this.maxBoost = CAR_TYPES[type].boost;
     this.currentBoost = this.maxBoost;
@@ -1158,7 +1168,7 @@ class Car {
       if (this.boostActive && this.currentBoost > 0) {
         acceleration *= 2.0;
         // Consume boost at a rate of 100 boost per second
-        const boostConsumptionRate = 10; // boost units per second
+        const boostConsumptionRate = BOOST_CONSUMPTION_RATE; // boost units per second
         this.currentBoost = Math.max(0, this.currentBoost - boostConsumptionRate * dt);
         
         // Stop boost if we run out
@@ -1212,7 +1222,7 @@ class Car {
       const dy = pos.y - projy
       const dist = Math.hypot(dx, dy)
 
-      if (dist >= 10) continue
+      if (dist >= CHECKPOINT_DETECTION_RADIUS) continue
 
       const lastSide = this._cpLastSides.get(cp.id) ?? 0
       const side = HELPERS.segmentSide(a.x, a.y, b.x, b.y, pos.x, pos.y)
@@ -1295,7 +1305,7 @@ class Car {
     this.crashedByPlayer = false;
     this.killFeedSent = false;
     this.godMode = true; // Respawn protection
-    this.spawnProtectionEnd = Date.now() + 1000; // 1 second of spawn protection
+    this.spawnProtectionEnd = Date.now() + SPAWN_PROTECTION_MS; // 1 second of spawn protection
     Matter.Body.setPosition(this.body, { x: startPos.x, y: startPos.y });
     Matter.Body.setVelocity(this.body, { x: 0, y: 0 });
     Matter.Body.setAngularVelocity(this.body, 0);
@@ -1770,14 +1780,7 @@ class Room {
     this.currentDynamicBodies = []
 
     // Parse category/key format if present
-    let keyToCheck = mapKey;
-    let categoryToCheck = null;
-    
-    if (mapKey && mapKey.includes('/')) {
-      const parts = mapKey.split('/');
-      categoryToCheck = parts[0];
-      keyToCheck = parts[1];
-    }
+    const { category: categoryToCheck, key: keyToCheck } = HELPERS.parseMapKey(mapKey);
 
     const map = mapManager.getMap(keyToCheck, categoryToCheck)
     const thickness = 10
@@ -2060,31 +2063,31 @@ class Room {
   
   getRoomMembersData() {
     const members = [];
-    
+
     for (const [socketId, member] of this.allMembers.entries()) {
       const socket = member.socket;
       const session = socket?.request?.session;
-      
+
       let name = 'Connecting...';
       let isAuthenticated = false;
-      
+
       if (session?.username) {
         name = session.isGuest ? session.username : session.username;
         isAuthenticated = !session.isGuest;
-        
+
         if (member.state === Room.USER_STATES.SPECTATING) {
           name = `${session.username} in lobby...`;
         }
       }
-      
+
       if (member.state === Room.USER_STATES.PLAYING) {
         const car = this.players.get(socketId);
         if (car && car.name) {
           name = car.name;
-          isAuthenticated = true; // Players are considered authenticated
+          isAuthenticated = true;
         }
       }
-      
+
       members.push({
         socketId: socketId,
         name: name,
@@ -2093,8 +2096,42 @@ class Room {
         joinedAt: member.joinedAt
       });
     }
-    
+
     return members;
+  }
+
+  serializeAbilityObjects() {
+    return this.gameState.abilityObjects.map(obj => ({
+      id: obj.id,
+      type: obj.type,
+      position: obj.body.position,
+      vertices: obj.body.vertices.map(v => ({ x: v.x - obj.body.position.x, y: v.y - obj.body.position.y })),
+      createdBy: obj.createdBy,
+      expiresAt: obj.expiresAt,
+      render: obj.body.render
+    }));
+  }
+
+  serializeDynamicObjects() {
+    return this.currentDynamicBodies.map(body => {
+      const objData = {
+        id: body.dynamicObject?.id || body.id,
+        position: body.position,
+        angle: body.angle,
+        vertices: body.vertices.map(v => ({ x: v.x - body.position.x, y: v.y - body.position.y })),
+        fillColor: body.dynamicObject?.fillColor || [139, 69, 19],
+        strokeColor: body.dynamicObject?.strokeColor || [101, 67, 33],
+        strokeWidth: body.dynamicObject?.strokeWidth || 2
+      };
+
+      if (typeof body.dynamicObject?.maxHealth !== 'undefined') {
+        objData.health = body.health || body.dynamicObject.maxHealth;
+        objData.maxHealth = body.dynamicObject.maxHealth;
+        objData.isDestroyed = body.isDestroyed || false;
+      }
+
+      return objData;
+    });
   }
 }
 
@@ -3065,36 +3102,9 @@ setInterval(() => {
           keyToGet = parts[1];
         }
         const map = mapManager.getMap(keyToGet, categoryToGet);
-        const clientAbilityObjects = room.gameState.abilityObjects.map(obj => ({
-          id: obj.id,
-          type: obj.type,
-          position: obj.body.position,
-          vertices: obj.body.vertices.map(v => ({ x: v.x - obj.body.position.x, y: v.y - obj.body.position.y })),
-          createdBy: obj.createdBy,
-          expiresAt: obj.expiresAt,
-          render: obj.body.render
-        }));
+        const clientAbilityObjects = room.serializeAbilityObjects();
         
-        const clientDynamicObjects = room.currentDynamicBodies.map(body => {
-          const objData = {
-            id: body.dynamicObject?.id || body.id,
-            position: body.position,
-            angle: body.angle,
-            vertices: body.vertices.map(v => ({ x: v.x - body.position.x, y: v.y - body.position.y })),
-            fillColor: body.dynamicObject?.fillColor || [139, 69, 19], // Default brown
-            strokeColor: body.dynamicObject?.strokeColor || [101, 67, 33],
-            strokeWidth: body.dynamicObject?.strokeWidth || 2
-          }
-          
-          // Only include health data if the object has maxHealth defined
-          if (typeof body.dynamicObject?.maxHealth !== 'undefined') {
-            objData.health = body.health || body.dynamicObject.maxHealth
-            objData.maxHealth = body.dynamicObject.maxHealth
-            objData.isDestroyed = body.isDestroyed || false
-          }
-          
-          return objData
-        });
+        const clientDynamicObjects = room.serializeDynamicObjects();
 
         const fullState = {
           players: state,
@@ -3123,7 +3133,7 @@ setInterval(() => {
         }
         
         // Send full state occasionally to prevent drift
-        if (Math.random() < 0.1) { // 10% chance = roughly every second at 30Hz
+        if (Math.random() < FULL_STATE_BROADCAST_CHANCE) { // 10% chance = roughly every second at 30Hz
           if (socket.clientSupportsBinary) {
             const binaryState = encodeBinaryState(state, Date.now());
             socket.emit('binaryState', binaryState);
@@ -3150,36 +3160,9 @@ function broadcastToSpectators() {
   
   // Broadcast to spectators in each room + global spectators for the first room
   for (const room of rooms) {
-    const clientAbilityObjects = room.gameState.abilityObjects.map(obj => ({
-      id: obj.id,
-      type: obj.type,
-      position: obj.body.position,
-      vertices: obj.body.vertices.map(v => ({ x: v.x - obj.body.position.x, y: v.y - obj.body.position.y })),
-      createdBy: obj.createdBy,
-      expiresAt: obj.expiresAt,
-      render: obj.body.render
-    }));
+    const clientAbilityObjects = room.serializeAbilityObjects();
     
-    const clientDynamicObjects = room.currentDynamicBodies.map(body => {
-      const objData = {
-        id: body.dynamicObject?.id || body.id,
-        position: body.position,
-        angle: body.angle,
-        vertices: body.vertices.map(v => ({ x: v.x - body.position.x, y: v.y - body.position.y })),
-        fillColor: body.dynamicObject?.fillColor || [139, 69, 19], // Default brown
-        strokeColor: body.dynamicObject?.strokeColor || [101, 67, 33],
-        strokeWidth: body.dynamicObject?.strokeWidth || 2
-      }
-      
-      // Only include health data if the object has maxHealth defined
-      if (typeof body.dynamicObject?.maxHealth !== 'undefined') {
-        objData.health = body.health || body.dynamicObject.maxHealth
-        objData.maxHealth = body.dynamicObject.maxHealth
-        objData.isDestroyed = body.isDestroyed || false
-      }
-      
-      return objData
-    });
+    const clientDynamicObjects = room.serializeDynamicObjects();
     
     let keyToGet = room.currentMapKey;
     let categoryToGet = null;
@@ -3244,7 +3227,7 @@ setInterval(() => {
   
   cleanupEmptyRooms();
   ensureDefaultRoom();
-}, 15000);
+}, AFK_CHECK_INTERVAL_MS);
 
 // Run initial room maintenance
 ensureDefaultRoom();
