@@ -1765,7 +1765,7 @@
     }
     
     const selected = document.querySelector('input[name="car"]:checked');
-    const carType = selected ? selected.value : 'Speedster';
+    const carType = selected ? selected.value : 'Racer';
     const name = currentUser.username;
 
     socket.emit('joinGame', { carType, name, roomId: currentRoomId });
