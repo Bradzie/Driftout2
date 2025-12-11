@@ -356,7 +356,6 @@ app.get('/api/rooms', (req, res) => {
     const roomMembers = room.getRoomMembersData();
     
     if (roomMembers.length > 0) {
-      console.log(`Room ${room.name} members:`, roomMembers.map(m => ({ name: m.name, state: m.state })));
     }
     
     const playersList = roomMembers
@@ -506,7 +505,6 @@ app.post('/api/auth/login', async (req, res) => {
       const existingSessions = getUserActiveSessions(userId);
       
       if (existingSessions.size > 0) {
-        console.log(`User ${userId} attempting to login with ${existingSessions.size} existing active sessions`);
         
         if (currentDuplicateLoginPolicy === DUPLICATE_LOGIN_POLICY.REJECT_NEW) {
           return res.status(409).json({ 
@@ -515,7 +513,6 @@ app.post('/api/auth/login', async (req, res) => {
           });
         } else if (currentDuplicateLoginPolicy === DUPLICATE_LOGIN_POLICY.KICK_EXISTING) {
           // We'll kick existing sessions after socket connection is established
-          console.log(`Will kick existing sessions for user ${userId} after socket connection`);
         }
       }
       
@@ -590,7 +587,6 @@ app.post('/api/auth/logout', (req, res) => {
       for (const socketId of activeSessions) {
         const socket = io.sockets.sockets.get(socketId);
         if (socket) {
-          console.log(`Logging out user ${userId}, gracefully logging out socket ${socketId}`);
           socket.emit('forceLogout', { 
             reason: 'You have been logged out.' 
           });
@@ -706,7 +702,6 @@ function registerUserSession(userId, socketId) {
     activeUserSessions.set(userId, new Set());
   }
   activeUserSessions.get(userId).add(socketId);
-  console.log(`Registered session for user ${userId}, socket ${socketId}`);
 }
 
 function unregisterUserSession(userId, socketId) {
@@ -715,7 +710,6 @@ function unregisterUserSession(userId, socketId) {
     if (activeUserSessions.get(userId).size === 0) {
       activeUserSessions.delete(userId);
     }
-    console.log(`Unregistered session for user ${userId}, socket ${socketId}`);
   }
 }
 
@@ -725,14 +719,12 @@ function getUserActiveSessions(userId) {
 
 function registerGuestSession(sessionId, socketId) {
   activeGuestSessions.set(sessionId, socketId);
-  console.log(`Registered guest session ${sessionId}, socket ${socketId}`);
 }
 
 function unregisterGuestSession(sessionId) {
   if (activeGuestSessions.has(sessionId)) {
     const socketId = activeGuestSessions.get(sessionId);
     activeGuestSessions.delete(sessionId);
-    console.log(`Unregistered guest session ${sessionId}, socket ${socketId}`);
   }
 }
 
@@ -750,7 +742,6 @@ function kickExistingSessions(userId, currentSocketId) {
     if (socketId !== currentSocketId) {
       const socket = io.sockets.sockets.get(socketId);
       if (socket) {
-        console.log(`Logging out existing session: user ${userId}, socket ${socketId}`);
         socket.emit('forceLogout', { 
           reason: 'Your account has been logged in from another location.' 
         });
@@ -858,12 +849,10 @@ function applyCurrentEffects(car, currentEffects) {
     const newAcceleration = originalAcceleration * maxBoostStrength;
     car.stats.acceleration = newAcceleration;
     car._activeAreaEffects.add(`boost_${maxBoostStrength}`);
-    console.log(`🚀 Boost effect: Car ${car.id} acceleration boosted from ${originalAcceleration} to ${newAcceleration} (${maxBoostStrength}x)`);
   } else if (maxSlowStrength > 0) {
     const newAcceleration = originalAcceleration * (1 - maxSlowStrength);
     car.stats.acceleration = Math.max(0.1, newAcceleration); // Prevent going to zero
     car._activeAreaEffects.add(`slow_${maxSlowStrength}`);
-    console.log(`🐌 Slow effect: Car ${car.id} acceleration reduced from ${originalAcceleration} to ${car.stats.acceleration} (-${maxSlowStrength * 100}%)`);
   } else {
     // No acceleration effects - restore original
     car.stats.acceleration = originalAcceleration;
@@ -1037,11 +1026,9 @@ class Car {
       }
     } else if (mapDef) {
       // No start area defined, calculate a reasonable spawn position
-      console.log(`⚠️ Map ${roomMapKey} has no start area defined, calculating fallback spawn position`);
       startPos = this.calculateFallbackSpawnPosition(mapDef);
     } else {
       // No map found at all, use safe default
-      console.log(`⚠️ Map ${roomMapKey} not found, using default spawn position`);
       startPos = { x: 100, y: 0 }; // Better than (0,0)
     }
     this.checkpointsVisited = new Set();
@@ -1349,7 +1336,6 @@ class Car {
       damage = (relativeSpeed * 1.5) * BASE_VELOCITY_DAMAGE_SCALE * damageMultiplier * damageScale * angleMultiplier;
     }
 
-    console.log(`Collision damage: ${damage.toFixed(2)} (relativeSpeed=${relativeSpeed.toFixed(2)}, densityRatio=${densityRatio.toFixed(2)}, angleMultiplier=${angleMultiplier.toFixed(2)}, damageScale=${damageScale})`);
     
     this.currentHealth -= damage;
 
@@ -1422,7 +1408,6 @@ class Car {
     spawnX = Math.max(minX + 100, Math.min(maxX - 100, spawnX));
     spawnY = Math.max(minY + 100, Math.min(maxY - 100, spawnY));
     
-    console.log(`📍 Calculated fallback spawn position: (${Math.round(spawnX)}, ${Math.round(spawnY)}) for map center: (${Math.round(avgX)}, ${Math.round(avgY)})`);
     
     return { x: spawnX, y: spawnY };
   }
@@ -1875,7 +1860,6 @@ class Room {
     }
     
     const action = isExistingMember ? 'changed state to' : 'joined room as';
-    console.log(`User ${socket.id} ${action} ${state} in room ${this.name}. Occupancy: ${this.totalOccupancy}/${this.maxPlayers}`);
   }
   
   removeMember(socketId) {
@@ -1893,7 +1877,6 @@ class Room {
     
     this.allMembers.delete(socketId);
     
-    console.log(`User ${socketId} left room ${this.name}. Occupancy: ${this.totalOccupancy}/${this.maxPlayers}`);
     return true;
   }
   
@@ -1916,7 +1899,6 @@ class Room {
     
     member.state = Room.USER_STATES.PLAYING;
     
-    console.log(`User ${socket.id} promoted to player in room ${this.name}. Players: ${this.activePlayerCount}, Total: ${this.totalOccupancy}`);
     return car;
   }
   
@@ -1939,7 +1921,6 @@ class Room {
     
     member.state = Room.USER_STATES.SPECTATING;
     
-    console.log(`User ${socketId} demoted to spectator in room ${this.name}. Players: ${this.activePlayerCount}, Total: ${this.totalOccupancy}`);
     return true;
   }
   
@@ -1979,14 +1960,12 @@ class Room {
       
       if (timeSinceActivity > threshold) {
         if (!member.afkWarningGiven) {
-          console.log(`⚠️ Sending AFK warning to ${socketId} in room ${this.name} (${isPlayer ? 'player' : 'spectator'}, ${Math.round(timeSinceActivity/1000)}s inactive)`);
           member.socket.emit('afkWarning', {
             countdown: 5,
             reason: isPlayer ? 'No input detected for 30 seconds' : 'No activity for 5 minutes'
           });
           member.afkWarningGiven = true;
         } else if (timeSinceActivity > threshold + WARNING_TIME) {
-          console.log(`🚫 Disconnecting AFK user ${socketId} from room ${this.name} (${Math.round(timeSinceActivity/1000)}s inactive)`);
           const disconnectReason = isPlayer 
             ? 'Disconnected due to inactivity (no input for 30+ seconds)'
             : 'Disconnected due to inactivity (no activity for 5+ minutes)';
@@ -2155,7 +2134,6 @@ function createOfficialRoom() {
   room.name = `Official Room ${officialRoomCount + 1}`;
   
   rooms.push(room);
-  console.log(`🏛️ Created official room: ${room.name} (${room.id.substring(0, 8)}) with map: ${randomMapKey}`);
   return room;
 }
 
@@ -2177,7 +2155,6 @@ function findBestOfficialRoom() {
 
 function initializeRooms() {
   if (rooms.length === 0) {
-    console.log('🏛️ Initializing with official room');
     createOfficialRoom();
   }
 }
@@ -2252,19 +2229,16 @@ function createDeltaState(socketId, currentState) {
 
 function assignRoom() {
   // Smart room assignment: only assign to official rooms
-  console.log(`🤖 Smart room assignment started`);
   
   // Try to find the best official room first
   let room = findBestOfficialRoom();
   
   if (room) {
-    console.log(`✅ Assigned to existing official room: ${room.name}`);
     return room;
   }
   
   // No suitable official room found, create a new one
   room = createOfficialRoom();
-  console.log(`🆕 Created new official room for assignment: ${room.name}`);
   return room;
 }
 
@@ -2277,7 +2251,6 @@ function ensureDefaultRoom() {
   const joinableOfficialRooms = rooms.filter(room => room.isJoinable && room.isOfficial);
   
   if (joinableOfficialRooms.length === 0) {
-    console.log('🏛️ Creating official room - no joinable official rooms available');
     createOfficialRoom();
   }
 }
@@ -2293,7 +2266,6 @@ function cleanupEmptyRooms() {
   for (const room of emptyNonOfficialRooms) {
     const index = rooms.indexOf(room);
     if (index > -1) {
-      console.log(`🧹 Cleaning up empty user-created room: ${room.name} (${room.id})`);
       rooms.splice(index, 1);
     }
   }
@@ -2304,7 +2276,6 @@ function cleanupEmptyRooms() {
     for (const room of roomsToRemove) {
       const index = rooms.indexOf(room);
       if (index > -1) {
-        console.log(`🧹 Cleaning up excess empty official room: ${room.name} (${room.id})`);
         rooms.splice(index, 1);
       }
     }
@@ -2314,14 +2285,7 @@ function cleanupEmptyRooms() {
 }
 
 io.on('connection', (socket) => {
-  console.log(`User connected: ${socket.id}`);
   
-  console.log('Session on connect:', {
-    hasSession: !!socket.request.session,
-    sessionID: socket.request.sessionID,
-    username: socket.request.session?.username,
-    isGuest: socket.request.session?.isGuest
-  });
   
   // Register session for duplicate login prevention
   if (socket.request.session && socket.request.session.username) {
@@ -2344,26 +2308,15 @@ io.on('connection', (socket) => {
   let clientSupportsBinary = false;
   
   socket.on('refreshSession', () => {
-    console.log(`Socket ${socket.id} requested session refresh`);
     // Only reload if session exists and has been initialized
     if (socket.request.session && socket.request.sessionID && socket.request.session.username) {
       socket.request.session.reload((err) => {
         if (err) {
           console.error('Session refresh error:', err);
         } else {
-          console.log('Session refreshed for socket:', socket.id, {
-            hasSession: !!socket.request.session,
-            username: socket.request.session?.username,
-            isGuest: socket.request.session?.isGuest
-          });
         }
       });
     } else {
-      console.log('No valid session to refresh for socket:', socket.id, {
-        hasSession: !!socket.request.session,
-        hasSessionID: !!socket.request.sessionID,
-        hasUsername: !!socket.request.session?.username
-      });
     }
   });
   
@@ -2391,12 +2344,10 @@ io.on('connection', (socket) => {
     let targetRoom = null;
     if (roomId) {
       targetRoom = rooms.find(room => room.id === roomId);
-      console.log(`🎯 Looking for specific room ${roomId}:`, targetRoom ? 'Found' : 'Not found');
     }
     if (!targetRoom) {
       // Use smart room assignment for automatic assignment
       targetRoom = assignRoom();
-      console.log(`🤖 Smart assignment selected room: ${targetRoom.name}`);
     }
     
     try {
@@ -2413,13 +2364,6 @@ io.on('connection', (socket) => {
           keyToGet = parts[1];
         }
         const mapData = mapManager.getMap(keyToGet, categoryToGet);
-        console.log(`🗺️ Map retrieval:`, {
-          roomId: targetRoom.id,
-          currentMapKey: targetRoom.currentMapKey,
-          mapData: !!mapData,
-          mapShapes: mapData?.shapes?.length,
-          mapName: mapData?.name
-        });
         
         const immediateSpectatorState = {
           players: [],
@@ -2452,28 +2396,10 @@ io.on('connection', (socket) => {
           console.error('Session reload error during join:', err);
         }
         
-        console.log('Join game attempt (after session reload):', {
-          socketId: socket.id,
-          carType,
-          requestedName: name,
-          roomId,
-          hasSession: !!socket.request.session,
-          sessionUsername: socket.request.session?.username,
-          sessionIsGuest: socket.request.session?.isGuest
-        });
         
         processJoinRequest();
       });
     } else {
-      console.log('Join game attempt (no session to reload):', {
-        socketId: socket.id,
-        carType,
-        requestedName: name,
-        roomId,
-        hasSession: !!socket.request.session,
-        sessionUsername: socket.request.session?.username,
-        sessionIsGuest: socket.request.session?.isGuest
-      });
       
       processJoinRequest();
     }
@@ -2483,7 +2409,6 @@ io.on('connection', (socket) => {
     // TODO: Fix session sharing to properly use session-based authentication
     const playerName = name || 'Anonymous';
     if (!playerName || playerName === 'Anonymous') {
-      console.log('No valid player name provided for socket', socket.id);
       socket.emit('joinError', { error: 'Please provide a valid name' });
       return;
     }
@@ -2506,7 +2431,6 @@ io.on('connection', (socket) => {
         return;
       }
       
-      console.log(`🎮 User ${socket.id} joining room ${targetRoom.name}: ${isAlreadyMember ? 'spectator->player transition' : 'new member'}`);
     } else {
       // Auto-assign room (backwards compatibility)
       targetRoom = assignRoom();
@@ -2514,7 +2438,6 @@ io.on('connection', (socket) => {
     
     for (const room of rooms) {
       if (room !== targetRoom && room.hasMember(socket.id)) {
-        console.log(`Removing user ${socket.id} from room ${room.name} before joining new game`);
         room.removeMember(socket.id);
       }
     }
@@ -2898,7 +2821,6 @@ io.on('connection', (socket) => {
     
     const sanitizedMessage = message.replace(/[<>]/g, '');
     
-    console.log(`Chat message from ${playerName}: ${sanitizedMessage}`);
     
     // Broadcast to all room members (players and spectators)
     const roomMembers = [
@@ -2931,7 +2853,6 @@ io.on('connection', (socket) => {
     
     for (const room of rooms) {
       if (room.hasMember(socket.id)) {
-        console.log(`User ${socket.id} disconnected from room ${room.name}`);
         room.removeMember(socket.id);
       }
     }
@@ -2984,7 +2905,6 @@ function gameLoop() {
             const userId = winnerSocket.request.session.userId;
             const xpAwarded = userDb.addXP(userId, 10);
             if (xpAwarded) {
-              console.log(`Awarded 10 XP to user ${userId} (${winnerName}) for race win`);
               
               // Notify the winner about XP gain
               winnerSocket.emit('xpGained', { amount: 10, reason: 'Race Win' });
@@ -3233,5 +3153,4 @@ setInterval(() => {
 ensureDefaultRoom();
 
 server.listen(PORT, () => {
-  console.log(`Driftz.IO server listening on port ${PORT}`);
 });
