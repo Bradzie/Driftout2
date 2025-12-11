@@ -2420,8 +2420,6 @@
       upgradeCard.className = 'upgrade-card';
       upgradeCard.setAttribute('data-stat', statName);
       upgradeCard.setAttribute('data-key', keyIndex.toString());
-      upgradeCard.style.borderColor = upgrade.color;
-      upgradeCard.style.backgroundColor = upgrade.color;
       
       upgradeCard.innerHTML = `
         <div class="upgrade-key-indicator" style="background-color: ${upgrade.color}">${keyIndex}</div>

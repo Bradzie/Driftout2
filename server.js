@@ -891,7 +891,8 @@ function applyCurrentEffects(car, currentEffects) {
       car._lavaDamageTracking.clear();
     }
   }
-}
+}
+
 
 // Global physics engine removed - now each room has its own
 
