@@ -111,6 +111,7 @@
   let currentFPS = 0;
   let pingValue = 0;
   let lastPingTime = 0;
+  let clockOffset = 0;
 
   const authScreen = document.getElementById('authScreen');
   const authSelection = document.getElementById('authSelection');
@@ -359,11 +360,11 @@
   async function handleRegister(username, email, password) {
     try {
       showAuthLoading();
-      
+      const sanitizedUsername = sanitizeName(username);
       const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, email, password })
+        body: JSON.stringify({ username: sanitizedUsername, email, password })
       });
       
       const data = await response.json();
@@ -390,11 +391,12 @@
   async function handleQuickPlay(name) {
     try {
       showAuthLoading();
-      
+      const sanitizedName = sanitizeName(name);
+
       const response = await fetch('/api/auth/guest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name })
+        body: JSON.stringify({ name: sanitizedName })
       });
       
       const data = await response.json();
@@ -806,11 +808,8 @@
         
         const kills = view.getUint16(offset, true); offset += 2;
         const deaths = view.getUint16(offset, true); offset += 2;
-        
-        // TODO: (HIGH PRIORITY) we can't have hardcoded type mappings here, need to sync to CAR_TYPES
-        const typeNames = ['Stream', 'Tank', 'Bullet', 'Prankster'];
-
-        const typeName = typeNames[type] || 'Stream'; // hardcoded as a default is fine, but typeNames needs to change
+        const typeNames = Object.keys(CAR_TYPES);
+        const typeName = typeNames[type] || (typeNames.length > 0 ? typeNames[0] : 'Racer');
         
         // construct player object
         const player = {
@@ -1183,15 +1182,33 @@
     }
   }
 
+  // Get current time synchronized with server
+  function getServerTime() {
+    return Date.now() + clockOffset;
+  }
+
   function updatePing() {
     const now = Date.now();
     if (now - lastPingTime >= 2000 && socket.connected) { // send ping every 2 seconds
       lastPingTime = now;
       const startTime = now;
-      
-      socket.emit('ping', startTime, (responseTime) => {
-        const realPing = Date.now() - startTime;
+
+      socket.emit('ping', startTime, (serverTime) => {
+        const endTime = Date.now();
+        const realPing = endTime - startTime;
         pingValue = fakePingEnabled ? fakePingLatency : realPing;
+
+        // calculate clock offset
+        const estimatedServerTimeNow = serverTime + (realPing / 2);
+        const newOffset = estimatedServerTimeNow - endTime;
+        const oldOffset = clockOffset;
+        clockOffset = clockOffset === 0 ? newOffset : (clockOffset * 0.8 + newOffset * 0.2);
+
+        // Debug: log significant clock offset changes
+        if (Math.abs(clockOffset) > 100 || (oldOffset === 0 && clockOffset !== 0)) {
+          console.log(`Clock sync: offset=${Math.round(clockOffset)}ms (client is ${clockOffset > 0 ? 'behind' : 'ahead'} server)`);
+        }
+
         if (settings.showPing) {
           const pingText = fakePingEnabled ? `Ping ~${pingValue}ms` : `Ping ${pingValue}ms`;
           pingDisplay.textContent = pingText;
@@ -1654,18 +1671,14 @@
   
   initCarSelection();
 
-  // TODO: this clearly isn't used, but where the heck are we sanitizing names? might need to be switched on
   function sanitizeName(name) {
     let sanitized = name.replace(/[\x00-\x1F\x7F]/g, '');
 
-    // This regex targets Unicode combining diacritical marks (U+0300 to U+036F)
-    // and similar characters that can be spammed.
+    // regex targets unicode diacritical marks (U+0300 to U+036F) and similar spam
     sanitized = sanitized.replace(/[\u0300-\u036F\u1AB0-\u1AFF\u1DC0-\u1DFF\u20D0-\u20FF\uFE20-\uFE2F]+/g, '');
+    sanitized = sanitized.trim().substring(0, 20); // limit to 20 chars
 
-    // Trim whitespace and limit length
-    sanitized = sanitized.trim().substring(0, 20); // Limit to 20 characters
-
-    return sanitized || 'Unnamed'; // Default to 'Unnamed' if empty after sanitization
+    return sanitized || 'Unnamed';
   }
 
   joinButton.addEventListener('click', () => {
@@ -2149,12 +2162,12 @@
     if (e.code === 'Space' && !e.repeat) {
       e.preventDefault();
       if (myAbility) {
-        const now = Date.now();
+        const now = getServerTime();
         const remaining = Math.max(0, myAbility.cooldown - (now - lastAbilityUse));
-        
+
         if (remaining === 0) {
           updateAbilityHUD();
-          
+
           // gives a 'press' effect
           abilityHud.style.transform = 'scale(0.95)';
           setTimeout(() => {
@@ -2220,7 +2233,7 @@
       return;
     }
 
-    const now = Date.now();
+    const now = getServerTime();
     const timeSinceUse = now - lastAbilityUse;
     const remaining = Math.max(0, myAbility.cooldown - timeSinceUse);
     const isReady = remaining === 0;
@@ -2507,6 +2520,8 @@
     hide(lapCounter);
     hide(lapTimer);
     hide(boostDisplay);
+    // reset clock synchronization
+    clockOffset = 0;
     // show disconnection info
     showDisconnectionOverlay();
   });
