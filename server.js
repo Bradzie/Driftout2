@@ -92,11 +92,7 @@ app.get('/api/maps/:category/:key', (req, res) => {
 // New map management endpoints
 
 // Upload a new community map or overwrite an existing one (authenticated users only)
-app.post('/api/maps', async (req, res) => {
-  if (!req.session.userId) {
-    return sendError(res, 401, 'Authentication required');
-  }
-
+app.post('/api/maps', requireAuth, async (req, res) => {
   try {
     const { name, mapData, directory, key } = req.body;
     
@@ -173,11 +169,7 @@ app.post('/api/maps', async (req, res) => {
   }
 });
 
-app.put('/api/maps/:key', async (req, res) => {
-  if (!req.session.userId) {
-    return sendError(res, 401, 'Authentication required');
-  }
-
+app.put('/api/maps/:key', requireAuth, async (req, res) => {
   try {
     const { key } = req.params;
     const { name, mapData } = req.body;
@@ -215,11 +207,7 @@ app.put('/api/maps/:key', async (req, res) => {
   }
 });
 
-app.delete('/api/maps/:key', async (req, res) => {
-  if (!req.session.userId) {
-    return sendError(res, 401, 'Authentication required');
-  }
-
+app.delete('/api/maps/:key', requireAuth, async (req, res) => {
   try {
     const { key } = req.params;
     
@@ -245,11 +233,7 @@ app.delete('/api/maps/:key', async (req, res) => {
   }
 });
 
-app.get('/api/maps/my', async (req, res) => {
-  if (!req.session.userId) {
-    return sendError(res, 401, 'Authentication required');
-  }
-
+app.get('/api/maps/my', requireAuth, async (req, res) => {
   try {
     const userMaps = userDb.getMapsByUser(req.session.userId);
     res.json(userMaps);
@@ -260,11 +244,7 @@ app.get('/api/maps/my', async (req, res) => {
 });
 
 // Upload preview image for a map
-app.post('/api/maps/preview', async (req, res) => {
-  if (!req.session.userId) {
-    return sendError(res, 401, 'Authentication required');
-  }
-
+app.post('/api/maps/preview', requireAuth, async (req, res) => {
   try {
     const form = new formidable.IncomingForm();
     form.maxFileSize = 5 * 1024 * 1024; // 5MB limit
@@ -294,18 +274,10 @@ app.post('/api/maps/preview', async (req, res) => {
 
         const filename = mapId + '.png';
         const targetPath = path.join(previewsDir, filename);
+        const file = Array.isArray(previewFile) ? previewFile[0] : previewFile;
 
-        if (Array.isArray(previewFile)) {
-          fs.copyFileSync(previewFile[0].filepath, targetPath);
-        } else {
-          fs.copyFileSync(previewFile.filepath, targetPath);
-        }
-
-        if (Array.isArray(previewFile)) {
-          fs.unlinkSync(previewFile[0].filepath);
-        } else {
-          fs.unlinkSync(previewFile.filepath);
-        }
+        fs.copyFileSync(file.filepath, targetPath);
+        fs.unlinkSync(file.filepath);
 
         res.json({ 
           success: true, 
@@ -356,7 +328,6 @@ app.get('/api/rooms', (req, res) => {
     const roomMembers = room.getRoomMembersData();
     
     if (roomMembers.length > 0) {
-      console.log(`Room ${room.name} members:`, roomMembers.map(m => ({ name: m.name, state: m.state })));
     }
     
     const playersList = roomMembers
@@ -384,7 +355,6 @@ app.get('/api/rooms', (req, res) => {
       isPrivate: room.isPrivate,
       isOfficial: room.isOfficial,
       isJoinable: room.isJoinable,
-      // Legacy field for backward compatibility
       playerCount: room.activePlayerCount
     };
   });
@@ -430,7 +400,6 @@ app.post('/api/rooms/create', express.json(), (req, res) => {
       isPrivate: room.isPrivate,
       isOfficial: room.isOfficial,
       isJoinable: room.isJoinable,
-      // Legacy field for backward compatibility
       playerCount: room.activePlayerCount
     });
   } catch (error) {
@@ -506,7 +475,6 @@ app.post('/api/auth/login', async (req, res) => {
       const existingSessions = getUserActiveSessions(userId);
       
       if (existingSessions.size > 0) {
-        console.log(`User ${userId} attempting to login with ${existingSessions.size} existing active sessions`);
         
         if (currentDuplicateLoginPolicy === DUPLICATE_LOGIN_POLICY.REJECT_NEW) {
           return res.status(409).json({ 
@@ -515,7 +483,6 @@ app.post('/api/auth/login', async (req, res) => {
           });
         } else if (currentDuplicateLoginPolicy === DUPLICATE_LOGIN_POLICY.KICK_EXISTING) {
           // We'll kick existing sessions after socket connection is established
-          console.log(`Will kick existing sessions for user ${userId} after socket connection`);
         }
       }
       
@@ -549,8 +516,8 @@ app.post('/api/auth/login', async (req, res) => {
 app.post('/api/auth/guest', (req, res) => {
   try {
     const { name } = req.body;
-    
-    if (!name || name.length < 1 || name.length > 20) {
+
+    if (!name || name.length > 20) {
       return sendError(res, 400, 'Guest name must be between 1 and 20 characters');
     }
     
@@ -590,7 +557,6 @@ app.post('/api/auth/logout', (req, res) => {
       for (const socketId of activeSessions) {
         const socket = io.sockets.sockets.get(socketId);
         if (socket) {
-          console.log(`Logging out user ${userId}, gracefully logging out socket ${socketId}`);
           socket.emit('forceLogout', { 
             reason: 'You have been logged out.' 
           });
@@ -699,14 +665,12 @@ const LAVA_DAMAGE_SCALE = 0.1;
 const CHECKPOINT_DETECTION_RADIUS = 10;
 const FULL_STATE_BROADCAST_CHANCE = 0.1;
 
-// Legacy global track bodies removed - now handled per room
 
 function registerUserSession(userId, socketId) {
   if (!activeUserSessions.has(userId)) {
     activeUserSessions.set(userId, new Set());
   }
   activeUserSessions.get(userId).add(socketId);
-  console.log(`Registered session for user ${userId}, socket ${socketId}`);
 }
 
 function unregisterUserSession(userId, socketId) {
@@ -715,7 +679,6 @@ function unregisterUserSession(userId, socketId) {
     if (activeUserSessions.get(userId).size === 0) {
       activeUserSessions.delete(userId);
     }
-    console.log(`Unregistered session for user ${userId}, socket ${socketId}`);
   }
 }
 
@@ -725,14 +688,12 @@ function getUserActiveSessions(userId) {
 
 function registerGuestSession(sessionId, socketId) {
   activeGuestSessions.set(sessionId, socketId);
-  console.log(`Registered guest session ${sessionId}, socket ${socketId}`);
 }
 
 function unregisterGuestSession(sessionId) {
   if (activeGuestSessions.has(sessionId)) {
     const socketId = activeGuestSessions.get(sessionId);
     activeGuestSessions.delete(sessionId);
-    console.log(`Unregistered guest session ${sessionId}, socket ${socketId}`);
   }
 }
 
@@ -744,13 +705,43 @@ function sendError(res, statusCode, message) {
   return res.status(statusCode).json({ error: message });
 }
 
+function requireAuth(req, res, next) {
+  if (!req.session.userId) {
+    return sendError(res, 401, 'Authentication required');
+  }
+  next();
+}
+
+function cleanupSocketSession(socket) {
+  if (socket.request.session && socket.request.session.username) {
+    const session = socket.request.session;
+    if (session.isGuest) {
+      unregisterGuestSession(socket.request.sessionID);
+    } else if (session.userId) {
+      unregisterUserSession(session.userId, socket.id);
+    }
+  }
+}
+
+function removeFromAllRooms(socketId) {
+  for (const room of rooms) {
+    if (room.hasMember(socketId)) {
+      room.removeMember(socketId);
+    }
+  }
+}
+
+function emitToSocket(socketId, event, data) {
+  const socket = io.sockets.sockets.get(socketId);
+  if (socket) socket.emit(event, data);
+}
+
 function kickExistingSessions(userId, currentSocketId) {
   const existingSessions = getUserActiveSessions(userId);
   for (const socketId of existingSessions) {
     if (socketId !== currentSocketId) {
       const socket = io.sockets.sockets.get(socketId);
       if (socket) {
-        console.log(`Logging out existing session: user ${userId}, socket ${socketId}`);
         socket.emit('forceLogout', { 
           reason: 'Your account has been logged in from another location.' 
         });
@@ -764,13 +755,7 @@ function kickExistingSessions(userId, currentSocketId) {
 
 
 function applyAreaEffects(room) {
-  let keyToGet = room.currentMapKey;
-  let categoryToGet = null;
-  if (keyToGet && keyToGet.includes('/')) {
-    const parts = keyToGet.split('/');
-    categoryToGet = parts[0];
-    keyToGet = parts[1];
-  }
+  const { category: categoryToGet, key: keyToGet } = HELPERS.parseMapKey(room.currentMapKey);
   const map = mapManager.getMap(keyToGet, categoryToGet);
   
   if (!map || !map.areaEffects) return;
@@ -858,12 +843,10 @@ function applyCurrentEffects(car, currentEffects) {
     const newAcceleration = originalAcceleration * maxBoostStrength;
     car.stats.acceleration = newAcceleration;
     car._activeAreaEffects.add(`boost_${maxBoostStrength}`);
-    console.log(`🚀 Boost effect: Car ${car.id} acceleration boosted from ${originalAcceleration} to ${newAcceleration} (${maxBoostStrength}x)`);
   } else if (maxSlowStrength > 0) {
     const newAcceleration = originalAcceleration * (1 - maxSlowStrength);
     car.stats.acceleration = Math.max(0.1, newAcceleration); // Prevent going to zero
     car._activeAreaEffects.add(`slow_${maxSlowStrength}`);
-    console.log(`🐌 Slow effect: Car ${car.id} acceleration reduced from ${originalAcceleration} to ${car.stats.acceleration} (-${maxSlowStrength * 100}%)`);
   } else {
     // No acceleration effects - restore original
     car.stats.acceleration = originalAcceleration;
@@ -902,11 +885,11 @@ function applyCurrentEffects(car, currentEffects) {
       car._lavaDamageTracking.clear();
     }
   }
-}
+}
+
 
 // Global physics engine removed - now each room has its own
 
-// Legacy global world reference removed - using room-specific worlds
 
 // Global collision detection removed - now handled per room
 
@@ -1037,11 +1020,9 @@ class Car {
       }
     } else if (mapDef) {
       // No start area defined, calculate a reasonable spawn position
-      console.log(`⚠️ Map ${roomMapKey} has no start area defined, calculating fallback spawn position`);
       startPos = this.calculateFallbackSpawnPosition(mapDef);
     } else {
       // No map found at all, use safe default
-      console.log(`⚠️ Map ${roomMapKey} not found, using default spawn position`);
       startPos = { x: 100, y: 0 }; // Better than (0,0)
     }
     this.checkpointsVisited = new Set();
@@ -1127,22 +1108,35 @@ class Car {
     this.lastUpdate = Date.now();
   }
   update(dt) {
+    this.updateSpawnProtection();
+    this.updateAbility(dt);
+    this.updatePhysicsAndSteering(dt);
+    this.regenerateHealth(dt);
+    this.updateCheckpoints();
+    this.checkLapCompletion();
+  }
+
+  updateSpawnProtection() {
     if (this.spawnProtectionEnd && Date.now() > this.spawnProtectionEnd) {
       this.godMode = false;
       this.spawnProtectionEnd = null;
     }
-    
+  }
+
+  updateAbility(dt) {
     if (this.ability) {
       const roomWorld = this.room.world;
       const roomGameState = this.room.gameState;
       this.ability.update(this, roomWorld, roomGameState, dt);
     }
-    
+  }
+
+  updatePhysicsAndSteering(dt) {
     const CURSOR_MAX = 100
-    const MAX_ROT_SPEED = Math.PI * 8          // rad/s clamp
-    const STEER_GAIN = 5.0     // turn aggressiveness (higher = snappier)
-    const VEL_ALIGN = 0.05     // how heavy to apply turn force
-    const ANGULAR_DAMP = 20.0  // angular damping (turn friction)
+    const MAX_ROT_SPEED = Math.PI * 8
+    const STEER_GAIN = 5.0
+    const VEL_ALIGN = 0.05
+    const ANGULAR_DAMP = 20.0
 
     const body = this.body
     const cx = this.cursor.x
@@ -1159,24 +1153,22 @@ class Car {
       const velAngle = speed > 0.01 ? Math.atan2(v.y, v.x) : inputAngle
       const desiredAngle = HELPERS.lerpAngle(velAngle, inputAngle, 1 - VEL_ALIGN)
       let diff = HELPERS.shortestAngle(desiredAngle - body.angle)
-      const targetAngVel = diff * STEER_GAIN     // rad/s
+      const targetAngVel = diff * STEER_GAIN
       let angVel = body.angularVelocity * Math.max(0, 1 - ANGULAR_DAMP * dt)
       const max = MAX_ROT_SPEED
       angVel = HELPERS.clamp(angVel + targetAngVel * dt, -max, max)
       Matter.Body.setAngularVelocity(body, angVel)
+
       let acceleration = this.stats.acceleration;
       if (this.boostActive && this.currentBoost > 0) {
         acceleration *= 2.0;
-        // Consume boost at a rate of 100 boost per second
-        const boostConsumptionRate = BOOST_CONSUMPTION_RATE; // boost units per second
-        this.currentBoost = Math.max(0, this.currentBoost - boostConsumptionRate * dt);
-        
-        // Stop boost if we run out
+        this.currentBoost = Math.max(0, this.currentBoost - BOOST_CONSUMPTION_RATE * dt);
+
         if (this.currentBoost <= 0) {
           this.boostActive = false;
         }
       }
-      
+
       const forceMag = acceleration * throttle
       const force = {
         x: Math.cos(body.angle) * forceMag,
@@ -1184,16 +1176,19 @@ class Car {
       }
       Matter.Body.applyForce(body, body.position, force)
     }
+  }
+
+  regenerateHealth(dt) {
     this.currentHealth = Math.min(
       this.stats.maxHealth,
       this.currentHealth + this.stats.regen * dt
     );
+  }
 
+  updateCheckpoints() {
     const pos = this.body.position
     const roomMapKey = this.room ? this.room.currentMapKey : currentMapKey;
-    
     const { category: mapCategory, key: mapKey } = HELPERS.parseMapKey(roomMapKey);
-    
     const map = mapManager.getMap(mapKey, mapCategory);
     const checkpoints = map?.checkpoints || []
 
@@ -1233,12 +1228,21 @@ class Car {
 
       this._cpLastSides.set(cp.id, side)
     }
+  }
+
+  checkLapCompletion() {
+    const roomMapKey = this.room ? this.room.currentMapKey : currentMapKey;
+    const { category: mapCategory, key: mapKey } = HELPERS.parseMapKey(roomMapKey);
+    const mapDef = mapManager.getMap(mapKey, mapCategory);
+
     let insideStart = false
-    const mapDef = mapManager.getMap(mapKey, mapCategory)
     if (mapDef?.start?.vertices?.length) {
       insideStart = HELPERS.pointInPolygon(this.body.position.x, this.body.position.y, mapDef.start.vertices)
     }
+
     if (!insideStart) this.hasLeftStartSinceLap = true
+
+    const checkpoints = mapDef?.checkpoints || []
     if (
       insideStart &&
       this.hasLeftStartSinceLap &&
@@ -1251,25 +1255,6 @@ class Car {
       this.checkpointsVisited.clear()
       this.hasLeftStartSinceLap = false
       this.currentBoost = this.maxBoost
-    }
-
-    let outsideSolid = false;
-    let insideHole = false;
-    if (mapDef && Array.isArray(mapDef.shapes)) {
-      for (const shape of mapDef.shapes) {
-        const px = pos.x
-        const py = pos.y
-
-        if (!Array.isArray(shape.vertices)) continue
-
-        const inside = HELPERS.pointInPolygon(px, py, shape.vertices)
-
-        if (shape.hollow) {
-          if (inside) insideHole = true
-        } else {
-          if (!inside) outsideSolid = true
-        }
-      }
     }
   }
   resetCar() {
@@ -1315,7 +1300,6 @@ class Car {
     // Don't take damage if god mode is enabled
     if (this.godMode) return;
     
-    // Ignore very slow collisions
     if (relativeSpeed < MIN_DAMAGE_VELOCITY) return;
     
     const otherDensity = otherBody.density || 0.001;
@@ -1349,7 +1333,6 @@ class Car {
       damage = (relativeSpeed * 1.5) * BASE_VELOCITY_DAMAGE_SCALE * damageMultiplier * damageScale * angleMultiplier;
     }
 
-    console.log(`Collision damage: ${damage.toFixed(2)} (relativeSpeed=${relativeSpeed.toFixed(2)}, densityRatio=${densityRatio.toFixed(2)}, angleMultiplier=${angleMultiplier.toFixed(2)}, damageScale=${damageScale})`);
     
     this.currentHealth -= damage;
 
@@ -1422,7 +1405,6 @@ class Car {
     spawnX = Math.max(minX + 100, Math.min(maxX - 100, spawnX));
     spawnY = Math.max(minY + 100, Math.min(maxY - 100, spawnY));
     
-    console.log(`📍 Calculated fallback spawn position: (${Math.round(spawnX)}, ${Math.round(spawnY)}) for map center: (${Math.round(avgX)}, ${Math.round(avgY)})`);
     
     return { x: spawnX, y: spawnY };
   }
@@ -1615,7 +1597,6 @@ class Room {
   applyMutualCollisionDamage(carA, carB, relativeSpeed, collisionPair = null) {
     if (!carA || !carB || carA.godMode || carB.godMode || carA.isGhost || carB.isGhost) return;
     
-    // Ignore very slow collisions
     if (relativeSpeed < MIN_DAMAGE_VELOCITY) return;
     
     const carAInitialHealth = carA.currentHealth;
@@ -1686,7 +1667,6 @@ class Room {
   }
   
   calculateCollisionDamage(car, otherBody, relativeSpeed, collisionPair = null, damageScale = 1.0) {
-    // Ignore very slow collisions
     if (relativeSpeed < MIN_DAMAGE_VELOCITY) return 0;
     
     const otherDensity = otherBody.density || 0.001;
@@ -1734,7 +1714,6 @@ class Room {
       dynamicBody.health = dynamicBody.dynamicObject.maxHealth;
     }
     
-    // Ignore very slow collisions
     if (relativeSpeed < MIN_DAMAGE_VELOCITY) return;
     
     const otherDensity = carBody.density || 0.3;
@@ -1875,7 +1854,6 @@ class Room {
     }
     
     const action = isExistingMember ? 'changed state to' : 'joined room as';
-    console.log(`User ${socket.id} ${action} ${state} in room ${this.name}. Occupancy: ${this.totalOccupancy}/${this.maxPlayers}`);
   }
   
   removeMember(socketId) {
@@ -1893,7 +1871,6 @@ class Room {
     
     this.allMembers.delete(socketId);
     
-    console.log(`User ${socketId} left room ${this.name}. Occupancy: ${this.totalOccupancy}/${this.maxPlayers}`);
     return true;
   }
   
@@ -1916,7 +1893,6 @@ class Room {
     
     member.state = Room.USER_STATES.PLAYING;
     
-    console.log(`User ${socket.id} promoted to player in room ${this.name}. Players: ${this.activePlayerCount}, Total: ${this.totalOccupancy}`);
     return car;
   }
   
@@ -1939,7 +1915,6 @@ class Room {
     
     member.state = Room.USER_STATES.SPECTATING;
     
-    console.log(`User ${socketId} demoted to spectator in room ${this.name}. Players: ${this.activePlayerCount}, Total: ${this.totalOccupancy}`);
     return true;
   }
   
@@ -1979,14 +1954,12 @@ class Room {
       
       if (timeSinceActivity > threshold) {
         if (!member.afkWarningGiven) {
-          console.log(`⚠️ Sending AFK warning to ${socketId} in room ${this.name} (${isPlayer ? 'player' : 'spectator'}, ${Math.round(timeSinceActivity/1000)}s inactive)`);
           member.socket.emit('afkWarning', {
             countdown: 5,
             reason: isPlayer ? 'No input detected for 30 seconds' : 'No activity for 5 minutes'
           });
           member.afkWarningGiven = true;
         } else if (timeSinceActivity > threshold + WARNING_TIME) {
-          console.log(`🚫 Disconnecting AFK user ${socketId} from room ${this.name} (${Math.round(timeSinceActivity/1000)}s inactive)`);
           const disconnectReason = isPlayer 
             ? 'Disconnected due to inactivity (no input for 30+ seconds)'
             : 'Disconnected due to inactivity (no activity for 5+ minutes)';
@@ -2155,7 +2128,6 @@ function createOfficialRoom() {
   room.name = `Official Room ${officialRoomCount + 1}`;
   
   rooms.push(room);
-  console.log(`🏛️ Created official room: ${room.name} (${room.id.substring(0, 8)}) with map: ${randomMapKey}`);
   return room;
 }
 
@@ -2177,14 +2149,12 @@ function findBestOfficialRoom() {
 
 function initializeRooms() {
   if (rooms.length === 0) {
-    console.log('🏛️ Initializing with official room');
     createOfficialRoom();
   }
 }
 
 initializeRooms();
 
-// Legacy global references removed - using room-specific worlds
 
 const spectators = new Map(); // socket.id -> socket
 
@@ -2252,19 +2222,16 @@ function createDeltaState(socketId, currentState) {
 
 function assignRoom() {
   // Smart room assignment: only assign to official rooms
-  console.log(`🤖 Smart room assignment started`);
   
   // Try to find the best official room first
   let room = findBestOfficialRoom();
   
   if (room) {
-    console.log(`✅ Assigned to existing official room: ${room.name}`);
     return room;
   }
   
   // No suitable official room found, create a new one
   room = createOfficialRoom();
-  console.log(`🆕 Created new official room for assignment: ${room.name}`);
   return room;
 }
 
@@ -2277,7 +2244,6 @@ function ensureDefaultRoom() {
   const joinableOfficialRooms = rooms.filter(room => room.isJoinable && room.isOfficial);
   
   if (joinableOfficialRooms.length === 0) {
-    console.log('🏛️ Creating official room - no joinable official rooms available');
     createOfficialRoom();
   }
 }
@@ -2293,7 +2259,6 @@ function cleanupEmptyRooms() {
   for (const room of emptyNonOfficialRooms) {
     const index = rooms.indexOf(room);
     if (index > -1) {
-      console.log(`🧹 Cleaning up empty user-created room: ${room.name} (${room.id})`);
       rooms.splice(index, 1);
     }
   }
@@ -2304,7 +2269,6 @@ function cleanupEmptyRooms() {
     for (const room of roomsToRemove) {
       const index = rooms.indexOf(room);
       if (index > -1) {
-        console.log(`🧹 Cleaning up excess empty official room: ${room.name} (${room.id})`);
         rooms.splice(index, 1);
       }
     }
@@ -2314,14 +2278,7 @@ function cleanupEmptyRooms() {
 }
 
 io.on('connection', (socket) => {
-  console.log(`User connected: ${socket.id}`);
   
-  console.log('Session on connect:', {
-    hasSession: !!socket.request.session,
-    sessionID: socket.request.sessionID,
-    username: socket.request.session?.username,
-    isGuest: socket.request.session?.isGuest
-  });
   
   // Register session for duplicate login prevention
   if (socket.request.session && socket.request.session.username) {
@@ -2344,26 +2301,15 @@ io.on('connection', (socket) => {
   let clientSupportsBinary = false;
   
   socket.on('refreshSession', () => {
-    console.log(`Socket ${socket.id} requested session refresh`);
     // Only reload if session exists and has been initialized
     if (socket.request.session && socket.request.sessionID && socket.request.session.username) {
       socket.request.session.reload((err) => {
         if (err) {
           console.error('Session refresh error:', err);
         } else {
-          console.log('Session refreshed for socket:', socket.id, {
-            hasSession: !!socket.request.session,
-            username: socket.request.session?.username,
-            isGuest: socket.request.session?.isGuest
-          });
         }
       });
     } else {
-      console.log('No valid session to refresh for socket:', socket.id, {
-        hasSession: !!socket.request.session,
-        hasSessionID: !!socket.request.sessionID,
-        hasUsername: !!socket.request.session?.username
-      });
     }
   });
   
@@ -2376,13 +2322,9 @@ io.on('connection', (socket) => {
         break;
       }
     }
-    
-    for (const room of rooms) {
-      if (room.hasMember(socket.id)) {
-        room.removeMember(socket.id);
-      }
-    }
-    
+
+    removeFromAllRooms(socket.id);
+
     if (rooms.length === 0) {
       initializeRooms();
     }
@@ -2391,12 +2333,10 @@ io.on('connection', (socket) => {
     let targetRoom = null;
     if (roomId) {
       targetRoom = rooms.find(room => room.id === roomId);
-      console.log(`🎯 Looking for specific room ${roomId}:`, targetRoom ? 'Found' : 'Not found');
     }
     if (!targetRoom) {
       // Use smart room assignment for automatic assignment
       targetRoom = assignRoom();
-      console.log(`🤖 Smart assignment selected room: ${targetRoom.name}`);
     }
     
     try {
@@ -2405,21 +2345,8 @@ io.on('connection', (socket) => {
         currentRoom = targetRoom;
         
         // Send immediate spectator state for the new room to avoid delay
-        let keyToGet = targetRoom.currentMapKey;
-        let categoryToGet = null;
-        if (keyToGet && keyToGet.includes('/')) {
-          const parts = keyToGet.split('/');
-          categoryToGet = parts[0];
-          keyToGet = parts[1];
-        }
+        const { category: categoryToGet, key: keyToGet } = HELPERS.parseMapKey(targetRoom.currentMapKey);
         const mapData = mapManager.getMap(keyToGet, categoryToGet);
-        console.log(`🗺️ Map retrieval:`, {
-          roomId: targetRoom.id,
-          currentMapKey: targetRoom.currentMapKey,
-          mapData: !!mapData,
-          mapShapes: mapData?.shapes?.length,
-          mapName: mapData?.name
-        });
         
         const immediateSpectatorState = {
           players: [],
@@ -2452,28 +2379,10 @@ io.on('connection', (socket) => {
           console.error('Session reload error during join:', err);
         }
         
-        console.log('Join game attempt (after session reload):', {
-          socketId: socket.id,
-          carType,
-          requestedName: name,
-          roomId,
-          hasSession: !!socket.request.session,
-          sessionUsername: socket.request.session?.username,
-          sessionIsGuest: socket.request.session?.isGuest
-        });
         
         processJoinRequest();
       });
     } else {
-      console.log('Join game attempt (no session to reload):', {
-        socketId: socket.id,
-        carType,
-        requestedName: name,
-        roomId,
-        hasSession: !!socket.request.session,
-        sessionUsername: socket.request.session?.username,
-        sessionIsGuest: socket.request.session?.isGuest
-      });
       
       processJoinRequest();
     }
@@ -2483,7 +2392,6 @@ io.on('connection', (socket) => {
     // TODO: Fix session sharing to properly use session-based authentication
     const playerName = name || 'Anonymous';
     if (!playerName || playerName === 'Anonymous') {
-      console.log('No valid player name provided for socket', socket.id);
       socket.emit('joinError', { error: 'Please provide a valid name' });
       return;
     }
@@ -2506,7 +2414,6 @@ io.on('connection', (socket) => {
         return;
       }
       
-      console.log(`🎮 User ${socket.id} joining room ${targetRoom.name}: ${isAlreadyMember ? 'spectator->player transition' : 'new member'}`);
     } else {
       // Auto-assign room (backwards compatibility)
       targetRoom = assignRoom();
@@ -2514,7 +2421,6 @@ io.on('connection', (socket) => {
     
     for (const room of rooms) {
       if (room !== targetRoom && room.hasMember(socket.id)) {
-        console.log(`Removing user ${socket.id} from room ${room.name} before joining new game`);
         room.removeMember(socket.id);
       }
     }
@@ -2591,16 +2497,13 @@ io.on('connection', (socket) => {
     const view = new DataView(buffer);
     let offset = 0;
     
-    // Encode timestamp (8 bytes)
     view.setBigUint64(offset, BigInt(timestamp), true); offset += 8;
     
-    // Encode player count (1 byte)
     view.setUint8(offset, players.length); offset += 1;
     
     const typeMap = { 'Stream': 0, 'Tank': 1, 'Bullet': 2, 'Prankster': 3 };
     
     for (const player of players) {
-      // Encode basic player data
       view.setUint32(offset, parseInt(player.socketId) || 0, true); offset += 4; // Use hash of socketId
       view.setUint32(offset, player.id, true); offset += 4;
       view.setUint8(offset, typeMap[player.type] || 0); offset += 1;
@@ -2898,7 +2801,6 @@ io.on('connection', (socket) => {
     
     const sanitizedMessage = message.replace(/[<>]/g, '');
     
-    console.log(`Chat message from ${playerName}: ${sanitizedMessage}`);
     
     // Broadcast to all room members (players and spectators)
     const roomMembers = [
@@ -2919,22 +2821,8 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    // Clean up session tracking for duplicate login prevention
-    if (socket.request.session && socket.request.session.username) {
-      const session = socket.request.session;
-      if (session.isGuest) {
-        unregisterGuestSession(socket.request.sessionID);
-      } else if (session.userId) {
-        unregisterUserSession(session.userId, socket.id);
-      }
-    }
-    
-    for (const room of rooms) {
-      if (room.hasMember(socket.id)) {
-        console.log(`User ${socket.id} disconnected from room ${room.name}`);
-        room.removeMember(socket.id);
-      }
-    }
+    cleanupSocketSession(socket);
+    removeFromAllRooms(socket.id);
     
     spectators.delete(socket.id);
     
@@ -2984,7 +2872,6 @@ function gameLoop() {
             const userId = winnerSocket.request.session.userId;
             const xpAwarded = userDb.addXP(userId, 10);
             if (xpAwarded) {
-              console.log(`Awarded 10 XP to user ${userId} (${winnerName}) for race win`);
               
               // Notify the winner about XP gain
               winnerSocket.emit('xpGained', { amount: 10, reason: 'Race Win' });
@@ -2993,13 +2880,10 @@ function gameLoop() {
           
           // Broadcast win message to kill feed (only once per race)
           for (const [sid, car] of room.players.entries()) {
-            const sock = io.sockets.sockets.get(sid);
-            if (sock) {
-              sock.emit('killFeedMessage', {
-                text: `${winnerName} has won!`,
-                type: 'win'
-              });
-            }
+            emitToSocket(sid, 'killFeedMessage', {
+              text: `${winnerName} has won!`,
+              type: 'win'
+            });
           }
           
           // Mark that win message has been sent for this race
@@ -3014,10 +2898,7 @@ function gameLoop() {
             room.setTrackBodies(room.currentMapKey);
             room.resetRound();
             for (const [sid, car] of room.players.entries()) {
-              const sock = io.sockets.sockets.get(sid);
-              if (sock) {
-                sock.emit('returnToMenu', { winner: winnerName });
-              }
+              emitToSocket(sid, 'returnToMenu', { winner: winnerName });
             }
             for (const [sid, car] of room.players.entries()) {
               Matter.World.remove(room.world, car.body);
@@ -3036,13 +2917,10 @@ function gameLoop() {
               
               // Broadcast solo crash message to kill feed (send once to each player)
               for (const [socketId, otherCar] of room.players.entries()) {
-                const socket = io.sockets.sockets.get(socketId);
-                if (socket) {
-                  socket.emit('killFeedMessage', {
-                    text: `${car.name} crashed!`,
-                    type: 'crash'
-                  });
-                }
+                emitToSocket(socketId, 'killFeedMessage', {
+                  text: `${car.name} crashed!`,
+                  type: 'crash'
+                });
               }
               // Mark that killfeed message has been sent for this crash
               car.killFeedSent = true;
@@ -3063,7 +2941,7 @@ function gameLoop() {
       }
       
       for (const [sid, car] of [...room.players.entries()]) {
-        if (car.crashedAt && Date.now() - car.crashedAt > 300) { //500ms
+        if (car.crashedAt && Date.now() - car.crashedAt > CRASH_CLEANUP_DELAY_MS) {
           
           // Demote crashed player to spectator instead of removing entirely
           const wasPlayer = room.players.has(sid);
@@ -3094,13 +2972,7 @@ setInterval(() => {
     for (const socketId of allSocketIds) {
       const socket = io.sockets.sockets.get(socketId);
       if (socket) {
-        let keyToGet = room.currentMapKey;
-        let categoryToGet = null;
-        if (keyToGet && keyToGet.includes('/')) {
-          const parts = keyToGet.split('/');
-          categoryToGet = parts[0];
-          keyToGet = parts[1];
-        }
+        const { category: categoryToGet, key: keyToGet } = HELPERS.parseMapKey(room.currentMapKey);
         const map = mapManager.getMap(keyToGet, categoryToGet);
         const clientAbilityObjects = room.serializeAbilityObjects();
         
@@ -3163,14 +3035,8 @@ function broadcastToSpectators() {
     const clientAbilityObjects = room.serializeAbilityObjects();
     
     const clientDynamicObjects = room.serializeDynamicObjects();
-    
-    let keyToGet = room.currentMapKey;
-    let categoryToGet = null;
-    if (keyToGet && keyToGet.includes('/')) {
-      const parts = keyToGet.split('/');
-      categoryToGet = parts[0];
-      keyToGet = parts[1];
-    }
+
+    const { category: categoryToGet, key: keyToGet } = HELPERS.parseMapKey(room.currentMapKey);
     const roomMapData = mapManager.getMap(keyToGet, categoryToGet);
     
     const spectatorState = {
@@ -3233,5 +3099,4 @@ setInterval(() => {
 ensureDefaultRoom();
 
 server.listen(PORT, () => {
-  console.log(`Driftz.IO server listening on port ${PORT}`);
 });
