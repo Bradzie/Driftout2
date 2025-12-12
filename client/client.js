@@ -111,6 +111,7 @@
   let currentFPS = 0;
   let pingValue = 0;
   let lastPingTime = 0;
+  let clockOffset = 0;
 
   const authScreen = document.getElementById('authScreen');
   const authSelection = document.getElementById('authSelection');
@@ -1183,15 +1184,33 @@
     }
   }
 
+  // Get current time synchronized with server
+  function getServerTime() {
+    return Date.now() + clockOffset;
+  }
+
   function updatePing() {
     const now = Date.now();
     if (now - lastPingTime >= 2000 && socket.connected) { // send ping every 2 seconds
       lastPingTime = now;
       const startTime = now;
-      
-      socket.emit('ping', startTime, (responseTime) => {
-        const realPing = Date.now() - startTime;
+
+      socket.emit('ping', startTime, (serverTime) => {
+        const endTime = Date.now();
+        const realPing = endTime - startTime;
         pingValue = fakePingEnabled ? fakePingLatency : realPing;
+
+        // calculate clock offset
+        const estimatedServerTimeNow = serverTime + (realPing / 2);
+        const newOffset = estimatedServerTimeNow - endTime;
+        const oldOffset = clockOffset;
+        clockOffset = clockOffset === 0 ? newOffset : (clockOffset * 0.8 + newOffset * 0.2);
+
+        // Debug: log significant clock offset changes
+        if (Math.abs(clockOffset) > 100 || (oldOffset === 0 && clockOffset !== 0)) {
+          console.log(`Clock sync: offset=${Math.round(clockOffset)}ms (client is ${clockOffset > 0 ? 'behind' : 'ahead'} server)`);
+        }
+
         if (settings.showPing) {
           const pingText = fakePingEnabled ? `Ping ~${pingValue}ms` : `Ping ${pingValue}ms`;
           pingDisplay.textContent = pingText;
@@ -2149,12 +2168,12 @@
     if (e.code === 'Space' && !e.repeat) {
       e.preventDefault();
       if (myAbility) {
-        const now = Date.now();
+        const now = getServerTime();
         const remaining = Math.max(0, myAbility.cooldown - (now - lastAbilityUse));
-        
+
         if (remaining === 0) {
           updateAbilityHUD();
-          
+
           // gives a 'press' effect
           abilityHud.style.transform = 'scale(0.95)';
           setTimeout(() => {
@@ -2220,7 +2239,7 @@
       return;
     }
 
-    const now = Date.now();
+    const now = getServerTime();
     const timeSinceUse = now - lastAbilityUse;
     const remaining = Math.max(0, myAbility.cooldown - timeSinceUse);
     const isReady = remaining === 0;
@@ -2507,6 +2526,8 @@
     hide(lapCounter);
     hide(lapTimer);
     hide(boostDisplay);
+    // reset clock synchronization
+    clockOffset = 0;
     // show disconnection info
     showDisconnectionOverlay();
   });
