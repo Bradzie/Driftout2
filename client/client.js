@@ -360,11 +360,11 @@
   async function handleRegister(username, email, password) {
     try {
       showAuthLoading();
-      
+      const sanitizedUsername = sanitizeName(username);
       const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, email, password })
+        body: JSON.stringify({ username: sanitizedUsername, email, password })
       });
       
       const data = await response.json();
@@ -391,11 +391,12 @@
   async function handleQuickPlay(name) {
     try {
       showAuthLoading();
-      
+      const sanitizedName = sanitizeName(name);
+
       const response = await fetch('/api/auth/guest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name })
+        body: JSON.stringify({ name: sanitizedName })
       });
       
       const data = await response.json();
@@ -807,11 +808,8 @@
         
         const kills = view.getUint16(offset, true); offset += 2;
         const deaths = view.getUint16(offset, true); offset += 2;
-        
-        // TODO: (HIGH PRIORITY) we can't have hardcoded type mappings here, need to sync to CAR_TYPES
-        const typeNames = ['Stream', 'Tank', 'Bullet', 'Prankster'];
-
-        const typeName = typeNames[type] || 'Stream'; // hardcoded as a default is fine, but typeNames needs to change
+        const typeNames = Object.keys(CAR_TYPES);
+        const typeName = typeNames[type] || (typeNames.length > 0 ? typeNames[0] : 'Racer');
         
         // construct player object
         const player = {
@@ -1673,18 +1671,14 @@
   
   initCarSelection();
 
-  // TODO: this clearly isn't used, but where the heck are we sanitizing names? might need to be switched on
   function sanitizeName(name) {
     let sanitized = name.replace(/[\x00-\x1F\x7F]/g, '');
 
-    // This regex targets Unicode combining diacritical marks (U+0300 to U+036F)
-    // and similar characters that can be spammed.
+    // regex targets unicode diacritical marks (U+0300 to U+036F) and similar spam
     sanitized = sanitized.replace(/[\u0300-\u036F\u1AB0-\u1AFF\u1DC0-\u1DFF\u20D0-\u20FF\uFE20-\uFE2F]+/g, '');
+    sanitized = sanitized.trim().substring(0, 20); // limit to 20 chars
 
-    // Trim whitespace and limit length
-    sanitized = sanitized.trim().substring(0, 20); // Limit to 20 characters
-
-    return sanitized || 'Unnamed'; // Default to 'Unnamed' if empty after sanitization
+    return sanitized || 'Unnamed';
   }
 
   joinButton.addEventListener('click', () => {
