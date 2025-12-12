@@ -1,0 +1,978 @@
+{
+  "id": "696cf5bf-e1c9-4b85-b44b-c06702d30516",
+  "displayName": "Four Corners",
+  "scale": {
+    "player": 0.002,
+    "spectator": 0.0005
+  },
+  "start": {
+    "type": "polygon",
+    "vertices": [
+      {
+        "x": -50,
+        "y": -10
+      },
+      {
+        "x": 50,
+        "y": -10
+      },
+      {
+        "x": 50,
+        "y": 10
+      },
+      {
+        "x": -50,
+        "y": 10
+      }
+    ]
+  },
+  "shapes": [
+    {
+      "vertices": [
+        {
+          "x": -600,
+          "y": 675
+        },
+        {
+          "x": -600,
+          "y": 350
+        },
+        {
+          "x": -525,
+          "y": 350
+        },
+        {
+          "x": -525,
+          "y": -625
+        },
+        {
+          "x": 525,
+          "y": -625
+        },
+        {
+          "x": 525,
+          "y": 600
+        },
+        {
+          "x": -300,
+          "y": 600
+        },
+        {
+          "x": -300,
+          "y": 675
+        }
+      ],
+      "fillColor": [
+        128,
+        128,
+        128
+      ],
+      "borderColors": [
+        "#ff4d4d",
+        "#ffffff"
+      ],
+      "borderWidth": 20
+    },
+    {
+      "vertices": [
+        {
+          "x": -50,
+          "y": 50
+        },
+        {
+          "x": -125,
+          "y": 100
+        },
+        {
+          "x": -350,
+          "y": 100
+        },
+        {
+          "x": -350,
+          "y": 25
+        },
+        {
+          "x": -125,
+          "y": 25
+        },
+        {
+          "x": -125,
+          "y": -100
+        },
+        {
+          "x": -50,
+          "y": -50
+        }
+      ],
+      "fillColor": [
+        128,
+        128,
+        128
+      ],
+      "borderColors": [
+        "#ff4d4d",
+        "#ffffff"
+      ],
+      "borderWidth": 20
+    },
+    {
+      "vertices": [
+        {
+          "x": 50,
+          "y": 50
+        },
+        {
+          "x": 125,
+          "y": 100
+        },
+        {
+          "x": 125,
+          "y": -25
+        },
+        {
+          "x": 250,
+          "y": -25
+        },
+        {
+          "x": 250,
+          "y": -100
+        },
+        {
+          "x": 125,
+          "y": -100
+        },
+        {
+          "x": 50,
+          "y": -50
+        }
+      ],
+      "fillColor": [
+        128,
+        128,
+        128
+      ],
+      "borderColors": [
+        "#ff4d4d",
+        "#ffffff"
+      ],
+      "borderWidth": 20
+    },
+    {
+      "vertices": [
+        {
+          "x": -425,
+          "y": -525
+        },
+        {
+          "x": -425,
+          "y": -475
+        },
+        {
+          "x": -375,
+          "y": -475
+        },
+        {
+          "x": -375,
+          "y": -525
+        }
+      ],
+      "fillColor": [
+        128,
+        128,
+        128
+      ],
+      "borderColors": [
+        "#ff4d4d",
+        "#ffffff"
+      ],
+      "borderWidth": 20
+    },
+    {
+      "vertices": [
+        {
+          "x": -275,
+          "y": -525
+        },
+        {
+          "x": -275,
+          "y": -475
+        },
+        {
+          "x": -225,
+          "y": -475
+        },
+        {
+          "x": -225,
+          "y": -525
+        }
+      ],
+      "fillColor": [
+        128,
+        128,
+        128
+      ],
+      "borderColors": [
+        "#ff4d4d",
+        "#ffffff"
+      ],
+      "borderWidth": 20
+    },
+    {
+      "vertices": [
+        {
+          "x": -425,
+          "y": -375
+        },
+        {
+          "x": -425,
+          "y": -325
+        },
+        {
+          "x": -375,
+          "y": -325
+        },
+        {
+          "x": -375,
+          "y": -375
+        }
+      ],
+      "fillColor": [
+        128,
+        128,
+        128
+      ],
+      "borderColors": [
+        "#ff4d4d",
+        "#ffffff"
+      ],
+      "borderWidth": 20
+    },
+    {
+      "vertices": [
+        {
+          "x": -275,
+          "y": -375
+        },
+        {
+          "x": -275,
+          "y": -325
+        },
+        {
+          "x": -225,
+          "y": -325
+        },
+        {
+          "x": -225,
+          "y": -375
+        }
+      ],
+      "fillColor": [
+        128,
+        128,
+        128
+      ],
+      "borderColors": [
+        "#ff4d4d",
+        "#ffffff"
+      ],
+      "borderWidth": 20
+    },
+    {
+      "vertices": [
+        {
+          "x": -425,
+          "y": -225
+        },
+        {
+          "x": -425,
+          "y": -175
+        },
+        {
+          "x": -375,
+          "y": -175
+        },
+        {
+          "x": -375,
+          "y": -225
+        }
+      ],
+      "fillColor": [
+        128,
+        128,
+        128
+      ],
+      "borderColors": [
+        "#ff4d4d",
+        "#ffffff"
+      ],
+      "borderWidth": 20
+    },
+    {
+      "vertices": [
+        {
+          "x": -125,
+          "y": -525
+        },
+        {
+          "x": -125,
+          "y": -475
+        },
+        {
+          "x": -75,
+          "y": -475
+        },
+        {
+          "x": -75,
+          "y": -525
+        }
+      ],
+      "fillColor": [
+        128,
+        128,
+        128
+      ],
+      "borderColors": [
+        "#ff4d4d",
+        "#ffffff"
+      ],
+      "borderWidth": 20
+    },
+    {
+      "vertices": [
+        {
+          "x": 75,
+          "y": -450
+        },
+        {
+          "x": 350,
+          "y": -450
+        },
+        {
+          "x": 350,
+          "y": -150
+        },
+        {
+          "x": 275,
+          "y": -375
+        }
+      ],
+      "fillColor": [
+        128,
+        128,
+        128
+      ],
+      "borderColors": [
+        "#ff4d4d",
+        "#ffffff"
+      ],
+      "borderWidth": 20
+    },
+    {
+      "vertices": [
+        {
+          "x": 300,
+          "y": 450
+        },
+        {
+          "x": 300,
+          "y": 375
+        },
+        {
+          "x": 375,
+          "y": 375
+        },
+        {
+          "x": 375,
+          "y": 450
+        }
+      ],
+      "fillColor": [
+        128,
+        128,
+        128
+      ],
+      "borderColors": [
+        "#ff4d4d",
+        "#ffffff"
+      ],
+      "borderWidth": 20
+    },
+    {
+      "vertices": [
+        {
+          "x": -500,
+          "y": 575
+        },
+        {
+          "x": -500,
+          "y": 475
+        },
+        {
+          "x": -400,
+          "y": 475
+        },
+        {
+          "x": -400,
+          "y": 575
+        }
+      ],
+      "fillColor": [
+        128,
+        128,
+        128
+      ],
+      "borderColors": [
+        "#ff4d4d",
+        "#ffffff"
+      ],
+      "borderWidth": 20
+    }
+  ],
+  "checkpoints": [
+    {
+      "type": "line",
+      "vertices": [
+        {
+          "x": 349.6900000000001,
+          "y": -451.9350000000002
+        },
+        {
+          "x": 448.9100000000002,
+          "y": -548.7350000000002
+        }
+      ],
+      "id": "checkpoint-1"
+    },
+    {
+      "type": "line",
+      "vertices": [
+        {
+          "x": -423.50000000000017,
+          "y": -526.9550000000002
+        },
+        {
+          "x": -521.5100000000002,
+          "y": -618.9150000000002
+        }
+      ],
+      "id": "checkpoint-2"
+    },
+    {
+      "type": "line",
+      "vertices": [
+        {
+          "x": 374.97438699542374,
+          "y": 450.44737381326405
+        },
+        {
+          "x": 525.9203606311044,
+          "y": 595.9292398060242
+        }
+      ],
+      "id": "checkpoint-3"
+    },
+    {
+      "type": "line",
+      "vertices": [
+        {
+          "x": -602.5800000000003,
+          "y": 673.3650000000002
+        },
+        {
+          "x": -500.94000000000017,
+          "y": 572.9350000000002
+        }
+      ],
+      "id": "checkpoint-4"
+    }
+  ],
+  "areaEffects": [
+    {
+      "vertices": [
+        {
+          "x": 75,
+          "y": -550
+        },
+        {
+          "x": 450,
+          "y": -550
+        },
+        {
+          "x": 450,
+          "y": -150
+        },
+        {
+          "x": 525,
+          "y": -150
+        },
+        {
+          "x": 525,
+          "y": -625
+        },
+        {
+          "x": 75,
+          "y": -625
+        }
+      ],
+      "effect": "lava",
+      "strength": 2,
+      "fillColor": [
+        255,
+        0,
+        0
+      ]
+    },
+    {
+      "vertices": [
+        {
+          "x": 525,
+          "y": 600
+        },
+        {
+          "x": 150,
+          "y": 600
+        },
+        {
+          "x": 150,
+          "y": 225
+        },
+        {
+          "x": 525,
+          "y": 225
+        }
+      ],
+      "effect": "boost",
+      "strength": 1.5,
+      "fillColor": [
+        50,
+        255,
+        50
+      ]
+    }
+  ],
+  "dynamicObjects": [
+    {
+      "id": "dynamicBox1",
+      "vertices": [
+        {
+          "x": 175,
+          "y": 550
+        },
+        {
+          "x": 300,
+          "y": 550
+        },
+        {
+          "x": 300,
+          "y": 575
+        },
+        {
+          "x": 175,
+          "y": 575
+        }
+      ],
+      "isStatic": false,
+      "density": 0.3,
+      "friction": 0.3,
+      "frictionAir": 0.2,
+      "restitution": 0.1,
+      "damageScale": 0,
+      "fillColor": [
+        139,
+        69,
+        19
+      ],
+      "strokeColor": [
+        101,
+        67,
+        33
+      ],
+      "strokeWidth": 4
+    },
+    {
+      "id": "dynamicBox2",
+      "vertices": [
+        {
+          "x": 325,
+          "y": 550
+        },
+        {
+          "x": 450,
+          "y": 550
+        },
+        {
+          "x": 450,
+          "y": 575
+        },
+        {
+          "x": 325,
+          "y": 575
+        }
+      ],
+      "isStatic": false,
+      "density": 0.3,
+      "friction": 0.3,
+      "frictionAir": 0.2,
+      "restitution": 0.1,
+      "damageScale": 0,
+      "fillColor": [
+        139,
+        69,
+        19
+      ],
+      "strokeColor": [
+        101,
+        67,
+        33
+      ],
+      "strokeWidth": 4
+    },
+    {
+      "id": "dynamicBox3",
+      "vertices": [
+        {
+          "x": 475,
+          "y": 400
+        },
+        {
+          "x": 500,
+          "y": 400
+        },
+        {
+          "x": 500,
+          "y": 525
+        },
+        {
+          "x": 475,
+          "y": 525
+        }
+      ],
+      "isStatic": false,
+      "density": 0.3,
+      "friction": 0.3,
+      "frictionAir": 0.2,
+      "restitution": 0.1,
+      "damageScale": 0,
+      "fillColor": [
+        139,
+        69,
+        19
+      ],
+      "strokeColor": [
+        101,
+        67,
+        33
+      ],
+      "strokeWidth": 4
+    },
+    {
+      "id": "dynamicBox4",
+      "vertices": [
+        {
+          "x": 475,
+          "y": 250
+        },
+        {
+          "x": 500,
+          "y": 250
+        },
+        {
+          "x": 500,
+          "y": 375
+        },
+        {
+          "x": 475,
+          "y": 375
+        }
+      ],
+      "isStatic": false,
+      "density": 0.3,
+      "friction": 0.3,
+      "frictionAir": 0.2,
+      "restitution": 0.1,
+      "damageScale": 0,
+      "fillColor": [
+        139,
+        69,
+        19
+      ],
+      "strokeColor": [
+        101,
+        67,
+        33
+      ],
+      "strokeWidth": 4
+    },
+    {
+      "id": "dynamicBox5",
+      "vertices": [
+        {
+          "x": -375,
+          "y": 325
+        },
+        {
+          "x": -350,
+          "y": 325
+        },
+        {
+          "x": -350,
+          "y": 350
+        },
+        {
+          "x": -375,
+          "y": 350
+        }
+      ],
+      "isStatic": false,
+      "density": 0.1,
+      "friction": 0.3,
+      "frictionAir": 0.2,
+      "restitution": 0.1,
+      "damageScale": 0,
+      "fillColor": [
+        139,
+        69,
+        19
+      ],
+      "strokeColor": [
+        101,
+        67,
+        33
+      ],
+      "strokeWidth": 4
+    },
+    {
+      "id": "dynamicBox6",
+      "vertices": [
+        {
+          "x": -375,
+          "y": 425
+        },
+        {
+          "x": -350,
+          "y": 425
+        },
+        {
+          "x": -350,
+          "y": 450
+        },
+        {
+          "x": -375,
+          "y": 450
+        }
+      ],
+      "isStatic": false,
+      "density": 0.1,
+      "friction": 0.3,
+      "frictionAir": 0.2,
+      "restitution": 0.1,
+      "damageScale": 0,
+      "fillColor": [
+        139,
+        69,
+        19
+      ],
+      "strokeColor": [
+        101,
+        67,
+        33
+      ],
+      "strokeWidth": 4
+    },
+    {
+      "id": "dynamicBox7",
+      "vertices": [
+        {
+          "x": -275,
+          "y": 425
+        },
+        {
+          "x": -250,
+          "y": 425
+        },
+        {
+          "x": -250,
+          "y": 450
+        },
+        {
+          "x": -275,
+          "y": 450
+        }
+      ],
+      "isStatic": false,
+      "density": 0.1,
+      "friction": 0.3,
+      "frictionAir": 0.2,
+      "restitution": 0.1,
+      "damageScale": 0,
+      "fillColor": [
+        139,
+        69,
+        19
+      ],
+      "strokeColor": [
+        101,
+        67,
+        33
+      ],
+      "strokeWidth": 4
+    },
+    {
+      "id": "dynamicBox8",
+      "vertices": [
+        {
+          "x": -275,
+          "y": 325
+        },
+        {
+          "x": -250,
+          "y": 325
+        },
+        {
+          "x": -250,
+          "y": 350
+        },
+        {
+          "x": -275,
+          "y": 350
+        }
+      ],
+      "isStatic": false,
+      "density": 0.49,
+      "friction": 0.3,
+      "frictionAir": 0.2,
+      "restitution": 0.1,
+      "damageScale": 0,
+      "fillColor": [
+        192,
+        192,
+        192
+      ],
+      "strokeColor": [
+        128,
+        128,
+        128
+      ],
+      "strokeWidth": 4
+    },
+    {
+      "id": "dynamicBox9",
+      "vertices": [
+        {
+          "x": -275,
+          "y": 225
+        },
+        {
+          "x": -250,
+          "y": 225
+        },
+        {
+          "x": -250,
+          "y": 250
+        },
+        {
+          "x": -275,
+          "y": 250
+        }
+      ],
+      "isStatic": false,
+      "density": 0.1,
+      "friction": 0.3,
+      "frictionAir": 0.2,
+      "restitution": 0.1,
+      "damageScale": 0,
+      "fillColor": [
+        139,
+        69,
+        19
+      ],
+      "strokeColor": [
+        101,
+        67,
+        33
+      ],
+      "strokeWidth": 4
+    },
+    {
+      "id": "dynamicBox10",
+      "vertices": [
+        {
+          "x": -175,
+          "y": 325
+        },
+        {
+          "x": -150,
+          "y": 325
+        },
+        {
+          "x": -150,
+          "y": 350
+        },
+        {
+          "x": -175,
+          "y": 350
+        }
+      ],
+      "isStatic": false,
+      "density": 0.1,
+      "friction": 0.3,
+      "frictionAir": 0.2,
+      "restitution": 0.1,
+      "damageScale": 0,
+      "fillColor": [
+        139,
+        69,
+        19
+      ],
+      "strokeColor": [
+        101,
+        67,
+        33
+      ],
+      "strokeWidth": 4
+    },
+    {
+      "id": "dynamicBox11",
+      "vertices": [
+        {
+          "x": -175,
+          "y": 225
+        },
+        {
+          "x": -150,
+          "y": 225
+        },
+        {
+          "x": -150,
+          "y": 250
+        },
+        {
+          "x": -175,
+          "y": 250
+        }
+      ],
+      "isStatic": false,
+      "density": 0.1,
+      "friction": 0.3,
+      "frictionAir": 0.2,
+      "restitution": 0.1,
+      "damageScale": 0,
+      "fillColor": [
+        139,
+        69,
+        19
+      ],
+      "strokeColor": [
+        101,
+        67,
+        33
+      ],
+      "strokeWidth": 4
+    }
+  ],
+  "author": "Bradzie",
+  "created_at": "2025-12-12T15:12:44.383Z",
+  "updated_at": "2025-12-12T15:12:44.383Z",
+  "author_id": 1,
+  "category": "official"
+}
