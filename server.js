@@ -2836,7 +2836,7 @@ io.on('connection', (socket) => {
 });
 
 const PHYSICS_HZ = 60;
-const BROADCAST_HZ = 30;
+const BROADCAST_HZ = 60;
 const timeStep = 1 / PHYSICS_HZ;
 let physicsAccumulator = 0;
 let lastTime = Date.now();

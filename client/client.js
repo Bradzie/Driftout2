@@ -730,7 +730,7 @@
   let currentRoomId = null;
   let gameStates = [];
   // ms behind server for smoother interpolation
-  let interpolationDelay = 50;
+  let interpolationDelay = 20;
   let inputState = { cursor: { x: 0, y: 0 }, boostActive: false };
   let sendInputInterval = null;
   // to stop any rendering before first state packet
@@ -738,7 +738,10 @@
   // TODO: test using the binary encoder, could improve latency and bandwidth
   let useBinaryEncoding = false;
   let inputSequenceNumber = 0;
-  
+  // some inputs can be sent on execution (e.g. boost) so it responds slightly faster and isn't bound to the standard input frequency
+  let lastInputSendTime = 0;
+  const MIN_INPUT_INTERVAL = 1000 / 120; // ~8.33ms max 120Hz
+
   function encodeBinaryInput(inputData) {
     const buffer = new ArrayBuffer(21);
     const view = new DataView(buffer);
@@ -1059,6 +1062,7 @@
         // custom styling for top 3 on leaderboard
         const rankClass = rank === 1 ? 'rank-1' : rank === 2 ? 'rank-2' : rank === 3 ? 'rank-3' : '';
 
+        //TODO: make it so that kills, deaths and kdr are always shown even in spectate mode? currently they are hidden for spectators
         return `
           <tr>
             <td class="${rankClass}">#${rank}</td>
@@ -1752,15 +1756,22 @@
         hide(abilityHud);
       }
     }
-    
-    sendInputInterval = setInterval(() => {
+
+    // send input instantly rather than waiting for frequency interval (could be up to 16ms faster)
+    function sendInput() {
+      const now = Date.now();
+      if (now - lastInputSendTime < MIN_INPUT_INTERVAL) {
+        return; // we do not tolerate spam, real gangsters wait for the frequency interval
+      }
+
+      lastInputSendTime = now;
       inputSequenceNumber++;
       const timestampedInput = {
         ...inputState,
-        timestamp: Date.now(),
+        timestamp: now,
         sequence: inputSequenceNumber
       };
-      
+
       if (useBinaryEncoding) {
         try {
           // binary encoding
@@ -1774,6 +1785,11 @@
         // default to JSON instead of binary
         socket.emit('input', timestampedInput);
       }
+    }
+
+    // constant input send at 60Hz (every ~16.67ms per update)
+    sendInputInterval = setInterval(() => {
+      sendInput();
     }, 1000 / 60);
   });
 
@@ -2008,16 +2024,22 @@
     const cy = rect.top + rect.height / 2;
     inputState.cursor.x = e.clientX - cx;
     inputState.cursor.y = e.clientY - cy;
+    // instant input send
+    if (typeof sendInput === 'function') sendInput();
   });
 
   gameCanvas.addEventListener('mousedown', (e) => {
     e.preventDefault();
     inputState.boostActive = true;
+    // instant input send
+    if (typeof sendInput === 'function') sendInput();
   });
 
   gameCanvas.addEventListener('mouseup', (e) => {
     e.preventDefault();
     inputState.boostActive = false;
+    // also instant input send
+    if (typeof sendInput === 'function') sendInput();
   });
 
   let isChatFocused = false;
