@@ -13,7 +13,13 @@ const UserDatabase = require('./database');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  transports: ['websocket'],  // websocket only w/o extras for lowest latency
+  perMessageDeflate: false,   // disables compression to hopefully reduce latency
+  pingInterval: 10000,
+  pingTimeout: 5000,
+  maxHttpBufferSize: 1e6,
+});
 
 const DEBUG_MODE = false;
 
@@ -2836,7 +2842,7 @@ io.on('connection', (socket) => {
 });
 
 const PHYSICS_HZ = 60;
-const BROADCAST_HZ = 60;
+const BROADCAST_HZ = 120;
 const timeStep = 1 / PHYSICS_HZ;
 let physicsAccumulator = 0;
 let lastTime = Date.now();

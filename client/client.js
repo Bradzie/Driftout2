@@ -17,7 +17,10 @@
   const BASE_XP_LEVEL_1 = 10;
   const XP_SCALE_PER_LEVEL = 1.2;
 
-  let socket = io();
+  let socket = io({
+    transports: ['websocket'],
+    upgrade: false,
+  });
   let currentMap = null;
   let currentUser = null;
 
@@ -2869,9 +2872,10 @@
 
   function getInterpolatedState() {
     if (gameStates.length === 0) return null;
-    
-    const now = Date.now();
-    const renderTime = now - interpolationDelay; // 50ms?
+
+    // use server-synced time for accurate interpol
+    const now = Date.now() + clockOffset;
+    const renderTime = now - interpolationDelay;
 
     if (gameStates.length < 2) {
       return gameStates[gameStates.length - 1];
