@@ -150,7 +150,7 @@ const CAR_TYPES = {
     regen: 0.1,
     ability: 'dash',
     abilityName: 'Dash',
-    abilityCooldown: 3000,
+    abilityCooldown: 6000,
     color: { fill: [255, 165, 0], stroke: [204, 132, 0], strokeWidth: 4 },
     shapes: [
       {
