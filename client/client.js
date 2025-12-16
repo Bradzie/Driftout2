@@ -3252,6 +3252,45 @@
           
           ctx.restore();
         }
+
+        if (obj.type === 'cannonball' && obj.vertices && obj.vertices.length) {
+          console.log('Rendering cannonball at', obj.position, 'angle:', obj.angle, 'vertices:', obj.vertices.length);
+          ctx.save();
+
+          const objX = obj.position.x;
+          const objY = obj.position.y;
+
+          ctx.beginPath();
+          obj.vertices.forEach((v, i) => {
+            const cos = Math.cos(obj.angle);
+            const sin = Math.sin(obj.angle);
+            const rotatedX = v.x * cos - v.y * sin;
+            const rotatedY = v.x * sin + v.y * cos;
+
+            const worldX = objX + rotatedX;
+            const worldY = objY + rotatedY;
+
+            const screenX = centerX + (worldX - focusX) * scale;
+            const screenY = centerY - (worldY - focusY) * scale;
+
+            if (i === 0) {
+              console.log('First vertex screenX:', screenX, 'screenY:', screenY, 'centerX:', centerX, 'centerY:', centerY, 'scale:', scale);
+              ctx.moveTo(screenX, screenY);
+            } else {
+              ctx.lineTo(screenX, screenY);
+            }
+          });
+          ctx.closePath();
+
+          ctx.fillStyle = obj.render?.fillStyle || '#2c3e50';
+          ctx.fill();
+          ctx.strokeStyle = obj.render?.strokeStyle || '#34495e';
+          ctx.lineWidth = (obj.render?.lineWidth || 2) * scale;
+          ctx.stroke();
+          console.log('Finished rendering cannonball, fillStyle:', ctx.fillStyle, 'strokeStyle:', ctx.strokeStyle);
+
+          ctx.restore();
+        }
       });
     }
 

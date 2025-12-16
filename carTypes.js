@@ -312,6 +312,64 @@ const CAR_TYPES = {
         color: '#10b981'
       }
     }
+  },
+  Boomer: {
+    displayName: 'Boomer',
+    displaySpeed: 35,
+    displayHealth: 30,
+    displayHandling: 45,
+    maxHealth: 8,
+    acceleration: 0.02,
+    boost: 45,
+    regen: 0.05,
+    ability: 'cannon',
+    abilityName: 'Cannon',
+    abilityCooldown: 4000,
+    color: { fill: [80, 80, 120], stroke: [50, 50, 80], strokeWidth: 4 },
+    shapes: [
+      {
+        vertices: [
+          { x: 11, y: -9 },
+          { x: 11, y: 9 },
+          { x: -11, y: 6 },
+          { x: -11, y: -6 }
+        ],
+        bodyOptions: {
+          friction: 0.6,
+          restitution: 0.4,
+          density: 0.5,
+        }
+      }
+    ],
+    bodyOptions: {
+      frictionAir: 0.01
+    },
+    upgrades: {
+      regen: {
+        name: 'Regen',
+        amount: 0.05,
+        maxUpgrades: 5,
+        color: '#10b981'
+      },
+      projectileSpeed: {
+        name: 'Speed',
+        amount: 0.25,
+        maxUpgrades: 5,
+        color: '#3b82f6'
+      },
+      abilityCooldown: {
+        name: 'Fire Rate',
+        amount: -400,
+        maxUpgrades: 4,
+        color: '#f59e0b'
+      },
+      projectileDensity: {
+        name: 'Power',
+        amount: 0.05,
+        maxUpgrades: 4,
+        color: '#8b5cf6'
+      }
+    }
   }
 }
 
