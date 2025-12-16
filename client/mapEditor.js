@@ -32,6 +32,7 @@ let creatingShape = false;
 let newShapeVertices = [];
 let creatingCheckpoint = false;
 let checkpointStartPoint = null;
+let isShiftKeyHeld = false;
 let creatingDynamic = false;
 let dynamicStartPoint = null;
 let creatingAreaEffect = false;
@@ -141,6 +142,7 @@ function initEventListeners() {
   editorCanvas.addEventListener('contextmenu', handleRightClick);
 
   window.addEventListener('keydown', handleKeyDown);
+  window.addEventListener('keyup', handleKeyUp);
   window.addEventListener('resize', resizeEditorCanvas);
   
   updateStatusBar();
@@ -312,7 +314,12 @@ function handleMouseMove(e) {
         objectData.position.y = objectData.position._originalY + snappedDeltaY;
       }
     });
-    
+
+    renderEditor();
+  }
+
+  // re-render when creating checkpoint
+  if (creatingCheckpoint && checkpointStartPoint) {
     renderEditor();
   }
 }
@@ -392,6 +399,13 @@ function handleRightClick(e) {
 }
 
 function handleKeyDown(e) {
+  if (e.key === 'Shift' && !isShiftKeyHeld) {
+    isShiftKeyHeld = true;
+    if (creatingCheckpoint && checkpointStartPoint) {
+      renderEditor(); // re-render to show snapped angle
+    }
+  }
+
   switch (e.key) {
     case 'Delete':
       deleteSelectedObject();
@@ -587,12 +601,20 @@ function handleKeyDown(e) {
   }
 }
 
+function handleKeyUp(e) {
+  if (e.key === 'Shift' && isShiftKeyHeld) {
+    isShiftKeyHeld = false;
+    if (creatingCheckpoint && checkpointStartPoint) {
+      renderEditor(); // re-render to remove snapping
+    }
+  }
+}
+
 function handleSelectMouseDown(mousePos, ctrlKey = false) {
   const clickedVertex = findVertexAtPosition(mousePos);
   const clickedObject = findObjectAtPosition(mousePos);
 
   if (clickedVertex) {
-    // Vertex manipulation takes precedence
     selectedVertex = clickedVertex.vertex;
     selectedObject = clickedVertex.object;
     selectedObjects = [clickedVertex.object];
@@ -671,15 +693,39 @@ function handleCreateCheckpointMouseDown(mousePos) {
     updateStatusBar();
   } else {
     // Finish creating checkpoint - second click
+    let endPoint = { ...mousePos };
+
+    // Apply angle snapping if shift is held
+    if (isShiftKeyHeld) {
+      const dx = endPoint.x - checkpointStartPoint.x;
+      const dy = endPoint.y - checkpointStartPoint.y;
+      const length = Math.sqrt(dx * dx + dy * dy);
+
+      if (length > 0) {
+        // Calculate current angle in radians
+        let angle = Math.atan2(dy, dx);
+
+        // Snap to 15-degree increments
+        const snapAngle = (15 * Math.PI) / 180;
+        angle = Math.round(angle / snapAngle) * snapAngle;
+
+        // Calculate snapped position
+        endPoint = {
+          x: checkpointStartPoint.x + Math.cos(angle) * length,
+          y: checkpointStartPoint.y + Math.sin(angle) * length
+        };
+      }
+    }
+
     const checkpoint = {
       type: "line",
       vertices: [
         checkpointStartPoint,
-        { ...mousePos }
+        endPoint
       ],
       id: generateCheckpointId()
     };
-    
+
     saveToHistory();
     editorMap.checkpoints.push(checkpoint);
     creatingCheckpoint = false;
@@ -2225,21 +2271,38 @@ function getMouseCanvasPos() {
 }
 
 function drawCheckpointPreview() {
-  const mousePos = getMouseCanvasPos();
+  let mousePos = getMouseCanvasPos();
   if (!mousePos) return;
-  
+
+  if (isShiftKeyHeld) {
+    const dx = mousePos.x - checkpointStartPoint.x;
+    const dy = mousePos.y - checkpointStartPoint.y;
+    const length = Math.sqrt(dx * dx + dy * dy);
+
+    if (length > 0) {
+      let angle = Math.atan2(dy, dx);
+
+      const snapAngle = (15 * Math.PI) / 180;
+      angle = Math.round(angle / snapAngle) * snapAngle;
+
+      mousePos = {
+        x: checkpointStartPoint.x + Math.cos(angle) * length,
+        y: checkpointStartPoint.y + Math.sin(angle) * length
+      };
+    }
+  }
+
   const dx = mousePos.x - checkpointStartPoint.x;
   const dy = mousePos.y - checkpointStartPoint.y;
   const length = Math.sqrt(dx * dx + dy * dy);
-  
+
   if (length > 0) {
-    // Normalize the direction vector
-    const normalX = -dy / length; // Perpendicular direction
+    const normalX = -dy / length; // we shall normalize
     const normalY = dx / length;
-    
-    const thickness = 20; // Visual thickness of checkpoint zone
+
+    const thickness = 10;
     const offset = thickness / 2;
-    
+
     const p1x = checkpointStartPoint.x + normalX * offset;
     const p1y = checkpointStartPoint.y + normalY * offset;
     const p2x = checkpointStartPoint.x - normalX * offset;
@@ -2248,7 +2311,7 @@ function drawCheckpointPreview() {
     const p3y = mousePos.y - normalY * offset;
     const p4x = mousePos.x + normalX * offset;
     const p4y = mousePos.y + normalY * offset;
-    
+
     editorCtx.fillStyle = 'rgba(0, 255, 0, 0.3)';
     editorCtx.beginPath();
     editorCtx.moveTo(p1x, -p1y);
@@ -2257,17 +2320,31 @@ function drawCheckpointPreview() {
     editorCtx.lineTo(p4x, -p4y);
     editorCtx.closePath();
     editorCtx.fill();
-    
-    // Draw center line with dashed stroke
+
+    // draw vertex indicators at corners
+    editorCtx.fillStyle = '#00ff00';
+    const vertexRadius = 5 / zoom;
+    [
+      { x: p1x, y: p1y },
+      { x: p2x, y: p2y },
+      { x: p3x, y: p3y },
+      { x: p4x, y: p4y }
+    ].forEach(vertex => {
+      editorCtx.beginPath();
+      editorCtx.arc(vertex.x, -vertex.y, vertexRadius, 0, 2 * Math.PI);
+      editorCtx.fill();
+    });
+
+    // draw center line with dashed stroke
     editorCtx.strokeStyle = '#00ff00';
     editorCtx.lineWidth = 3 / zoom;
     editorCtx.setLineDash([5 / zoom, 5 / zoom]);
-    
+
     editorCtx.beginPath();
     editorCtx.moveTo(checkpointStartPoint.x, -checkpointStartPoint.y);
     editorCtx.lineTo(mousePos.x, -mousePos.y);
     editorCtx.stroke();
-    
+
     editorCtx.setLineDash([]);
   }
   
@@ -3524,7 +3601,7 @@ function updateStatusBar() {
   const toolHints = {
     'select': 'Click to select objects, drag to move them. Ctrl+click for multi-select. Arrow keys to nudge.',
     'createShape': 'Click to add vertices, press Enter to complete the shape, Escape to cancel.',
-    'checkpoint': 'Click two points to create a checkpoint line.',
+    'checkpoint': 'Click two points to create a checkpoint line. Hold Shift to snap angles to 15 degree increments.',
     'dynamic': 'Click and drag to create a dynamic object rectangle.',
     'areaEffect': 'Click to add vertices, press Enter to complete the area effect, Escape to cancel.',
     'createCircle': 'Click to set center, then click again to set radius.',
@@ -3540,7 +3617,7 @@ function updateStatusBar() {
   } else if (creatingAreaEffect && areaEffectVertices.length > 2) {
     hintElement.textContent = 'Press Enter to complete the area effect, or Escape to cancel.';
   } else if (creatingCheckpoint && checkpointStartPoint) {
-    hintElement.textContent = 'Click the second point to complete the checkpoint.';
+    hintElement.textContent = 'Click the second point to complete the checkpoint. Hold Shift to snap angle.';
   } else if (creatingDynamic && dynamicStartPoint) {
     hintElement.textContent = 'Click to set the size of the dynamic object.';
   } else if (creatingCircle && presetStartPoint) {

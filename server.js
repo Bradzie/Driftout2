@@ -634,7 +634,7 @@ const PORT = process.env.PORT || 3000;
 
 const HELPERS = require('./helpers');
 const CAR_TYPES = require('./carTypes');
-const { abilityRegistry, SpikeTrapAbility } = require('./abilities');
+const { abilityRegistry, SpikeTrapAbility, CannonAbility } = require('./abilities');
 
 const MapManager = require('./MapManager');
 const mapManager = new MapManager('./maps');
@@ -1518,7 +1518,10 @@ class Room {
         
         const isSpikeA = bodyA.label === 'spike-trap'
         const isSpikeB = bodyB.label === 'spike-trap'
-    
+
+        const isCannonballA = bodyA.label === 'cannonball'
+        const isCannonballB = bodyB.label === 'cannonball'
+
         const findCarFromBody = (body) => {
           // First try direct match
           let car = [...this.players.values()].find(c => c.body === body)
@@ -1560,8 +1563,22 @@ class Room {
             }
           }
         }
-    
-        if (!isSpikeA && !isSpikeB) {
+
+        // cannonball collision handling
+        if (isCannonballA && carB) {
+          const projectile = this.gameState.abilityObjects.find(obj => obj.body === bodyA)
+          if (projectile) {
+            CannonAbility.handleCollision(projectile, carB)
+          }
+        }
+        if (isCannonballB && carA) {
+          const projectile = this.gameState.abilityObjects.find(obj => obj.body === bodyB)
+          if (projectile) {
+            CannonAbility.handleCollision(projectile, carA)
+          }
+        }
+
+        if (!isSpikeA && !isSpikeB && !isCannonballA && !isCannonballB) {
           const bodyAVel = carA ? carA.body.velocity : bodyA.velocity;
           const bodyBVel = carB ? carB.body.velocity : bodyB.velocity;
           
@@ -2080,15 +2097,22 @@ class Room {
   }
 
   serializeAbilityObjects() {
-    return this.gameState.abilityObjects.map(obj => ({
-      id: obj.id,
-      type: obj.type,
-      position: obj.body.position,
-      vertices: obj.body.vertices.map(v => ({ x: v.x - obj.body.position.x, y: v.y - obj.body.position.y })),
-      createdBy: obj.createdBy,
-      expiresAt: obj.expiresAt,
-      render: obj.body.render
-    }));
+    const serialized = this.gameState.abilityObjects.map(obj => {
+      const serializedObj = {
+        id: obj.id,
+        type: obj.type,
+        position: obj.body.position,
+        angle: obj.body.angle,
+        vertices: obj.body.vertices.map(v => ({ x: v.x - obj.body.position.x, y: v.y - obj.body.position.y })),
+        createdBy: obj.createdBy,
+        expiresAt: obj.expiresAt,
+        render: obj.body.render
+      };
+
+      return serializedObj;
+    });
+
+    return serialized;
   }
 
   serializeDynamicObjects() {
@@ -2663,8 +2687,16 @@ io.on('connection', (socket) => {
             if (!myCar.abilityCooldownReduction) myCar.abilityCooldownReduction = 0;
             myCar.abilityCooldownReduction += Math.abs(amount);
             break;
+          case 'projectileSpeed':
+            if (!myCar.projectileSpeed) myCar.projectileSpeed = 0;
+            myCar.projectileSpeed += amount;
+            break;
+          case 'projectileDensity':
+            if (!myCar.projectileDensity) myCar.projectileDensity = 0;
+            myCar.projectileDensity += amount;
+            break;
         }
-        
+
         myCar.upgradeUsage[stat] = currentUsage + 1;
         myCar.upgradePoints -= 1;
       }
