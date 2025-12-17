@@ -2662,23 +2662,19 @@ io.on('connection', (socket) => {
             myCar.stats.regen += amount;
             break;
           case 'size': {
-            const scaleFactor = amount * 0.7;
-            const currentVertices = myCar.body.vertices.map(v => ({ x: v.x, y: v.y }));
+            const scaleFactor = 1 + amount;  // 1.15 for 15% growth
 
-            const centerX = currentVertices.reduce((sum, v) => sum + v.x, 0) / currentVertices.length;
-            const centerY = currentVertices.reduce((sum, v) => sum + v.y, 0) / currentVertices.length;
+            // Use Matter.js built-in scale function (handles all coordinate math correctly)
+            Matter.Body.scale(myCar.body, scaleFactor, scaleFactor);
 
-            const scaledVertices = currentVertices.map(vertex => {
-              const translatedX = vertex.x - centerX;
-              const translatedY = vertex.y - centerY;
-              const scaledX = translatedX * scaleFactor;
-              const scaledY = translatedY * scaleFactor;
-              return { x: scaledX + centerX, y: scaledY + centerY };
-            });
-
-            Matter.Body.setVertices(myCar.body, [scaledVertices]);
+            // Update density
             Matter.Body.setDensity(myCar.body, myCar.body.density + amount);
-            myCar.displaySize += amount;
+
+            // Update display size for UI/health bars
+            if (!myCar.displaySize) myCar.displaySize = 0;
+            myCar.displaySize += amount * 15;
+
+            // Increase acceleration proportionally
             myCar.acceleration += amount * 0.1;
 
             break;

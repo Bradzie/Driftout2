@@ -125,7 +125,7 @@ const CAR_TYPES = {
         maxUpgrades: 8,
         color: '#ef4444' // red
       },
-      density: {
+      size: {
         name: 'Size',
         amount: 0.15,
         maxUpgrades: 6,
