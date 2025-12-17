@@ -21,7 +21,7 @@ const io = new Server(server, {
   maxHttpBufferSize: 1e6,
 });
 
-const DEBUG_MODE = false;
+const DEBUG_MODE = true;
 
 const userDb = new UserDatabase();
 
@@ -2874,7 +2874,7 @@ io.on('connection', (socket) => {
 });
 
 const PHYSICS_HZ = 60;
-const BROADCAST_HZ = 120;
+const BROADCAST_HZ = 60;
 const timeStep = 1 / PHYSICS_HZ;
 let physicsAccumulator = 0;
 let lastTime = Date.now();

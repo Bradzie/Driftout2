@@ -351,11 +351,17 @@ const CAR_TYPES = {
         maxUpgrades: 5,
         color: '#10b981'
       },
-      projectileSpeed: {
+      acceleration: {
         name: 'Speed',
-        amount: 0.25,
+        amount: 0.003,
         maxUpgrades: 5,
-        color: '#3b82f6'
+        color: '#6e60e7ff'
+      },
+      projectileSpeed: {
+        name: 'Projectile Speed',
+        amount: 0.15,
+        maxUpgrades: 5,
+        color: '#0e3c85ff'
       },
       abilityCooldown: {
         name: 'Fire Rate',
@@ -366,7 +372,7 @@ const CAR_TYPES = {
       projectileDensity: {
         name: 'Power',
         amount: 0.05,
-        maxUpgrades: 4,
+        maxUpgrades: 5,
         color: '#8b5cf6'
       }
     }
