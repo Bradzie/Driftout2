@@ -127,7 +127,7 @@ const CAR_TYPES = {
       },
       size: {
         name: 'Size',
-        amount: 0.15,
+        amount: 0.07,
         maxUpgrades: 6,
         color: '#8b5cf6' // purple
       },
