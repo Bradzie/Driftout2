@@ -21,7 +21,7 @@ const io = new Server(server, {
   maxHttpBufferSize: 1e6,
 });
 
-const DEBUG_MODE = false;
+const DEBUG_MODE = true;
 
 const userDb = new UserDatabase();
 
@@ -1564,7 +1564,6 @@ class Room {
           }
         }
 
-        // cannonball collision handling
         if (isCannonballA && carB) {
           const projectile = this.gameState.abilityObjects.find(obj => obj.body === bodyA)
           if (projectile) {

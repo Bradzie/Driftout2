@@ -1659,7 +1659,9 @@
       polygon.setAttribute('points', points);
       polygon.setAttribute('fill', `rgb(${shapeColor.fill.join(',')})`);
       polygon.setAttribute('stroke', `rgb(${shapeColor.stroke.join(',')})`);
-      polygon.setAttribute('stroke-width', shapeColor.strokeWidth || 2);
+      polygon.setAttribute('stroke-width', shapeColor.strokeWidth * 1.5 || 4);
+      polygon.setAttribute('stroke-linejoin', 'round');
+      polygon.setAttribute('stroke-linecap', 'round');
       
       carShape.appendChild(polygon);
     });
@@ -3215,7 +3217,7 @@
     });
 
     // ability objects TODO: fix ability objects
-    if (showAbilityObjects) {
+    if (showAbilityObjects) {//
       abilityObjects.forEach((obj) => {
         if (obj.type === 'spike_trap' && obj.vertices && obj.vertices.length) {
           ctx.save();
@@ -3248,6 +3250,7 @@
           ctx.fill();
           ctx.strokeStyle = obj.render?.strokeStyle || '#444444';
           ctx.lineWidth = (obj.render?.lineWidth || 2) * scale;
+          ctx.lineJoin = 'round';
           ctx.stroke();
           
           ctx.restore();
@@ -3286,8 +3289,8 @@
           ctx.fill();
           ctx.strokeStyle = obj.render?.strokeStyle || '#34495e';
           ctx.lineWidth = (obj.render?.lineWidth || 2) * scale;
+          ctx.lineJoin = 'round';
           ctx.stroke();
-          console.log('Finished rendering cannonball, fillStyle:', ctx.fillStyle, 'strokeStyle:', ctx.strokeStyle);
 
           ctx.restore();
         }

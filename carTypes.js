@@ -2,7 +2,7 @@ const CAR_TYPES = {
   Racer: {
     displayName: 'Racer',
     displaySpeed: 50,
-    displayHealth: 40,
+    displayHealth: 55,
     displayHandling: 50,
     maxHealth: 10,
     acceleration: 0.012,
@@ -29,26 +29,26 @@ const CAR_TYPES = {
     upgrades: {
       maxHealth: {
         name: 'Health',
-        amount: 2,
+        amount: 2.25,
         maxUpgrades: 6,
         color: '#ef4444' // red
       },
       acceleration: {
         name: 'Speed',
-        amount: 0.00175,
-        maxUpgrades: 8,
+        amount: 0.002,
+        maxUpgrades: 6,
         color: '#3b82f6' // blue
       },
       regen: {
         name: 'Regen',
-        amount: 0.04,
+        amount: 0.06,
         maxUpgrades: 6,
         color: '#10b981' // green
       }
     }
   },
   Sprint: {
-    displayName: 'Sprint',
+    displayName: 'Sprinter',
     displaySpeed: 75,
     displayHealth: 25,
     displayHandling: 40,
@@ -195,28 +195,26 @@ const CAR_TYPES = {
   },
   Prankster: {
     displayName: 'Prankster',
-    displaySpeed: 45,
-    displayHealth: 35,
+    displaySpeed: 35,
+    displayHealth: 30,
     displayHandling: 60,
-    maxHealth: 8,
-    acceleration: 0.04,
+    maxHealth: 6,
+    acceleration: 0.015,
     boost: 50,
     regen: 0.1,
     ability: 'spike_trap',
     abilityName: 'Trap',
     abilityCooldown: 8000,
-    color: { fill: [183, 100, 255], stroke: [138, 2, 255], strokeWidth: 2 },
+    color: { fill: [183, 100, 255], stroke: [138, 2, 255], strokeWidth: 4 },
     shapes: [
       {
         vertices: [
-          { x: 10, y: 10 },
-          { x: -10, y: 10 },
-          { x: -10, y: -10 },
-          { x: -6, y: -10 },
-          { x: -6, y: -16 },
-          { x: 6, y: -16 },
-          { x: 6, y: -10 },
-          { x: 10, y: -10 }
+          { x: 11, y: 6 },
+          { x: 11, y: -6 },
+          { x: 5, y: -9 },
+          { x: -11, y: -9 },
+          { x: -11, y: 9 },
+          { x: 5, y: 9 }
         ],
         bodyOptions: {
           friction: 0.8,
@@ -226,97 +224,97 @@ const CAR_TYPES = {
       }
     ],
     bodyOptions: {
-      frictionAir: 0.02
+      frictionAir: 0.004
     },
     upgrades: {
       maxHealth: {
         name: 'Health',
         amount: 2,
         maxUpgrades: 4,
-        color: '#ef4444' // red
-      },
-      acceleration: {
-        name: 'Speed',
-        amount: 6,
-        maxUpgrades: 3,
-        color: '#3b82f6' // blue
-      },
-      abilityCooldown: {
-        name: 'Trap',
-        amount: -1000,
-        maxUpgrades: 2,
-        color: '#ec4899' // pink
-      }
-    }
-  },
-  Hammer: {
-    displayName: 'Hammer',
-    displaySpeed: 35,
-    displayHealth: 40,
-    displayHandling: 55,
-    maxHealth: 8,
-    acceleration: 0.02,
-    boost: 50,
-    regen: 0.05,
-    color: { fill: [150, 150, 150], stroke: [100, 100, 100], strokeWidth: 4 },
-    shapes: [
-      {
-        vertices: [
-          { x: 12, y: 30 },
-          { x: 20, y: 30 },
-          { x: 20, y: -30 },
-          { x: 12, y: -30 }
-        ],
-        bodyOptions: {
-          friction: 0.1,
-          restitution: 2,
-          density: 0.8
-        },
-        color: { fill: [200, 200, 200], stroke: [120, 120, 120], strokeWidth: 4 }
-      },
-      {
-        vertices: [
-          { x: 12, y: -5 },
-          { x: 12, y: 5 },
-          { x: -8, y: 5 },
-          { x: -8, y: -5 }
-        ],
-        bodyOptions: {
-          friction: 0.8,
-          restitution: 0.2,
-          density: 0.2
-        },
-        color: { fill: [150, 150, 150], stroke: [100, 100, 100], strokeWidth: 4 }
-      }
-    ],
-    bodyOptions: {
-      frictionAir: 0.012
-    },
-    upgrades: {
-      maxHealth: {
-        name: 'Health',
-        amount: 2,
-        maxUpgrades: 6,
         color: '#ef4444'
       },
       acceleration: {
         name: 'Speed',
-        amount: 0.00175,
-        maxUpgrades: 8,
+        amount: 6,
+        maxUpgrades: 4,
         color: '#3b82f6'
       },
-      regen: {
-        name: 'Regen',
-        amount: 0.04,
-        maxUpgrades: 6,
-        color: '#10b981'
+      abilityCooldown: {
+        name: 'Trap Cooldown',
+        amount: -600,
+        maxUpgrades: 5,
+        color: '#ec4899'
       }
     }
   },
+  // Hammer: {
+  //   displayName: 'Hammer',
+  //   displaySpeed: 35,
+  //   displayHealth: 40,
+  //   displayHandling: 55,
+  //   maxHealth: 8,
+  //   acceleration: 0.02,
+  //   boost: 50,
+  //   regen: 0.05,
+  //   color: { fill: [150, 150, 150], stroke: [100, 100, 100], strokeWidth: 4 },
+  //   shapes: [
+  //     {
+  //       vertices: [
+  //         { x: 12, y: 30 },
+  //         { x: 20, y: 30 },
+  //         { x: 20, y: -30 },
+  //         { x: 12, y: -30 }
+  //       ],
+  //       bodyOptions: {
+  //         friction: 0.1,
+  //         restitution: 2,
+  //         density: 0.8
+  //       },
+  //       color: { fill: [200, 200, 200], stroke: [120, 120, 120], strokeWidth: 4 }
+  //     },
+  //     {
+  //       vertices: [
+  //         { x: 12, y: -5 },
+  //         { x: 12, y: 5 },
+  //         { x: -8, y: 5 },
+  //         { x: -8, y: -5 }
+  //       ],
+  //       bodyOptions: {
+  //         friction: 0.8,
+  //         restitution: 0.2,
+  //         density: 0.2
+  //       },
+  //       color: { fill: [150, 150, 150], stroke: [100, 100, 100], strokeWidth: 4 }
+  //     }
+  //   ],
+  //   bodyOptions: {
+  //     frictionAir: 0.012
+  //   },
+  //   upgrades: {
+  //     maxHealth: {
+  //       name: 'Health',
+  //       amount: 2,
+  //       maxUpgrades: 6,
+  //       color: '#ef4444'
+  //     },
+  //     acceleration: {
+  //       name: 'Speed',
+  //       amount: 0.00175,
+  //       maxUpgrades: 8,
+  //       color: '#3b82f6'
+  //     },
+  //     regen: {
+  //       name: 'Regen',
+  //       amount: 0.04,
+  //       maxUpgrades: 6,
+  //       color: '#10b981'
+  //     }
+  //   }
+  // },
   Boomer: {
     displayName: 'Boomer',
-    displaySpeed: 35,
-    displayHealth: 30,
+    displaySpeed: 30,
+    displayHealth: 25,
     displayHandling: 45,
     maxHealth: 8,
     acceleration: 0.02,
