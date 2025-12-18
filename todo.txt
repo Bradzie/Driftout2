@@ -1,12 +1,14 @@
 - (map editor) allow multiple vertecies on dynamic objects (add vertex tool like regular shapes?)
 - (map editor) re-sizable finish lines
-- (server/client) fix trap ability (currently not doing damage, funky styling and low density)
+X (server/client) fix trap ability (currently not doing damage, funky styling and low density)
 - (client) fix disconnect message (currently showing in the top-left of the screen)
 - (client) re-style leaderboard
 - (client) fix leaderboard stats not showing when spectating
 - (server/client) add Max Boost upgrade
-- (server/client) remove hammer
+X (server/client) remove hammer
 - (map editor) fix 'failed to save map' error when using 'save as' for a brand new map
 - (map editor) fix setting preview images for existing maps
 - (server) 'justCrashed = true' seems to be set after every 'handleCollision' method, let's just set justCrashed after a collision is finished
 - (server/client) some map shape striped borders flicker/glitch at specific lengths (maybe trying to decide on stripe count)
+- (server) sort out the prod-key
+- (client) clean chat when changing rooms
