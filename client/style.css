@@ -69,14 +69,11 @@ html, body {
 .room-name-display {
   font-family: 'Quicksilver', serif;
   font-size: 1.2rem;
+  background: #ff5f5f;
   color: #ffffff;
   text-align: center;
   margin-bottom: 1rem;
-  text-shadow:
-    -1px -1px 0 #000000,
-    1px -1px 0 #000000,
-    -1px 1px 0 #000000,
-    1px 1px 0 #000000;
+  padding: 10px;
 }
 
 .car-selector {

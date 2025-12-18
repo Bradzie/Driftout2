@@ -11,10 +11,10 @@ class CannonAbility extends Ability {
       duration: 4000  // 4 seconds projectile lifetime
     });
 
-    this.baseDamage = 5;
-    this.projectileRadius = 8;
-    this.baseProjectileForce = 1;
-    this.baseRecoilForce = 2.2;
+    this.baseDamage = 4;
+    this.projectileRadius = 6;
+    this.baseProjectileForce = 0.5;
+    this.baseRecoilForce = 1;
     this.baseProjectileDensity = 0.2;
   }
 
@@ -30,18 +30,19 @@ class CannonAbility extends Ability {
     }
 
     // vals with upgrades
-    const projectileSpeed = this.baseProjectileForce + (car.projectileSpeed || 0);
-    const projectileDensity = this.baseProjectileDensity + (car.projectileDensity || 0);
-    const recoilForce = this.baseRecoilForce + ((car.projectileSpeed || 0) * 0.3);
+    const projectileSpeed = this.baseProjectileForce + (car.projectileSpeed || 0) + (car.projectileDensity * 10 || 0);
+    const projectileDensity = this.baseProjectileDensity + (car.projectileDensity * 3 || 0);
+    const projectileSize = this.projectileRadius + (car.projectileDensity * 20 || 0);
+    const projectileDamage = this.baseDamage + ((car.projectileDensity * 10 || 0) + (car.projectileSpeed * 2 || 0));
+    const recoilForce = this.baseRecoilForce + (((car.projectileSpeed || 0) + (car.projectileDensity * 5 || 0)) * 0.5);
 
-    // spawn 25px in front
-    const forwardOffset = 25;
+    const forwardOffset = 20 + projectileSize;
     const position = {
       x: car.body.position.x + Math.cos(car.body.angle) * forwardOffset,
       y: car.body.position.y + Math.sin(car.body.angle) * forwardOffset
     };
 
-    const cannonballBody = this.createCannonball(position, world, car.id, projectileDensity);
+    const cannonballBody = this.createCannonball(position, world, car.id, projectileDensity, projectileSize);
 
     // ball forward force
     const projectileForce = {
@@ -65,9 +66,9 @@ class CannonAbility extends Ability {
       createdBy: car.id,
       createdAt: currentTime,
       expiresAt: currentTime + this.duration,
-      damage: this.baseDamage,
+      damage: projectileDamage,
       position: position,
-      radius: this.projectileRadius
+      radius: projectileSize,
     };
 
     gameState.abilityObjects.push(cannonballObject);
@@ -84,9 +85,9 @@ class CannonAbility extends Ability {
     };
   }
 
-  createCannonball(position, world, ownerId, density) {
-    const radius = this.projectileRadius;
-    const sides = 10;
+  createCannonball(position, world, ownerId, density, projectileSize) {
+    const radius = projectileSize;
+    const sides = 14;
     const vertices = [];
 
     for (let i = 0; i < sides; i++) {
