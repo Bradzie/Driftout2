@@ -1235,6 +1235,8 @@ function getObjectData(obj) {
       return editorMap.areaEffects?.[obj.index];
     case 'dynamicObject':
       return editorMap.dynamicObjects?.[obj.index];
+    case 'startArea':
+      return editorMap.start;
     default:
       return null;
   }
@@ -1426,6 +1428,23 @@ function findVertexAtPosition(pos, tolerance = 10) {
     }
   }
 
+  // Check start area vertices
+  if (editorMap.start && editorMap.start.vertices) {
+    for (let j = 0; j < editorMap.start.vertices.length; j++) {
+      const vertex = editorMap.start.vertices[j];
+      const distance = Math.sqrt(
+        Math.pow(pos.x - vertex.x, 2) + Math.pow(pos.y - vertex.y, 2)
+      );
+      if (distance <= scaledTolerance) {
+        return {
+          object: { type: 'startArea', index: 0, data: editorMap.start },
+          vertex: vertex,
+          vertexIndex: j
+        };
+      }
+    }
+  }
+
   return null;
 }
 
@@ -1594,6 +1613,13 @@ function handleRemoveVertex() {
 
 function findObjectAtPosition(pos) {
   const tolerance = 10 / zoom; // Adjust tolerance based on zoom level
+
+  // Check start area first (highest priority)
+  if (editorMap.start && editorMap.start.vertices) {
+    if (isPointInPolygon(pos, editorMap.start.vertices)) {
+      return { type: 'startArea', index: 0, data: editorMap.start };
+    }
+  }
 
   if (editorMap.dynamicObjects) {
     for (let i = editorMap.dynamicObjects.length - 1; i >= 0; i--) {
@@ -1767,11 +1793,24 @@ function deleteSelectedObject() {
 function deleteSelectedObjects() {
   if (selectedObjects.length === 0) return;
 
+  // Filter out start area (cannot be deleted)
+  const hasStartArea = selectedObjects.some(obj => obj.type === 'startArea');
+  if (hasStartArea) {
+    console.warn('Start area cannot be deleted');
+    // Remove startArea from selection but keep other objects
+    selectedObjects = selectedObjects.filter(obj => obj.type !== 'startArea');
+    if (selectedObjects.length === 0) {
+      updatePropertiesPanel();
+      renderEditor();
+      return;
+    }
+  }
+
   saveToHistory();
-  
+
   // Sort by index in reverse order to avoid index shifting issues
   const sortedObjects = selectedObjects.slice().sort((a, b) => b.index - a.index);
-  
+
   sortedObjects.forEach(obj => {
     switch (obj.type) {
       case 'shape':
@@ -1785,6 +1824,9 @@ function deleteSelectedObjects() {
         break;
       case 'dynamicObject':
         editorMap.dynamicObjects.splice(obj.index, 1);
+        break;
+      case 'startArea':
+        // Should never reach here due to filter above
         break;
     }
   });
@@ -1848,7 +1890,9 @@ function renderEditor() {
   }
 
   if (editorMap.start && Array.isArray(editorMap.start.vertices)) {
-    drawStartArea(editorMap.start);
+    const isStartSelected = selectedObjects.some(obj => obj.type === 'startArea');
+    const isStartHovered = hoveredObject && hoveredObject.type === 'startArea';
+    drawStartArea(editorMap.start, isStartSelected, isStartHovered);
   }
 
   // Draw new shape being created
@@ -2177,18 +2221,37 @@ function drawDynamicObject(obj, isSelected, isHovered = false) {
   }
 }
 
-function drawStartArea(start) {
+function drawStartArea(start, isSelected = false, isHovered = false) {
   if (!Array.isArray(start.vertices)) return;
 
-  editorCtx.strokeStyle = '#00ff00';
-  editorCtx.lineWidth = 2 / zoom;
   editorCtx.beginPath();
   editorCtx.moveTo(start.vertices[0].x, -start.vertices[0].y);
   for (let i = 1; i < start.vertices.length; i++) {
     editorCtx.lineTo(start.vertices[i].x, -start.vertices[i].y);
   }
   editorCtx.closePath();
+
+  // Base green color
+  editorCtx.strokeStyle = '#00ff00';
+  editorCtx.lineWidth = 2 / zoom;
   editorCtx.stroke();
+
+  // Hover highlight
+  if (isHovered && !isSelected) {
+    editorCtx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+    editorCtx.lineWidth = 4 / zoom;
+    editorCtx.stroke();
+  }
+
+  // Selection highlight
+  if (isSelected) {
+    editorCtx.strokeStyle = '#ffff00';
+    editorCtx.lineWidth = 3 / zoom;
+    editorCtx.stroke();
+
+    // Draw vertex handles
+    drawVertices(start.vertices);
+  }
 }
 
 function drawNewShape() {
@@ -3391,7 +3454,7 @@ function renderPreview(previewCtx, previewCanvas, bounds) {
     }
 
     if (editorMap.start && Array.isArray(editorMap.start.vertices)) {
-      drawStartArea(editorMap.start);
+      drawStartArea(editorMap.start, false, false);
     }
   } finally {
     editorCtx = originalCtx;

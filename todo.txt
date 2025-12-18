@@ -12,3 +12,5 @@ X (server/client) remove hammer
 - (server/client) some map shape striped borders flicker/glitch at specific lengths (maybe trying to decide on stripe count)
 - (server) sort out the prod-key
 - (client) clean chat when changing rooms
+- (client) start line can have the same stutter/glitch effect
+- (server/client) make the spawn point anywhere on the start line with some pixel padding to keep cars on the inside of borders
