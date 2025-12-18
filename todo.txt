@@ -1,5 +1,5 @@
-- (map editor) allow multiple vertecies on dynamic objects (add vertex tool like regular shapes?)
-- (map editor) re-sizable finish lines
+- (map editor) allow multiple vertecies and easy point by point setup for dynamic objects (create and edit like regular shapes?)
+X (map editor) re-sizable finish lines
 X (server/client) fix trap ability (currently not doing damage, funky styling and low density)
 - (client) fix disconnect message (currently showing in the top-left of the screen)
 - (client) re-style leaderboard
@@ -14,3 +14,5 @@ X (server/client) remove hammer
 - (client) clean chat when changing rooms
 - (client) start line can have the same stutter/glitch effect
 - (server/client) make the spawn point anywhere on the start line with some pixel padding to keep cars on the inside of borders
+- (client) fix the favicon, it needs that transparent background and could look cleaner
+- (client) fix rendering of shapes that have concave vertecies, currently only the shape of the outer-most verticies are rendered

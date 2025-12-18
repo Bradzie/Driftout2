@@ -34,7 +34,7 @@ let creatingCheckpoint = false;
 let checkpointStartPoint = null;
 let isShiftKeyHeld = false;
 let creatingDynamic = false;
-let dynamicStartPoint = null;
+let newDynamicVertices = [];
 let creatingAreaEffect = false;
 let areaEffectVertices = [];
 
@@ -419,6 +419,10 @@ function handleKeyDown(e) {
         creatingAreaEffect = false;
         areaEffectVertices = [];
         renderEditor();
+      } else if (creatingDynamic) {
+        creatingDynamic = false;
+        newDynamicVertices = [];
+        renderEditor();
       } else if (creatingCircle || creatingRectangle || creatingTriangle) {
         resetCreationStates();
         currentTool = 'select';
@@ -431,6 +435,8 @@ function handleKeyDown(e) {
         finishCreatingShape();
       } else if (creatingAreaEffect && areaEffectVertices.length > 2) {
         finishCreatingAreaEffect();
+      } else if (creatingDynamic && newDynamicVertices.length > 2) {
+        finishCreatingDynamic();
       }
       break;
     case 'g':
@@ -736,44 +742,16 @@ function handleCreateCheckpointMouseDown(mousePos) {
 }
 
 function handleCreateDynamicMouseDown(mousePos) {
+  const snappedPos = snapToGridPos(mousePos);
+
   if (!creatingDynamic) {
-    // Start creating dynamic object - first click
     creatingDynamic = true;
-    dynamicStartPoint = { ...mousePos };
-    updateStatusBar();
-  } else {
-    // Finish creating dynamic object - second click
-    const width = Math.abs(mousePos.x - dynamicStartPoint.x);
-    const height = Math.abs(mousePos.y - dynamicStartPoint.y);
-    const centerX = (dynamicStartPoint.x + mousePos.x) / 2;
-    const centerY = (dynamicStartPoint.y + mousePos.y) / 2;
-    
-    const dynamicObject = {
-      id: generateDynamicId(),
-      vertices: [
-        { x: centerX - width/2, y: centerY - height/2 },
-        { x: centerX + width/2, y: centerY - height/2 },
-        { x: centerX + width/2, y: centerY + height/2 },
-        { x: centerX - width/2, y: centerY + height/2 }
-      ],
-      isStatic: false,
-      density: 0.3,
-      friction: 0.3,
-      frictionAir: 0.2,
-      restitution: 0.1,
-      damageScale: 0,
-      fillColor: [139, 69, 19],
-      strokeColor: [101, 67, 33],
-      strokeWidth: 4
-    };
-    
-    saveToHistory();
-    editorMap.dynamicObjects.push(dynamicObject);
-    creatingDynamic = false;
-    dynamicStartPoint = null;
-    updateUI();
-    renderEditor();
+    newDynamicVertices = [];
   }
+
+  newDynamicVertices.push({ x: snappedPos.x, y: snappedPos.y });
+  updateStatusBar();
+  renderEditor();
 }
 
 function handleCreateAreaEffectMouseDown(mousePos) {
@@ -795,7 +773,7 @@ function resetCreationStates() {
   creatingCheckpoint = false;
   checkpointStartPoint = null;
   creatingDynamic = false;
-  dynamicStartPoint = null;
+  newDynamicVertices = [];
   creatingAreaEffect = false;
   areaEffectVertices = [];
   creatingCircle = false;
@@ -1457,11 +1435,32 @@ function findEdgeAtPosition(pos, tolerance = 10) {
       for (let j = 0; j < shape.vertices.length; j++) {
         const vertex1 = shape.vertices[j];
         const vertex2 = shape.vertices[(j + 1) % shape.vertices.length];
-        
+
         const distanceToEdge = distancePointToLineSegment(pos, vertex1, vertex2);
         if (distanceToEdge <= scaledTolerance) {
           return {
             object: { type: 'shape', index: i, data: shape },
+            edgeIndex: j,
+            insertPosition: pos
+          };
+        }
+      }
+    }
+  }
+
+  if (editorMap.dynamicObjects) {
+    for (let i = 0; i < editorMap.dynamicObjects.length; i++) {
+      const dynObj = editorMap.dynamicObjects[i];
+      if (!dynObj.vertices) continue;
+
+      for (let j = 0; j < dynObj.vertices.length; j++) {
+        const vertex1 = dynObj.vertices[j];
+        const vertex2 = dynObj.vertices[(j + 1) % dynObj.vertices.length];
+
+        const distanceToEdge = distancePointToLineSegment(pos, vertex1, vertex2);
+        if (distanceToEdge <= scaledTolerance) {
+          return {
+            object: { type: 'dynamicObject', index: i, data: dynObj },
             edgeIndex: j,
             insertPosition: pos
           };
@@ -1785,6 +1784,34 @@ function finishCreatingAreaEffect() {
   renderEditor();
 }
 
+function finishCreatingDynamic() {
+  if (newDynamicVertices.length > 2) {
+    if (!editorMap.dynamicObjects) {
+      editorMap.dynamicObjects = [];
+    }
+    saveToHistory();
+    editorMap.dynamicObjects.push({
+      id: generateDynamicId(),
+      vertices: newDynamicVertices,
+      isStatic: false,
+      density: 0.3,
+      friction: 0.3,
+      frictionAir: 0.2,
+      restitution: 0.1,
+      damageScale: 0,
+      fillColor: [139, 69, 19],
+      strokeColor: [101, 67, 33],
+      strokeWidth: 4
+    });
+  }
+
+  creatingDynamic = false;
+  newDynamicVertices = [];
+  selectTool('select');
+  updateStatusBar();
+  renderEditor();
+}
+
 function deleteSelectedObject() {
   if (selectedObjects.length === 0) return;
   deleteSelectedObjects();
@@ -1906,8 +1933,8 @@ function renderEditor() {
   }
   
   // Draw dynamic object being created
-  if (creatingDynamic && dynamicStartPoint) {
-    drawDynamicPreview();
+  if (creatingDynamic && newDynamicVertices.length > 0) {
+    drawNewDynamic();
   }
   
   // Draw area effect being created
@@ -2421,55 +2448,48 @@ function drawCheckpointPreview() {
   editorCtx.fill();
 }
 
-function drawDynamicPreview() {
-  const mousePos = getMouseCanvasPos();
-  if (!mousePos) return;
-  
-  const width = Math.abs(mousePos.x - dynamicStartPoint.x);
-  const height = Math.abs(mousePos.y - dynamicStartPoint.y);
-  const centerX = (dynamicStartPoint.x + mousePos.x) / 2;
-  const centerY = (dynamicStartPoint.y + mousePos.y) / 2;
-  
-  editorCtx.fillStyle = 'rgba(139, 69, 19, 0.5)';
-  editorCtx.beginPath();
-  editorCtx.rect(centerX - width/2, -(centerY - height/2), width, -height);
-  editorCtx.fill();
-  
+function drawNewDynamic() {
+  if (newDynamicVertices.length === 0) return;
+
+  // Draw filled preview if we have 3 or more vertices
+  if (newDynamicVertices.length >= 3) {
+    editorCtx.fillStyle = 'rgba(139, 69, 19, 0.4)';
+    editorCtx.beginPath();
+    editorCtx.moveTo(newDynamicVertices[0].x, -newDynamicVertices[0].y);
+    for (let i = 1; i < newDynamicVertices.length; i++) {
+      editorCtx.lineTo(newDynamicVertices[i].x, -newDynamicVertices[i].y);
+    }
+    editorCtx.closePath();
+    editorCtx.fill();
+  }
+
   editorCtx.strokeStyle = '#8b4513';
   editorCtx.lineWidth = 2 / zoom;
-  editorCtx.setLineDash([5 / zoom, 5 / zoom]);
+  editorCtx.setLineDash([3 / zoom, 3 / zoom]);
+
+  editorCtx.beginPath();
+  editorCtx.moveTo(newDynamicVertices[0].x, -newDynamicVertices[0].y);
+  for (let i = 1; i < newDynamicVertices.length; i++) {
+    editorCtx.lineTo(newDynamicVertices[i].x, -newDynamicVertices[i].y);
+  }
+
+  // Draw preview line to close the shape if we have enough vertices
+  if (newDynamicVertices.length >= 2) {
+    const mousePos = getMouseCanvasPos();
+    if (mousePos) {
+      editorCtx.lineTo(mousePos.x, -mousePos.y);
+      // Show closing line to first vertex
+      if (newDynamicVertices.length >= 3) {
+        editorCtx.lineTo(newDynamicVertices[0].x, -newDynamicVertices[0].y);
+      }
+    }
+  }
+
   editorCtx.stroke();
   editorCtx.setLineDash([]);
-  
-  editorCtx.fillStyle = '#8b4513';
-  editorCtx.font = `${12 / zoom}px Arial`;
-  editorCtx.textAlign = 'center';
-  const dimensionsText = `${width.toFixed(0)} × ${height.toFixed(0)}`;
-  editorCtx.fillText(dimensionsText, centerX, -(centerY - 8 / zoom));
-  
-  editorCtx.fillStyle = '#8b4513';
-  const cornerSize = 6 / zoom;
-  
-  // Draw all four corners
-  const corners = [
-    [centerX - width/2, centerY - height/2],
-    [centerX + width/2, centerY - height/2],
-    [centerX + width/2, centerY + height/2],
-    [centerX - width/2, centerY + height/2]
-  ];
-  
-  corners.forEach(([x, y]) => {
-    editorCtx.fillRect(x - cornerSize/2, -y - cornerSize/2, cornerSize, cornerSize);
-  });
-  
-  editorCtx.strokeStyle = '#8b4513';
-  editorCtx.lineWidth = 1 / zoom;
-  editorCtx.beginPath();
-  editorCtx.moveTo(centerX - 8 / zoom, -centerY);
-  editorCtx.lineTo(centerX + 8 / zoom, -centerY);
-  editorCtx.moveTo(centerX, -(centerY - 8 / zoom));
-  editorCtx.lineTo(centerX, -(centerY + 8 / zoom));
-  editorCtx.stroke();
+
+  // Draw vertices being created
+  drawVertices(newDynamicVertices, '#8b4513');
 }
 
 // Preset preview drawing functions
@@ -3665,7 +3685,7 @@ function updateStatusBar() {
     'select': 'Click to select objects, drag to move them. Ctrl+click for multi-select. Arrow keys to nudge.',
     'createShape': 'Click to add vertices, press Enter to complete the shape, Escape to cancel.',
     'checkpoint': 'Click two points to create a checkpoint line. Hold Shift to snap angles to 15 degree increments.',
-    'dynamic': 'Click and drag to create a dynamic object rectangle.',
+    'dynamic': 'Click to add vertices, press Enter to complete the dynamic object, Escape to cancel.',
     'areaEffect': 'Click to add vertices, press Enter to complete the area effect, Escape to cancel.',
     'createCircle': 'Click to set center, then click again to set radius.',
     'createRectangle': 'Click first corner, then click opposite corner.',
@@ -3679,10 +3699,10 @@ function updateStatusBar() {
     hintElement.textContent = 'Press Enter to complete the shape, or Escape to cancel.';
   } else if (creatingAreaEffect && areaEffectVertices.length > 2) {
     hintElement.textContent = 'Press Enter to complete the area effect, or Escape to cancel.';
+  } else if (creatingDynamic && newDynamicVertices.length > 2) {
+    hintElement.textContent = 'Press Enter to complete the dynamic object, or Escape to cancel.';
   } else if (creatingCheckpoint && checkpointStartPoint) {
     hintElement.textContent = 'Click the second point to complete the checkpoint. Hold Shift to snap angle.';
-  } else if (creatingDynamic && dynamicStartPoint) {
-    hintElement.textContent = 'Click to set the size of the dynamic object.';
   } else if (creatingCircle && presetStartPoint) {
     hintElement.textContent = 'Click to set the radius of the circle.';
   } else if (creatingRectangle && presetStartPoint) {
