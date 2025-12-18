@@ -21,7 +21,7 @@ const io = new Server(server, {
   maxHttpBufferSize: 1e6,
 });
 
-const DEBUG_MODE = true;
+const DEBUG_MODE = false;
 
 const userDb = new UserDatabase();
 
@@ -2645,7 +2645,7 @@ io.on('connection', (socket) => {
       if (upgradeConfig) {
         const currentUsage = myCar.upgradeUsage[stat] || 0;
         if (currentUsage >= upgradeConfig.maxUpgrades) {
-          return; // Cannot upgrade further
+          return;
         }
         
         const amount = upgradeConfig.amount;
@@ -2662,20 +2662,10 @@ io.on('connection', (socket) => {
             myCar.stats.regen += amount;
             break;
           case 'size': {
-            const scaleFactor = 1 + amount;  // 1.15 for 15% growth
-
-            // Use Matter.js built-in scale function (handles all coordinate math correctly)
+            const scaleFactor = 1 + amount;
+            myCar.stats.acceleration += (amount / 10);
             Matter.Body.scale(myCar.body, scaleFactor, scaleFactor);
-
-            // Update density
             Matter.Body.setDensity(myCar.body, myCar.body.density + amount);
-
-            // Update display size for UI/health bars
-            if (!myCar.displaySize) myCar.displaySize = 0;
-            myCar.displaySize += amount * 15;
-
-            // Increase acceleration proportionally
-            myCar.acceleration += amount * 0.1;
 
             break;
           }
