@@ -523,16 +523,18 @@
     }
   }
 
-  function updateRoomNameDisplay(roomName) {
+  function updateRoomNameDisplay(roomName, mapName) {
     const roomNameDisplay = document.getElementById('roomNameDisplay');
     const roomNameText = document.getElementById('roomNameText');
+    const roomMapText = document.getElementById('roomMapText');
     
-    if (!roomNameDisplay || !roomNameText) {
+    if (!roomNameDisplay || !roomNameText || !roomMapText) {
       return;
     }
     
-    if (roomName && isSpectating) {
+    if (roomName && mapName && isSpectating) {
       roomNameText.textContent = roomName;
+      roomMapText.textContent = mapName;
       show(roomNameDisplay);
     } else {
       hide(roomNameDisplay);
@@ -1607,7 +1609,7 @@
     spectatorState = null;
     spectatorCtx.clearRect(0, 0, spectatorCanvas.width, spectatorCanvas.height);
     updateToolbarVisibility();
-    updateRoomNameDisplay(null);
+    updateRoomNameDisplay(null, null);
   }
   
   function resizeSpectatorCanvas() {
@@ -1971,7 +1973,7 @@
       currentRoomId = data.roomId;
     }
     
-    updateRoomNameDisplay(data.roomName);
+    updateRoomNameDisplay(data.roomName, data.map.displayName);
 
     if (data.map) {
       // we need a map key to handle the same map in different rooms

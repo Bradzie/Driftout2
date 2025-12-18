@@ -6,11 +6,9 @@
   <title>Driftz IO</title>
   <link rel="icon" type="image/png" href="favicon.png" />
   <link rel="stylesheet" href="style.css" />
-  <!-- Socket.io client -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 </head>
 <body>
-  <!-- Top Toolbar (Hover-Activated) -->
   <div id="toolbarHoverZone" class="toolbar-hover-zone"></div>
   <div id="topToolbar" class="top-toolbar">
     <div class="toolbar-left">
@@ -46,12 +44,10 @@
     </div>
   </div>
 
-  <!-- Authentication Screen (Pre-Menu) -->
   <div id="authScreen" class="auth-screen overlay">
     <div class="auth-container">
       <h1 class="auth-title">DRIFTZ.IO</h1>
-      
-      <!-- Quick Play Form -->
+
       <div id="authSelection" class="auth-selection">
         <div class="auth-options-footer">
           <button id="showLoginBtn" class="auth-link-btn">Login</button>
@@ -66,7 +62,6 @@
         </form>
       </div>
 
-      <!-- Login Form -->
       <div id="loginForm" class="auth-form hidden">
         <div class="auth-form-header">
           <h2 class="auth-form-title">Login</h2>
@@ -86,7 +81,6 @@
         </form>
       </div>
 
-      <!-- Register Form -->
       <div id="registerForm" class="auth-form hidden">
         <div class="auth-form-header">
           <h2 class="auth-form-title">Register</h2>
@@ -111,7 +105,6 @@
       </div>
 
 
-      <!-- Loading State -->
       <div id="authLoading" class="auth-loading hidden">
         <div class="auth-spinner"></div>
         <div class="auth-loading-text">Please wait...</div>
@@ -121,7 +114,10 @@
 
   <div id="menu" class="overlay hidden">
     <h1 class="title">DRIFTZ.IO</h1>
-    <div id="roomNameDisplay" class="room-name-display hidden"><span id="roomNameText">-</span></div>
+    <div id="roomNameDisplay" class="room-name-display hidden">
+      <span id="roomNameText" style="display: block;">-</span>
+      <span id="roomMapText" style="display: block;">-</span>
+    </div>
     <div id="carSelector" class="car-selector">
       <button id="switchButton" class="nav-button prev-button">🗘</button>
       <div id="carCard" class="single-car-card">
@@ -156,61 +152,45 @@
       </div>
       <button id="joinButton" class="nav-button play-button">➤</button>
     </div>
-    
-    <!-- Room Browser Button -->
     <button id="roomBrowserButton" class="room-browser-button">Browse Rooms</button>
-
-    <!-- Map Editor Button -->
     <button id="mapEditorButton" class="map-editor-button">Map Editor</button>
   </div>
 
   <canvas id="spectatorCanvas" class="spectator-canvas"></canvas>
   <canvas id="gameCanvas"></canvas>
 
-  <!-- Kill Feed -->
   <div id="killFeed" class="kill-feed hidden">
-    <!-- Dynamic kill feed messages will appear here -->
   </div>
 
-  <!-- Mini Leaderboard (Always Visible) -->
   <div id="miniLeaderboard" class="mini-leaderboard">
     <div class="mini-leaderboard-header">Laps</div>
     <div class="mini-leaderboard-content">
-      <!-- Dynamic player entries -->
     </div>
   </div>
 
-  <!-- Performance Overlays -->
   <div id="performanceOverlay" class="performance-overlay hidden">
     <div id="fpsDisplay" class="fps-display hidden">FPS --</div>
     <div id="pingDisplay" class="ping-display hidden">Ping --ms</div>
   </div>
 
-  <!-- HUD -->
   <div id="hud">
-    <!-- Upgrade points HUD removed - now displayed beside upgrade cards -->
   </div>
 
   <div id="message" class="hidden"></div>
 
-  <!-- Upgrade Cards Container -->
   <div id="upgradeCards" class="upgrade-cards-container hidden">
-    <!-- Dynamic upgrade cards will be generated here -->
   </div>
 
-  <!-- Ability HUD -->
   <div id="abilityHud" class="ability-hud hidden">
     <div class="ability-progress-bg"></div>
     <span id="abilityName" class="ability-name">Dash</span>
     <span class="ability-hint">(Space)</span>
   </div>
 
-  <!-- Lap Counter -->
   <div id="lapCounter" class="lap-counter hidden">
     <span id="laps">Laps: 0</span>
   </div>
 
-  <!-- Lap Timer -->
   <div id="lapTimer" class="lap-timer hidden">
     <div class="lap-timer-current">
       <span class="lap-timer-label">Current</span>
@@ -222,30 +202,23 @@
     </div>
   </div>
 
-  <!-- Boost Display -->
   <div id="boostDisplay" class="boost-display hidden">
     <span class="boost-label">Boost</span>
     <span id="boostText" class="boost-text">0</span>
   </div>
 
-  <!-- Chat System -->
   <div id="chatContainer" class="chat-container hidden">
-    <!-- Messages Area (Always Visible) -->
     <div id="chatMessages" class="chat-messages">
-      <!-- Dynamic chat messages will appear here -->
     </div>
-    <!-- Chat Prompt (Visible when input is closed) -->
     <div id="chatPrompt" class="chat-prompt">
       <div class="chat-prompt-text">Press Enter to chat</div>
     </div>
-    <!-- Input Area (Hidden by Default) -->
     <div id="chatInputArea" class="chat-input-area hidden">
       <input type="text" id="chatInput" class="chat-input" placeholder="Type a message..." maxlength="200" />
       <div class="chat-hint">Press Enter to send, Escape to close</div>
     </div>
   </div>
 
-  <!-- Loading Screen Template -->
   <div id="loadingScreen" class="overlay loading-overlay hidden">
     <div class="loading-content">
       <div class="game-title">DRIFTZ IO</div>
@@ -255,7 +228,6 @@
     </div>
   </div>
 
-  <!-- Disconnection Overlay Template -->
   <div id="disconnectionOverlay" class="overlay disconnect-overlay hidden">
     <div class="disconnect-content">
       <div class="disconnect-title">DISCONNECTED</div>
@@ -270,7 +242,6 @@
     </div>
   </div>
 
-  <!-- Menu Disconnection Warning Template -->
   <div id="menuDisconnectionWarning" class="menu-warning hidden">
     <div class="warning-title">DISCONNECTED</div>
     <div class="warning-message">Unable to connect to game server</div>
@@ -283,7 +254,6 @@
     <button id="menuRefreshBtn" class="menu-refresh-btn">CLICK TO REFRESH</button>
   </div>
 
-  <!-- Settings Modal -->
   <div id="settingsModal" class="settings-modal hidden">
     <div class="settings-content">
       <div class="settings-header">
@@ -292,7 +262,6 @@
       </div>
       
       <div class="settings-body">
-        <!-- Graphics Section -->
         <div class="settings-section">
           <h3 class="settings-section-title">Graphics</h3>
           <div class="settings-row">
@@ -311,39 +280,35 @@
           </div>
         </div>
 
-        <!-- Performance Section (placeholder) -->
         <div class="settings-section">
           <h3 class="settings-section-title">Performance</h3>
           <div class="settings-placeholder">
-            Additional performance settings will be added here
+            test
           </div>
         </div>
 
-        <!-- Audio Section (placeholder) -->
         <div class="settings-section">
           <h3 class="settings-section-title">Audio</h3>
           <div class="settings-placeholder">
-            Audio settings will be added here
+            test
           </div>
         </div>
 
-        <!-- Controls Section (placeholder) -->
         <div class="settings-section">
           <h3 class="settings-section-title">Controls</h3>
           <div class="settings-placeholder">
-            Control customization will be added here
+            test
           </div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Detailed Leaderboard Modal -->
   <div id="detailedLeaderboard" class="detailed-leaderboard-modal hidden">
     <div class="detailed-leaderboard-content">
       <div class="detailed-leaderboard-header">
-        <h2 class="leaderboard-title">Race Statistics</h2>
-        <div class="leaderboard-hint">Press TAB or ESC to close</div>
+        <h2 class="leaderboard-title">Leaderboard</h2>
+        <!-- <div class="leaderboard-hint">Press TAB or ESC to close</div> -->
       </div>
       <table class="leaderboard-table">
         <thead>
@@ -358,13 +323,12 @@
           </tr>
         </thead>
         <tbody id="leaderboardTableBody">
-          <!-- Dynamic rows -->
+
         </tbody>
       </table>
     </div>
   </div>
 
-  <!-- Room Browser Modal -->
   <div id="roomBrowserModal" class="room-browser-modal hidden">
     <div class="room-browser-content">
       <div class="room-browser-header">
@@ -373,7 +337,6 @@
       </div>
       
       <div class="room-browser-body">       
-        <!-- Room List Section -->
         <div class="room-browser-section">
           <div class="section-header">
             <h3 class="section-title">Rooms</h3>
@@ -383,8 +346,7 @@
             <div class="loading-message">Loading rooms...</div>
           </div>
         </div>
-        
-        <!-- Create Room Action -->
+
         <div class="room-browser-section">
           <div class="create-room-action">
             <button id="openCreateRoomButton" class="create-room-open-button">Create</button>
@@ -394,7 +356,6 @@
     </div>
   </div>
 
-  <!-- Create Room Modal -->
   <div id="createRoomModal" class="create-room-modal hidden">
     <div class="create-room-content">
       <div class="create-room-header">
@@ -435,7 +396,6 @@
     </div>
   </div>
 
-  <!-- Debug Admin Panel -->
   <div id="debugPanel" class="debug-panel hidden">
     <div class="debug-header">
       <span class="debug-title">Debug</span>
@@ -443,7 +403,6 @@
     </div>
     <div id="debugContent" class="debug-content">
       
-      <!-- Player Controls -->
       <div class="debug-section">
         <h4>Player Controls</h4>
         <div class="debug-row">
@@ -464,7 +423,6 @@
         </div>
       </div>
 
-      <!-- Position Controls -->
       <div class="debug-section">
         <h4>Position & State</h4>
         <div class="debug-row">
@@ -473,7 +431,7 @@
         </div>
       </div>
 
-      <!-- Ability Controls -->
+
       <div class="debug-section">
         <h4>Abilities</h4>
         <div class="debug-row">
@@ -482,7 +440,6 @@
         </div>
       </div>
 
-      <!-- Stats Controls -->
       <div class="debug-section">
         <h4>Car Stats</h4>
         <div class="debug-row">
@@ -503,7 +460,7 @@
         <button id="debugSetStats" class="debug-btn full-width">Apply Stats</button>
       </div>
 
-      <!-- Network Simulation -->
+
       <div class="debug-section">
         <h4>Network Simulation</h4>
         <div class="debug-row">
@@ -515,7 +472,7 @@
         </div>
       </div>
 
-      <!-- Quick Actions -->
+
       <div class="debug-section">
         <h4>Quick Actions</h4>
         <div class="debug-row">
@@ -524,7 +481,6 @@
         </div>
       </div>
 
-      <!-- Player Data Display -->
       <div class="debug-section">
         <h4>Player Data</h4>
         <div id="debugPlayerData" class="debug-data">
@@ -535,10 +491,8 @@
   </div>
   </div>
 
-  <!-- Map Editor Overlay -->
   <div id="mapEditorContainer" class="map-editor-container hidden">
     <div class="map-editor-sidebar">
-      <!-- Map Operations -->
       <div class="editor-section">
         <h3>Map</h3>
         <div class="map-editor-buttons">
@@ -550,7 +504,6 @@
         </div>
       </div>
       
-      <!-- Tools Panel -->
       <div class="editor-section">
         <h3>Tools</h3>
         <div class="tool-buttons">
@@ -561,8 +514,7 @@
           <button id="addAreaEffectTool" class="tool-btn" data-tool="areaEffect">Area Effect</button>
         </div>
       </div>
-      
-      <!-- Shape Presets Panel -->
+
       <div class="editor-section">
         <h3>Shape Presets</h3>
         <div class="preset-buttons">
@@ -572,7 +524,6 @@
         </div>
       </div>
       
-      <!-- Grid Settings -->
       <div class="editor-section">
         <h3>Grid</h3>
         <label><input type="checkbox" id="showGrid" checked> Show Grid</label>
@@ -587,26 +538,22 @@
         </label>
       </div>
       
-      <!-- Properties Panel -->
       <div class="editor-section">
         <h3>Properties</h3>
         <div id="propertiesPanel">
           <p>Select an object to edit properties</p>
         </div>
       </div>
-      
-      <!-- Layers Panel -->
+
       <div class="editor-section">
         <h3>Objects</h3>
         <div id="layersPanel">
-          <!-- Dynamic object list -->
         </div>
       </div>
       
     </div>
     <canvas id="mapEditorCanvas" class="map-editor-canvas"></canvas>
     
-    <!-- Map Editor Status Bar -->
     <div id="editorStatusBar" class="editor-status-bar">
       <div class="status-left">
         <span id="editorToolName">Select Tool</span>
@@ -618,7 +565,6 @@
     </div>
   </div>
 
-  <!-- Browse Maps Modal Dialog -->
   <div id="browseMapModal" class="modal hidden">
     <div class="modal-content browse-modal">
       <div class="modal-header">
@@ -626,12 +572,10 @@
         <button class="close-button" id="closeBrowseModal">&times;</button>
       </div>
       <div class="maps-grid" id="mapsGrid">
-        <!-- Dynamic map entries will be inserted here -->
       </div>
     </div>
   </div>
 
-  <!-- Save Map Modal Dialog -->
   <div id="saveMapModal" class="modal hidden">
     <div class="modal-content">
       <div class="modal-header">
@@ -674,7 +618,6 @@
     </div>
   </div>
 
-  <!-- Vertex Context Menu -->
   <div id="vertexContextMenu" class="vertex-context-menu hidden">
     <div class="context-menu-item" id="addVertexOption">Add Vertex Here</div>
     <div class="context-menu-item" id="removeVertexOption">Remove Vertex</div>

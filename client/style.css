@@ -67,13 +67,18 @@ html, body {
 }
 
 .room-name-display {
-  font-family: 'Quicksilver', serif;
-  font-size: 1.2rem;
   background: #ff5f5f;
   color: #ffffff;
   text-align: center;
   margin-bottom: 1rem;
-  padding: 10px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  padding-left: 20px;
+  padding-right: 20px;
+  line-height: 200%;
+  font-size: 1rem;
+  font-weight: 600;
+  font-family: 'Overpass', sans-serif;';
 }
 
 .car-selector {
