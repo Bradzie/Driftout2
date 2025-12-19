@@ -26,6 +26,13 @@ const DEBUG_MODE = true;
 
 const userDb = new UserDatabase();
 
+function isValidFilename(filename) {
+  if (!filename || typeof filename !== 'string') return false;
+  if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) return false;
+  if (path.isAbsolute(filename)) return false;
+  return true;
+}
+
 const activeUserSessions = new Map();
 const activeGuestSessions = new Map();
 const sessionRegistrationLocks = new Set();
@@ -154,7 +161,7 @@ app.post('/api/maps', requireAuth, async (req, res) => {
       if (!['official', 'community'].includes(targetDirectory)) {
         return sendError(res, 400, 'Invalid directory in key.');
       }
-      
+
     } else {
       // Creating a new map
       targetDirectory = directory || 'community';
@@ -167,6 +174,10 @@ app.post('/api/maps', requireAuth, async (req, res) => {
         return sendError(res, 400, 'Map data must include a UUID (id field)');
       }
       filename = mapData.id;
+    }
+
+    if (!isValidFilename(filename)) {
+      return sendError(res, 400, 'Invalid filename: path traversal not allowed');
     }
     
     const enhancedMapData = {
@@ -213,6 +224,10 @@ app.put('/api/maps/:key', requireAuth, async (req, res) => {
   try {
     const { key } = req.params;
     const { name, mapData } = req.body;
+
+    if (!isValidFilename(key)) {
+      return sendError(res, 400, 'Invalid filename: path traversal not allowed');
+    }
     
     const mapInfo = userDb.getMapByFilename(key);
     if (!mapInfo || mapInfo.author_id !== req.session.userId) {
@@ -250,7 +265,11 @@ app.put('/api/maps/:key', requireAuth, async (req, res) => {
 app.delete('/api/maps/:key', requireAuth, async (req, res) => {
   try {
     const { key } = req.params;
-    
+
+    if (!isValidFilename(key)) {
+      return sendError(res, 400, 'Invalid filename: path traversal not allowed');
+    }
+
     const mapInfo = userDb.getMapByFilename(key);
     if (!mapInfo || mapInfo.author_id !== req.session.userId) {
       return sendError(res, 403, 'You can only delete your own maps');
@@ -794,49 +813,57 @@ function kickExistingSessions(userId, currentSocketId) {
 
 
 function applyMotorForces(room) {
-  for (const body of room.currentDynamicBodies) {
-    if (body.dynamicObject &&
-        body.dynamicObject.axis &&
-        typeof body.dynamicObject.axis.motorSpeed === 'number') {
+  try {
+    for (const body of room.currentDynamicBodies) {
+      if (body.dynamicObject &&
+          body.dynamicObject.axis &&
+          typeof body.dynamicObject.axis.motorSpeed === 'number') {
 
-      const motorSpeed = body.dynamicObject.axis.motorSpeed;
-      if (motorSpeed === 0) continue;
+        const motorSpeed = body.dynamicObject.axis.motorSpeed;
+        if (motorSpeed === 0) continue;
 
-      const angularVelocity = motorSpeed * 0.005;
+        const angularVelocity = motorSpeed * 0.1;
 
-      Matter.Body.setAngularForce(body, angularVelocity);
+        Matter.Body.setAngularVelocity(body, angularVelocity);
+      }
     }
+  } catch (error) {
+    console.error('Error applying motor forces:', error);
   }
 }
 
 function applyAreaEffects(room) {
-  const { category: categoryToGet, key: keyToGet } = HELPERS.parseMapKey(room.currentMapKey);
-  const map = mapManager.getMap(keyToGet, categoryToGet);
+  try {
+    const { category: categoryToGet, key: keyToGet } = HELPERS.parseMapKey(room.currentMapKey);
+    const map = mapManager.getMap(keyToGet, categoryToGet);
 
-  if (!map || !map.areaEffects) return;
+    if (!map || !map.areaEffects) return;
 
-  for (const [sid, car] of room.players.entries()) {
-    if (car.crashedAt) continue; // Skip crashed cars
-    
-    const carX = car.body.position.x;
-    const carY = car.body.position.y;
-    
-    if (!car._areaEffectsInit) {
-      initAreaEffectsForCar(car);
+    for (const [sid, car] of room.players.entries()) {
+      if (car.crashedAt) continue;
+
+      const carX = car.body.position.x;
+      const carY = car.body.position.y;
+
+      if (!car._areaEffectsInit) {
+        initAreaEffectsForCar(car);
+      }
+
+      let currentEffects = [];
+
+      for (const areaEffect of map.areaEffects) {
+        if (!areaEffect.vertices || !Array.isArray(areaEffect.vertices)) continue;
+
+        const isInside = HELPERS.pointInPolygon(carX, carY, areaEffect.vertices);
+
+        if (isInside)
+          currentEffects.push(areaEffect);
+      }
+
+      applyCurrentEffects(car, currentEffects);
     }
-
-    let currentEffects = [];
-    
-    for (const areaEffect of map.areaEffects) {
-      if (!areaEffect.vertices || !Array.isArray(areaEffect.vertices)) continue;
-      
-      const isInside = HELPERS.pointInPolygon(carX, carY, areaEffect.vertices);
-      
-      if (isInside)
-        currentEffects.push(areaEffect);
-    }
-
-    applyCurrentEffects(car, currentEffects);
+  } catch (error) {
+    console.error('Error applying area effects:', error);
   }
 }
 
@@ -1696,26 +1723,9 @@ class Room {
     
     const damageA = this.calculateCollisionDamage(carA, carB.body, relativeSpeed, collisionPair);
     const damageB = this.calculateCollisionDamage(carB, carA.body, relativeSpeed, collisionPair);
-    
-    // Determine which car has less remaining health
-    const carAHealthRemaining = carA.currentHealth;
-    const carBHealthRemaining = carB.currentHealth;
-    
-    let finalDamageA = damageA;
-    let finalDamageB = damageB;
-    
-    if (damageB > carBHealthRemaining) {
-      const overflow = damageB - carBHealthRemaining;
-      finalDamageA = Math.min(finalDamageA, overflow);
-    }
-    
-    if (damageA > carAHealthRemaining) {
-      const overflow = damageA - carAHealthRemaining;
-      finalDamageB = Math.min(finalDamageB, overflow);
-    }
-    
-    carA.currentHealth -= finalDamageA;
-    carB.currentHealth -= finalDamageB;
+
+    carA.currentHealth -= damageA;
+    carB.currentHealth -= damageB;
     
     const carACrashed = carA.currentHealth <= 0;
     const carBCrashed = carB.currentHealth <= 0;
@@ -1842,9 +1852,8 @@ class Room {
   }
   
   setTrackBodies(mapKey) {
-    // Reset per-map statistics when changing maps
     this.mapStats.clear();
-    
+
     for (const body of this.currentTrackBodies) {
       Matter.World.remove(this.world, body)
     }
@@ -1855,13 +1864,20 @@ class Room {
     }
     this.currentDynamicBodies = []
 
-    // Remove constraints
     if (this.currentConstraints) {
       for (const constraint of this.currentConstraints) {
         Matter.World.remove(this.world, constraint)
       }
       this.currentConstraints = []
     }
+
+    for (const obj of this.gameState.abilityObjects) {
+      if (obj.body) {
+        Matter.World.remove(this.world, obj.body);
+      }
+    }
+    this.gameState.abilityObjects = [];
+    this.gameState.activeEffects = [];
 
     // Parse category/key format if present
     const { category: categoryToCheck, key: keyToCheck } = HELPERS.parseMapKey(mapKey);
@@ -1992,8 +2008,9 @@ class Room {
     this.spectators.delete(socketId);
     if (this.players.has(socketId)) {
       const car = this.players.get(socketId);
-      if (car) {
+      if (car && car.body) {
         Matter.World.remove(this.world, car.body);
+        car.body = null;
       }
       this.players.delete(socketId);
     }
@@ -2042,12 +2059,13 @@ class Room {
     
     if (this.players.has(socketId)) {
       const car = this.players.get(socketId);
-      if (car) {
+      if (car && car.body) {
         Matter.World.remove(this.world, car.body);
+        car.body = null;
       }
       this.players.delete(socketId);
     }
-    
+
     this.spectators.set(socketId, member.socket);
     
     member.state = Room.USER_STATES.SPECTATING;
@@ -2154,7 +2172,8 @@ class Room {
       car.resetCar();
       car.upgradePoints = 0;
     }
-    // Reset race state flags
+    this.gameState.abilityObjects = [];
+    this.gameState.activeEffects = [];
     this.winMessageSent = false;
   }
   
@@ -2170,7 +2189,7 @@ class Room {
       let level = null;
 
       if (session?.username) {
-        name = session.isGuest ? session.username : session.username;
+        name = session.username;
         isAuthenticated = !session.isGuest;
       }
 
@@ -2451,15 +2470,19 @@ io.on('connection', (socket) => {
   let clientSupportsBinary = false;
   
   socket.on('refreshSession', () => {
-    // Only reload if session exists and has been initialized
     if (socket.request.session && socket.request.sessionID && socket.request.session.username) {
       socket.request.session.reload((err) => {
         if (err) {
           console.error('Session refresh error:', err);
+          socket.emit('sessionRefreshFailed', { error: 'Failed to refresh session' });
         } else {
+          socket.request.session.save((saveErr) => {
+            if (saveErr) {
+              console.error('Session save error after refresh:', saveErr);
+            }
+          });
         }
       });
-    } else {
     }
   });
   
@@ -2764,8 +2787,10 @@ io.on('connection', (socket) => {
     }
   });
   socket.on('upgrade', (data) => {
-    if (!myCar) return;
+    if (!myCar || !data || typeof data.stat !== 'string') return;
     const stat = data.stat;
+    const validStats = ['maxHealth', 'acceleration', 'regen', 'size', 'abilityCooldown', 'projectileSpeed', 'projectileDensity'];
+    if (!validStats.includes(stat)) return;
     if (myCar.upgradePoints > 0) {
       const carType = CAR_TYPES[myCar.type];
       const upgradeConfig = carType.upgrades[stat];
@@ -3060,7 +3085,10 @@ function gameLoop() {
               emitToSocket(sid, 'returnToMenu', { winner: winnerName });
             }
             for (const [sid, car] of room.players.entries()) {
-              Matter.World.remove(room.world, car.body);
+              if (car && car.body) {
+                Matter.World.remove(room.world, car.body);
+                car.body = null;
+              }
             }
             room.players.clear();
           }, 1500); // 1.5 second delay to show win message
