@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const formidable = require('formidable');
 const { Server } = require('socket.io');
 const Matter = require('matter-js');
@@ -25,9 +26,9 @@ const DEBUG_MODE = true;
 
 const userDb = new UserDatabase();
 
-// Session management for preventing multiple logins
 const activeUserSessions = new Map();
 const activeGuestSessions = new Map();
+const sessionRegistrationLocks = new Set();
 
 // Configuration for duplicate login handling
 const DUPLICATE_LOGIN_POLICY = {
@@ -65,14 +66,20 @@ function calculateLevel(totalXP) {
   return level;
 }
 
+if (!process.env.SESSION_SECRET) {
+  const randomSecret = crypto.randomBytes(32).toString('hex');
+  console.warn('WARNING: No SESSION_SECRET environment variable set. Using random secret. Sessions will not persist across restarts.');
+  process.env.SESSION_SECRET = randomSecret;
+}
+
 const sessionMiddleware = session({
-  secret: process.env.SESSION_SECRET || 'driftout-secret-key-change-in-production',
+  secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   cookie: {
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    maxAge: 24 * 60 * 60 * 1000
   }
 });
 
@@ -1504,6 +1511,9 @@ class Room {
     this.currentDynamicBodies = [];
     this.currentConstraints = [];
 
+    this.playerIdMap = new Map();
+    this.nextPlayerId = 1;
+
     this.winMessageSent = false;
     
     // Per-map statistics tracking (preserved until map changes)
@@ -1978,7 +1988,7 @@ class Room {
   removeMember(socketId) {
     const member = this.allMembers.get(socketId);
     if (!member) return false;
-    
+
     this.spectators.delete(socketId);
     if (this.players.has(socketId)) {
       const car = this.players.get(socketId);
@@ -1987,10 +1997,18 @@ class Room {
       }
       this.players.delete(socketId);
     }
-    
+
     this.allMembers.delete(socketId);
-    
+    this.playerIdMap.delete(socketId);
+
     return true;
+  }
+
+  getPlayerNumericId(socketId) {
+    if (!this.playerIdMap.has(socketId)) {
+      this.playerIdMap.set(socketId, this.nextPlayerId++);
+    }
+    return this.playerIdMap.get(socketId);
   }
   
   // Transition user from spectator to player
@@ -2402,22 +2420,30 @@ function cleanupEmptyRooms() {
 }
 
 io.on('connection', (socket) => {
-  
-  
-  // Register session for duplicate login prevention
+
+
   if (socket.request.session && socket.request.session.username) {
     const session = socket.request.session;
+    const lockKey = session.isGuest ? `guest:${socket.request.sessionID}` : `user:${session.userId}`;
+
+    if (sessionRegistrationLocks.has(lockKey)) {
+      return;
+    }
+
+    sessionRegistrationLocks.add(lockKey);
+
     if (session.isGuest) {
       registerGuestSession(socket.request.sessionID, socket.id);
     } else if (session.userId) {
-      // Register user session and handle existing sessions
       const userId = session.userId;
       registerUserSession(userId, socket.id);
-      
+
       if (currentDuplicateLoginPolicy === DUPLICATE_LOGIN_POLICY.KICK_EXISTING) {
         kickExistingSessions(userId, socket.id);
       }
     }
+
+    sessionRegistrationLocks.delete(lockKey);
   }
   
   let currentRoom = null;
@@ -2609,12 +2635,11 @@ io.on('connection', (socket) => {
     };
   }
   
-  // Binary state encoder function
-  function encodeBinaryState(players, timestamp) {
-    let bufferSize = 8 + 1; // timestamp (8) + player count (1)
-    
+  function encodeBinaryState(players, timestamp, room) {
+    let bufferSize = 8 + 1;
+
     for (const player of players) {
-      bufferSize += 4 + 4 + 1; // socketId (4) + id (4) + type (1)
+      bufferSize += 4 + 4 + 1;
       bufferSize += 4 + 4 + 4; // x (4) + y (4) + angle (4)
       bufferSize += 2 + 2; // health (2) + maxHealth (2)
       bufferSize += 1 + 1; // laps (1) + maxLaps (1)
@@ -2637,7 +2662,7 @@ io.on('connection', (socket) => {
     const typeMap = { 'Stream': 0, 'Tank': 1, 'Bullet': 2, 'Prankster': 3 };
     
     for (const player of players) {
-      view.setUint32(offset, parseInt(player.socketId) || 0, true); offset += 4; // Use hash of socketId
+      view.setUint32(offset, room.getPlayerNumericId(player.socketId), true); offset += 4;
       view.setUint32(offset, player.id, true); offset += 4;
       view.setUint8(offset, typeMap[player.type] || 0); offset += 1;
       
@@ -2948,16 +2973,23 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
+    if (socket.request.session && socket.request.session.username) {
+      const session = socket.request.session;
+      const lockKey = session.isGuest ? `guest:${socket.request.sessionID}` : `user:${session.userId}`;
+      sessionRegistrationLocks.delete(lockKey);
+    }
+
     cleanupSocketSession(socket);
     removeFromAllRooms(socket.id);
-    
+
     spectators.delete(socket.id);
-    
+    clientLastStates.delete(socket.id);
+
     currentRoom = null;
     myCar = null;
-    
+
     ensureDefaultRoom();
-    
+
     cleanupEmptyRooms();
   });
 });
@@ -3174,10 +3206,9 @@ setInterval(() => {
           socket.emit('heartbeat', { timestamp: Date.now() });
         }
         
-        // Send full state occasionally to prevent drift
-        if (Math.random() < FULL_STATE_BROADCAST_CHANCE) { // 10% chance = roughly every second at 30Hz
+        if (Math.random() < FULL_STATE_BROADCAST_CHANCE) {
           if (socket.clientSupportsBinary) {
-            const binaryState = encodeBinaryState(state, Date.now());
+            const binaryState = encodeBinaryState(state, Date.now(), room);
             socket.emit('binaryState', binaryState);
           } else {
             socket.emit('state', fullState);
