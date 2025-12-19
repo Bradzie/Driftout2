@@ -1277,44 +1277,91 @@
     hide(createRoomModal);
   }
   
+  let allMapsData = [];
+
   function openMapBrowserForRoom() {
     const modal = document.getElementById('browseMapModal');
     show(modal);
-    
+
     // load maps
     fetch('/api/maps')
       .then(res => res.json())
       .then(maps => {
+        allMapsData = maps;
+        setupMapFilters();
         displayMapsForRoomCreation(maps);
       })
       .catch(error => {
         console.error('Error loading maps:', error);
-        document.getElementById('mapsGrid').innerHTML = '<p>Error loading maps</p>';
+        document.getElementById('mapsGrid').innerHTML = '<p class="no-maps-message">Error loading maps</p>';
       });
   }
-  
-  // TODO: would be nice to have a search/filter function here too, as well as rows/columns rather than just 1 big column
+
+  function setupMapFilters() {
+    const searchInput = document.getElementById('mapSearchInput');
+    const officialToggle = document.getElementById('showOfficialToggle');
+    const communityToggle = document.getElementById('showCommunityToggle');
+    const newSearchInput = searchInput.cloneNode(true);
+    searchInput.parentNode.replaceChild(newSearchInput, searchInput);
+    const newOfficialToggle = officialToggle.cloneNode(true);
+    officialToggle.parentNode.replaceChild(newOfficialToggle, officialToggle);
+    const newCommunityToggle = communityToggle.cloneNode(true);
+    communityToggle.parentNode.replaceChild(newCommunityToggle, communityToggle);
+
+    newSearchInput.addEventListener('input', filterAndDisplayMaps);
+    newOfficialToggle.addEventListener('change', filterAndDisplayMaps);
+    newCommunityToggle.addEventListener('change', filterAndDisplayMaps);
+  }
+
+  function filterAndDisplayMaps() {
+    const searchTerm = document.getElementById('mapSearchInput').value.toLowerCase();
+    const showOfficial = document.getElementById('showOfficialToggle').checked;
+    const showCommunity = document.getElementById('showCommunityToggle').checked;
+
+    const filteredMaps = allMapsData.filter(map => {
+      const category = map.category || (map.key.includes('official/') ? 'official' : 'community');
+      const categoryMatch = (category === 'official' && showOfficial) || (category === 'community' && showCommunity);
+
+      if (!categoryMatch) return false;
+      if (searchTerm) {
+        const nameMatch = map.name.toLowerCase().includes(searchTerm);
+        const descMatch = (map.description || '').toLowerCase().includes(searchTerm);
+        const authorMatch = (map.author || '').toLowerCase().includes(searchTerm);
+        return nameMatch || descMatch || authorMatch;
+      }
+
+      return true;
+    });
+
+    displayMapsForRoomCreation(filteredMaps);
+  }
+
   function displayMapsForRoomCreation(maps) {
     const grid = document.getElementById('mapsGrid');
-    
+    const countText = document.getElementById('mapCountText');
+    countText.textContent = `${maps.length} map${maps.length !== 1 ? 's' : ''}`;
+
+    if (maps.length === 0) {
+      grid.innerHTML = '<p class="no-maps-message">No maps found matching your filters</p>';
+      return;
+    }
+
     grid.innerHTML = maps.map(map => {
-      const author = map.key.includes('official/') ? 'Official' : 'Community';
-      const category = map.category || author;
-      
-      // Check if preview image exists (use UUID if available, fallback to key) TODO: map.key will probably never work ever, fix later
+      const category = map.category || (map.key.includes('official/') ? 'official' : 'community');
+      const author = map.author || (category === 'official' ? 'Official' : 'Community');
       const previewImageUrl = map.id ? `/previews/${map.id}.png` : `/previews/${map.key.replace(/\//g, '_')}.png`;
-      
+
       return `
         <div class="map-entry" data-map-key="${map.key}">
           <div class="map-preview">
-            <img src="${previewImageUrl}" alt="${map.name} preview" class="preview-image" 
+            <img src="${previewImageUrl}" alt="${map.name} preview" class="preview-image"
                  onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
             <div class="no-preview" style="display: none;">No preview</div>
           </div>
           <div class="map-info">
             <h4 class="map-name">${map.name}</h4>
             <p class="map-author">Author: ${author}</p>
-            <p class="map-category">Category: ${category}</p>
+            <p class="map-category">Category: ${category.charAt(0).toUpperCase() + category.slice(1)}</p>
             <button class="select-map-btn" onclick="selectMapForRoom('${map.key}', '${map.name}')">Select</button>
           </div>
         </div>

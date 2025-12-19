@@ -542,11 +542,33 @@
 
   <div id="browseMapModal" class="modal hidden">
     <div class="modal-content browse-modal">
-      <div class="modal-header">
+      <div class="modal-header map-browser-header">
         <h2>Browse Maps</h2>
         <button class="close-button" id="closeBrowseModal">&times;</button>
       </div>
-      <div class="maps-grid" id="mapsGrid">
+      <div class="map-browser-body">
+        <div class="map-filters-section">
+          <div class="map-search-container">
+            <input type="text" id="mapSearchInput" class="form-input map-search-input" placeholder="Search maps...">
+          </div>
+          <div class="map-filter-controls">
+            <div class="filter-toggle-group">
+              <label class="filter-label">
+                <input type="checkbox" id="showOfficialToggle" class="filter-checkbox" checked>
+                <span class="filter-text">Official Maps</span>
+              </label>
+              <label class="filter-label">
+                <input type="checkbox" id="showCommunityToggle" class="filter-checkbox" checked>
+                <span class="filter-text">Community Maps</span>
+              </label>
+            </div>
+            <div class="map-count-display">
+              <span id="mapCountText">0 maps</span>
+            </div>
+          </div>
+        </div>
+        <div class="maps-grid" id="mapsGrid">
+        </div>
       </div>
     </div>
   </div>
