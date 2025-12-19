@@ -99,9 +99,33 @@ function initEventListeners() {
     });
   });
 
-  document.querySelectorAll('.preset-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      handlePresetClick(btn.dataset.preset);
+  const shapeToolBtn = document.getElementById('createShapeTool');
+  const shapeHoverMenu = document.getElementById('shapeToolHoverMenu');
+  let hoverMenuTimeout = null;
+
+  shapeToolBtn.addEventListener('mouseenter', () => {
+    clearTimeout(hoverMenuTimeout);
+    showShapeHoverMenu();
+  });
+
+  shapeToolBtn.addEventListener('mouseleave', () => {
+    hoverMenuTimeout = setTimeout(() => {
+      hideShapeHoverMenu();
+    }, 100);
+  });
+
+  shapeHoverMenu.addEventListener('mouseenter', () => {
+    clearTimeout(hoverMenuTimeout);
+  });
+
+  shapeHoverMenu.addEventListener('mouseleave', () => {
+    hideShapeHoverMenu();
+  });
+
+  document.querySelectorAll('.hover-menu-item').forEach(item => {
+    item.addEventListener('click', () => {
+      handlePresetClick(item.dataset.preset);
+      hideShapeHoverMenu();
     });
   });
 
@@ -1554,10 +1578,25 @@ function hideContextMenu() {
   contextMenu.classList.add('hidden');
   contextMenuVisible = false;
   contextMenuTarget = null;
-  
+
   // Reset menu items visibility
   document.getElementById('addVertexOption').style.display = 'block';
   document.getElementById('removeVertexOption').style.display = 'block';
+}
+
+function showShapeHoverMenu() {
+  const shapeToolBtn = document.getElementById('createShapeTool');
+  const shapeHoverMenu = document.getElementById('shapeToolHoverMenu');
+  const rect = shapeToolBtn.getBoundingClientRect();
+
+  shapeHoverMenu.style.left = (rect.right + 5) + 'px';
+  shapeHoverMenu.style.top = rect.top + 'px';
+  shapeHoverMenu.classList.remove('hidden');
+}
+
+function hideShapeHoverMenu() {
+  const shapeHoverMenu = document.getElementById('shapeToolHoverMenu');
+  shapeHoverMenu.classList.add('hidden');
 }
 
 function handleAddVertex() {

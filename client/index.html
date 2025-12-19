@@ -490,7 +490,7 @@
   <div id="mapEditorContainer" class="map-editor-container hidden">
     <div class="map-editor-sidebar">
       <div class="editor-section">
-        <h3>Map</h3>
+        <h3>File</h3>
         <div class="map-editor-buttons">
           <button id="newMapButton">New</button>
           <button id="mapEditorBrowseButton">Browse</button>
@@ -511,15 +511,6 @@
         </div>
       </div>
 
-      <div class="editor-section">
-        <h3>Shape Presets</h3>
-        <div class="preset-buttons">
-          <button id="circlePresetBtn" class="preset-btn" data-preset="circle">Circle</button>
-          <button id="rectanglePresetBtn" class="preset-btn" data-preset="rectangle">Rectangle</button>
-          <button id="trianglePresetBtn" class="preset-btn" data-preset="triangle">Triangle</button>
-        </div>
-      </div>
-      
       <div class="editor-section">
         <h3>Grid</h3>
         <label><input type="checkbox" id="showGrid" checked> Show Grid</label>
@@ -619,6 +610,12 @@
     <div class="context-menu-item" id="removeVertexOption">Remove Vertex</div>
     <div class="context-menu-separator"></div>
     <div class="context-menu-item" id="cancelVertexOption">Cancel</div>
+  </div>
+
+  <div id="shapeToolHoverMenu" class="shape-tool-hover-menu hidden">
+    <div class="hover-menu-item" data-preset="circle">Circle</div>
+    <div class="hover-menu-item" data-preset="rectangle">Rectangle</div>
+    <div class="hover-menu-item" data-preset="triangle">Triangle</div>
   </div>
 
   <script src="client.js"></script>
