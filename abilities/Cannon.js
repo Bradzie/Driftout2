@@ -87,7 +87,7 @@ class CannonAbility extends Ability {
 
   createCannonball(position, world, ownerId, density, projectileSize) {
     const radius = projectileSize;
-    const sides = 14;
+    const sides = 8;
     const vertices = [];
 
     for (let i = 0; i < sides; i++) {

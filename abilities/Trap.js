@@ -46,7 +46,7 @@ class SpikeTrapAbility extends Ability {
     };
     const spikeBody = this.createSpikeTrap(position, world, car.id);
     
-    const throwForce = 0.002;
+    const throwForce = 0.6;
     const backwardForce = {
       x: -Math.cos(car.body.angle) * throwForce,
       y: -Math.sin(car.body.angle) * throwForce
@@ -87,12 +87,10 @@ class SpikeTrapAbility extends Ability {
     
     for (let i = 0; i < 3; i++) {
       const angle = (i * Math.PI * 2) / 3;
-      // Outer point (spike tip)
       vertices.push({
         x: Math.cos(angle) * radius,
         y: Math.sin(angle) * radius
       });
-      // Inner point (between spikes)
       const innerAngle = angle + Math.PI / 3;
       vertices.push({
         x: Math.cos(innerAngle) * innerRadius,
@@ -110,14 +108,14 @@ class SpikeTrapAbility extends Ability {
         label: 'spike-trap',
         ownerId: ownerId,
         render: {
-          fillStyle: '#888888',
-          strokeStyle: '#fa6e6eff',
-          lineWidth: 2
+          fillStyle: '#B764FF',
+          strokeStyle: '#fc4848ff',
+          lineWidth: 3
         },
         friction: 0,
         frictionAir: 0.01,
-        restitution: 0.9,
-        density: 0.005,
+        restitution: 0.1,
+        density: 0.6,
       },
       true
     );
@@ -131,7 +129,6 @@ class SpikeTrapAbility extends Ability {
       return false;
     }
 
-    // Don't damage ghost mode cars or god mode cars
     if (car.isGhost || car.godMode) {
       return false;
     }

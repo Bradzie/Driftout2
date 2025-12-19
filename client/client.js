@@ -523,16 +523,18 @@
     }
   }
 
-  function updateRoomNameDisplay(roomName) {
+  function updateRoomNameDisplay(roomName, mapName) {
     const roomNameDisplay = document.getElementById('roomNameDisplay');
     const roomNameText = document.getElementById('roomNameText');
+    const roomMapText = document.getElementById('roomMapText');
     
-    if (!roomNameDisplay || !roomNameText) {
+    if (!roomNameDisplay || !roomNameText || !roomMapText) {
       return;
     }
     
-    if (roomName && isSpectating) {
+    if (roomName && mapName && isSpectating) {
       roomNameText.textContent = roomName;
+      roomMapText.textContent = mapName;
       show(roomNameDisplay);
     } else {
       hide(roomNameDisplay);
@@ -995,7 +997,7 @@
       <div class="mini-leaderboard-entry">
         <div class="mini-leaderboard-player">
           <div class="mini-leaderboard-color" style="background-color: ${player.color}"></div>
-          <div class="mini-leaderboard-name">${player.name || 'Unnamed'}</div>
+          <div class="mini-leaderboard-name">${player.name || 'Nameless'}</div>
         </div>
         <div class="mini-leaderboard-laps">${player.laps}</div>
       </div>
@@ -1039,7 +1041,7 @@
     }
     
     if (allEntries.length === 0) {
-      leaderboardTableBody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: rgba(255,255,255,0.5);">No one in room</td></tr>';
+      leaderboardTableBody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: rgba(255,255,255,0.5);">Room is empty? ):</td></tr>';
       return;
     }
 
@@ -1047,18 +1049,12 @@
       if (entry.type === 'player') {
         const player = entry.player;
         const rank = entry.rank;
-        const kdr = player.kdr;
+
+        const kdr = player.deaths === 0 ? (player.kills > 0 ? 999 : 0) : player.kills / player.deaths;
         let kdrText = '--';
-        let kdrClass = '';
-        
-        if (player.deaths === 0 && player.kills > 0) {
-          kdrText = '∞';
-          kdrClass = 'stat-kdr-perfect';
-        } else if (player.deaths === 0) {
-          kdrText = '0.00';
-        } else {
+
+        if (player.deaths !== 0 && player.kills > 0) {
           kdrText = kdr.toFixed(2);
-          if (kdr >= 2.0) kdrClass = 'stat-kdr-high';
         }
 
         const bestLapText = player.bestLapTime ? formatTime(player.bestLapTime) : '--';
@@ -1071,29 +1067,43 @@
             <td class="${rankClass}">#${rank}</td>
             <td>
               <div class="leaderboard-player-cell">
-                <div class="leaderboard-player-color" style="background-color: ${player.color}"></div>
-                <div class="leaderboard-player-name">${player.name || 'Unnamed'}</div>
+                <div class="leaderboard-player-color" style="background-color: rgb(${player.color.fill[0]}, ${player.color.fill[1]}, ${player.color.fill[2]}); border: 3px solid rgb(${player.color.stroke[0]}, ${player.color.stroke[1]}, ${player.color.stroke[2]})"></div>
+                <div class="leaderboard-player-name">${player.level ? player.level + ' ' : ''}${player.name || 'Nameless'}</div>
               </div>
             </td>
-            <td>${player.laps}/${player.maxLaps || 3}</td>
+            <td class="stat-laps">${player.laps || 0}</td>
             <td class="stat-kills">${player.kills || 0}</td>
             <td class="stat-deaths">${player.deaths || 0}</td>
-            <td class="${kdrClass}">${kdrText}</td>
+            <td class="stat-kdr">${kdrText}</td>
             <td class="stat-best-lap">${bestLapText}</td>
           </tr>
         `;
       } else if (entry.type === 'spectator') {
         const member = entry.member;
+
+        const kdr = member.deaths === 0 ? (member.kills > 0 ? 999 : 0) : member.kills / member.deaths;
+        let kdrText = '--';
+
+        if (member.deaths !== 0 && member.kills > 0) {
+          kdrText = kdr.toFixed(2);
+        }
+
+        const bestLapText = member.bestLapTime ? formatTime(member.bestLapTime) : '--';
+
         return `
           <tr class="spectator-row">
             <td>--</td>
             <td>
               <div class="leaderboard-player-cell">
                 <div class="leaderboard-player-color spectator-indicator"></div>
-                <div class="leaderboard-player-name spectator-name">${member.name}</div>
+                <div class="leaderboard-player-name spectator-name">${member.level ? member.level + ' ' : ''}${member.name || 'Nameless'}</div>
               </div>
             </td>
-            <td colspan="5" class="spectator-status">Spectating</td>
+            <td class="spectator-status">In lobby...</td>
+            <td class="stat-kills">${member.kills || 0}</td>
+            <td class="stat-deaths">${member.deaths || 0}</td>
+            <td class="stat-kdr">${kdrText}</td>
+            <td class="stat-best-lap">${bestLapText}</td>
           </tr>
         `;
       }
@@ -1267,44 +1277,91 @@
     hide(createRoomModal);
   }
   
+  let allMapsData = [];
+
   function openMapBrowserForRoom() {
     const modal = document.getElementById('browseMapModal');
     show(modal);
-    
+
     // load maps
     fetch('/api/maps')
       .then(res => res.json())
       .then(maps => {
+        allMapsData = maps;
+        setupMapFilters();
         displayMapsForRoomCreation(maps);
       })
       .catch(error => {
         console.error('Error loading maps:', error);
-        document.getElementById('mapsGrid').innerHTML = '<p>Error loading maps</p>';
+        document.getElementById('mapsGrid').innerHTML = '<p class="no-maps-message">Error loading maps</p>';
       });
   }
-  
-  // TODO: would be nice to have a search/filter function here too, as well as rows/columns rather than just 1 big column
+
+  function setupMapFilters() {
+    const searchInput = document.getElementById('mapSearchInput');
+    const officialToggle = document.getElementById('showOfficialToggle');
+    const communityToggle = document.getElementById('showCommunityToggle');
+    const newSearchInput = searchInput.cloneNode(true);
+    searchInput.parentNode.replaceChild(newSearchInput, searchInput);
+    const newOfficialToggle = officialToggle.cloneNode(true);
+    officialToggle.parentNode.replaceChild(newOfficialToggle, officialToggle);
+    const newCommunityToggle = communityToggle.cloneNode(true);
+    communityToggle.parentNode.replaceChild(newCommunityToggle, communityToggle);
+
+    newSearchInput.addEventListener('input', filterAndDisplayMaps);
+    newOfficialToggle.addEventListener('change', filterAndDisplayMaps);
+    newCommunityToggle.addEventListener('change', filterAndDisplayMaps);
+  }
+
+  function filterAndDisplayMaps() {
+    const searchTerm = document.getElementById('mapSearchInput').value.toLowerCase();
+    const showOfficial = document.getElementById('showOfficialToggle').checked;
+    const showCommunity = document.getElementById('showCommunityToggle').checked;
+
+    const filteredMaps = allMapsData.filter(map => {
+      const category = map.category || (map.key.includes('official/') ? 'official' : 'community');
+      const categoryMatch = (category === 'official' && showOfficial) || (category === 'community' && showCommunity);
+
+      if (!categoryMatch) return false;
+      if (searchTerm) {
+        const nameMatch = map.name.toLowerCase().includes(searchTerm);
+        const descMatch = (map.description || '').toLowerCase().includes(searchTerm);
+        const authorMatch = (map.author || '').toLowerCase().includes(searchTerm);
+        return nameMatch || descMatch || authorMatch;
+      }
+
+      return true;
+    });
+
+    displayMapsForRoomCreation(filteredMaps);
+  }
+
   function displayMapsForRoomCreation(maps) {
     const grid = document.getElementById('mapsGrid');
-    
+    const countText = document.getElementById('mapCountText');
+    countText.textContent = `${maps.length} map${maps.length !== 1 ? 's' : ''}`;
+
+    if (maps.length === 0) {
+      grid.innerHTML = '<p class="no-maps-message">No maps found matching your filters</p>';
+      return;
+    }
+
     grid.innerHTML = maps.map(map => {
-      const author = map.key.includes('official/') ? 'Official' : 'Community';
-      const category = map.category || author;
-      
-      // Check if preview image exists (use UUID if available, fallback to key) TODO: map.key will probably never work ever, fix later
+      const category = map.category || (map.key.includes('official/') ? 'official' : 'community');
+      const author = map.author || (category === 'official' ? 'Official' : 'Community');
       const previewImageUrl = map.id ? `/previews/${map.id}.png` : `/previews/${map.key.replace(/\//g, '_')}.png`;
-      
+
       return `
         <div class="map-entry" data-map-key="${map.key}">
           <div class="map-preview">
-            <img src="${previewImageUrl}" alt="${map.name} preview" class="preview-image" 
+            <img src="${previewImageUrl}" alt="${map.name} preview" class="preview-image"
                  onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
             <div class="no-preview" style="display: none;">No preview</div>
           </div>
           <div class="map-info">
             <h4 class="map-name">${map.name}</h4>
             <p class="map-author">Author: ${author}</p>
-            <p class="map-category">Category: ${category}</p>
+            <p class="map-category">Category: ${category.charAt(0).toUpperCase() + category.slice(1)}</p>
             <button class="select-map-btn" onclick="selectMapForRoom('${map.key}', '${map.name}')">Select</button>
           </div>
         </div>
@@ -1607,7 +1664,7 @@
     spectatorState = null;
     spectatorCtx.clearRect(0, 0, spectatorCanvas.width, spectatorCanvas.height);
     updateToolbarVisibility();
-    updateRoomNameDisplay(null);
+    updateRoomNameDisplay(null, null);
   }
   
   function resizeSpectatorCanvas() {
@@ -1659,7 +1716,9 @@
       polygon.setAttribute('points', points);
       polygon.setAttribute('fill', `rgb(${shapeColor.fill.join(',')})`);
       polygon.setAttribute('stroke', `rgb(${shapeColor.stroke.join(',')})`);
-      polygon.setAttribute('stroke-width', shapeColor.strokeWidth || 2);
+      polygon.setAttribute('stroke-width', shapeColor.strokeWidth * 1.5 || 4);
+      polygon.setAttribute('stroke-linejoin', 'round');
+      polygon.setAttribute('stroke-linecap', 'round');
       
       carShape.appendChild(polygon);
     });
@@ -1969,7 +2028,7 @@
       currentRoomId = data.roomId;
     }
     
-    updateRoomNameDisplay(data.roomName);
+    updateRoomNameDisplay(data.roomName, data.map.displayName);
 
     if (data.map) {
       // we need a map key to handle the same map in different rooms
@@ -3016,7 +3075,7 @@
             ctx.lineTo(verts[i].x, verts[i].y);
           }
           ctx.closePath();
-          ctx.fill();
+          ctx.fill('evenodd');
           
           // draw map shape border stripes if they exist
           if (Array.isArray(shape.borderColors) && shape.borderColors.length > 0) {
@@ -3123,7 +3182,7 @@
               ctx.lineTo(screenVerts[i].x, screenVerts[i].y);
             }
             ctx.closePath();
-            ctx.fill();
+            ctx.fill('evenodd');
           }
         }
       }
@@ -3178,7 +3237,7 @@
         
         if (fillColor && Array.isArray(fillColor)) {
           ctx.fillStyle = `rgb(${fillColor[0]}, ${fillColor[1]}, ${fillColor[2]})`;
-          ctx.fill();
+          ctx.fill('evenodd');
         }
         
         if (strokeColor && Array.isArray(strokeColor)) {
@@ -3215,7 +3274,7 @@
     });
 
     // ability objects TODO: fix ability objects
-    if (showAbilityObjects) {
+    if (showAbilityObjects) {//
       abilityObjects.forEach((obj) => {
         if (obj.type === 'spike_trap' && obj.vertices && obj.vertices.length) {
           ctx.save();
@@ -3243,11 +3302,12 @@
               }
           });
           ctx.closePath();
-          
+
           ctx.fillStyle = obj.render?.fillStyle || '#888888';
-          ctx.fill();
+          ctx.fill('evenodd');
           ctx.strokeStyle = obj.render?.strokeStyle || '#444444';
           ctx.lineWidth = (obj.render?.lineWidth || 2) * scale;
+          ctx.lineJoin = 'round';
           ctx.stroke();
           
           ctx.restore();
@@ -3283,11 +3343,11 @@
           ctx.closePath();
 
           ctx.fillStyle = obj.render?.fillStyle || '#2c3e50';
-          ctx.fill();
+          ctx.fill('evenodd');
           ctx.strokeStyle = obj.render?.strokeStyle || '#34495e';
           ctx.lineWidth = (obj.render?.lineWidth || 2) * scale;
+          ctx.lineJoin = 'round';
           ctx.stroke();
-          console.log('Finished rendering cannonball, fillStyle:', ctx.fillStyle, 'strokeStyle:', ctx.strokeStyle);
 
           ctx.restore();
         }

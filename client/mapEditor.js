@@ -34,9 +34,11 @@ let creatingCheckpoint = false;
 let checkpointStartPoint = null;
 let isShiftKeyHeld = false;
 let creatingDynamic = false;
-let dynamicStartPoint = null;
+let newDynamicVertices = [];
 let creatingAreaEffect = false;
 let areaEffectVertices = [];
+let placingAxis = false;
+let axisTargetObject = null;
 
 let creatingCircle = false;
 let creatingRectangle = false;
@@ -78,18 +80,18 @@ function initEventListeners() {
   document.getElementById('newMapButton').addEventListener('click', createNewMap);
   document.getElementById('mapEditorBrowseButton').addEventListener('click', showBrowseModal);
   document.getElementById('closeBrowseModal').addEventListener('click', hideBrowseModal);
-  
-  // Browse modal close handlers
+  document.getElementById('editorOptionsButton').addEventListener('click', showEditorOptionsModal);
+  document.getElementById('closeEditorOptionsModal').addEventListener('click', closeEditorOptionsModal);
+
   document.getElementById('browseMapModal').addEventListener('click', (e) => {
     if (e.target.id === 'browseMapModal') {
       hideBrowseModal();
     }
   });
-  
-  // ESC key to close browse modal
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !document.getElementById('browseMapModal').classList.contains('hidden')) {
-      hideBrowseModal();
+
+  document.getElementById('editorOptionsModal').addEventListener('click', (e) => {
+    if (e.target.id === 'editorOptionsModal') {
+      closeEditorOptionsModal();
     }
   });
 
@@ -99,9 +101,33 @@ function initEventListeners() {
     });
   });
 
-  document.querySelectorAll('.preset-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      handlePresetClick(btn.dataset.preset);
+  const shapeToolBtn = document.getElementById('createShapeTool');
+  const shapeHoverMenu = document.getElementById('shapeToolHoverMenu');
+  let hoverMenuTimeout = null;
+
+  shapeToolBtn.addEventListener('mouseenter', () => {
+    clearTimeout(hoverMenuTimeout);
+    showShapeHoverMenu();
+  });
+
+  shapeToolBtn.addEventListener('mouseleave', () => {
+    hoverMenuTimeout = setTimeout(() => {
+      hideShapeHoverMenu();
+    }, 100);
+  });
+
+  shapeHoverMenu.addEventListener('mouseenter', () => {
+    clearTimeout(hoverMenuTimeout);
+  });
+
+  shapeHoverMenu.addEventListener('mouseleave', () => {
+    hideShapeHoverMenu();
+  });
+
+  document.querySelectorAll('.hover-menu-item').forEach(item => {
+    item.addEventListener('click', () => {
+      handlePresetClick(item.dataset.preset);
+      hideShapeHoverMenu();
     });
   });
 
@@ -171,6 +197,10 @@ function selectTool(tool) {
     creatingTriangle = false;
     presetStartPoint = null;
   }
+  if (placingAxis) {
+    placingAxis = false;
+    axisTargetObject = null;
+  }
 
   currentTool = tool;
   selectedObject = null;
@@ -226,6 +256,9 @@ function handleMouseDown(e) {
         break;
       case 'areaEffect':
         handleCreateAreaEffectMouseDown(mousePos);
+        break;
+      case 'axis':
+        handleAxisMouseDown(mousePos);
         break;
       case 'createCircle':
         handleCreateCircleMouseDown(mousePos);
@@ -419,6 +452,10 @@ function handleKeyDown(e) {
         creatingAreaEffect = false;
         areaEffectVertices = [];
         renderEditor();
+      } else if (creatingDynamic) {
+        creatingDynamic = false;
+        newDynamicVertices = [];
+        renderEditor();
       } else if (creatingCircle || creatingRectangle || creatingTriangle) {
         resetCreationStates();
         currentTool = 'select';
@@ -431,6 +468,8 @@ function handleKeyDown(e) {
         finishCreatingShape();
       } else if (creatingAreaEffect && areaEffectVertices.length > 2) {
         finishCreatingAreaEffect();
+      } else if (creatingDynamic && newDynamicVertices.length > 2) {
+        finishCreatingDynamic();
       }
       break;
     case 'g':
@@ -736,57 +775,63 @@ function handleCreateCheckpointMouseDown(mousePos) {
 }
 
 function handleCreateDynamicMouseDown(mousePos) {
+  const snappedPos = snapToGridPos(mousePos);
+
   if (!creatingDynamic) {
-    // Start creating dynamic object - first click
     creatingDynamic = true;
-    dynamicStartPoint = { ...mousePos };
-    updateStatusBar();
-  } else {
-    // Finish creating dynamic object - second click
-    const width = Math.abs(mousePos.x - dynamicStartPoint.x);
-    const height = Math.abs(mousePos.y - dynamicStartPoint.y);
-    const centerX = (dynamicStartPoint.x + mousePos.x) / 2;
-    const centerY = (dynamicStartPoint.y + mousePos.y) / 2;
-    
-    const dynamicObject = {
-      id: generateDynamicId(),
-      vertices: [
-        { x: centerX - width/2, y: centerY - height/2 },
-        { x: centerX + width/2, y: centerY - height/2 },
-        { x: centerX + width/2, y: centerY + height/2 },
-        { x: centerX - width/2, y: centerY + height/2 }
-      ],
-      isStatic: false,
-      density: 0.3,
-      friction: 0.3,
-      frictionAir: 0.2,
-      restitution: 0.1,
-      damageScale: 0,
-      fillColor: [139, 69, 19],
-      strokeColor: [101, 67, 33],
-      strokeWidth: 4
-    };
-    
-    saveToHistory();
-    editorMap.dynamicObjects.push(dynamicObject);
-    creatingDynamic = false;
-    dynamicStartPoint = null;
-    updateUI();
-    renderEditor();
+    newDynamicVertices = [];
   }
+
+  newDynamicVertices.push({ x: snappedPos.x, y: snappedPos.y });
+  updateStatusBar();
+  renderEditor();
 }
 
 function handleCreateAreaEffectMouseDown(mousePos) {
   const snappedPos = snapToGridPos(mousePos);
-  
+
   if (!creatingAreaEffect) {
     creatingAreaEffect = true;
     areaEffectVertices = [];
   }
-  
+
   areaEffectVertices.push({ x: snappedPos.x, y: snappedPos.y });
   updateStatusBar();
   renderEditor();
+}
+
+function handleAxisMouseDown(mousePos) {
+  // Find dynamic object at click position
+  const clickedObject = findObjectAtPosition(mousePos);
+
+  if (!clickedObject || clickedObject.type !== 'dynamicObject') {
+    console.warn('Axis tool: Click on a dynamic object to set its pivot point');
+    updateStatusBar('Click on a dynamic object to set its pivot point');
+    return;
+  }
+
+  const dynObj = editorMap.dynamicObjects[clickedObject.index];
+  if (!dynObj) return;
+
+  saveToHistory();
+
+  // Set axis at clicked position (world coordinates)
+  dynObj.axis = {
+    x: mousePos.x,
+    y: mousePos.y,
+    damping: 0.1,
+    stiffness: 1,
+    motorSpeed: 0
+  };
+
+  // Select the object to show properties
+  selectedObjects = [clickedObject];
+  selectedObject = clickedObject;
+
+  updatePropertiesPanel();
+  renderEditor();
+
+  console.log(`Axis set for ${dynObj.id} at (${mousePos.x.toFixed(1)}, ${mousePos.y.toFixed(1)})`);
 }
 
 function resetCreationStates() {
@@ -795,7 +840,7 @@ function resetCreationStates() {
   creatingCheckpoint = false;
   checkpointStartPoint = null;
   creatingDynamic = false;
-  dynamicStartPoint = null;
+  newDynamicVertices = [];
   creatingAreaEffect = false;
   areaEffectVertices = [];
   creatingCircle = false;
@@ -1235,6 +1280,8 @@ function getObjectData(obj) {
       return editorMap.areaEffects?.[obj.index];
     case 'dynamicObject':
       return editorMap.dynamicObjects?.[obj.index];
+    case 'startArea':
+      return editorMap.start;
     default:
       return null;
   }
@@ -1426,6 +1473,23 @@ function findVertexAtPosition(pos, tolerance = 10) {
     }
   }
 
+  // Check start area vertices
+  if (editorMap.start && editorMap.start.vertices) {
+    for (let j = 0; j < editorMap.start.vertices.length; j++) {
+      const vertex = editorMap.start.vertices[j];
+      const distance = Math.sqrt(
+        Math.pow(pos.x - vertex.x, 2) + Math.pow(pos.y - vertex.y, 2)
+      );
+      if (distance <= scaledTolerance) {
+        return {
+          object: { type: 'startArea', index: 0, data: editorMap.start },
+          vertex: vertex,
+          vertexIndex: j
+        };
+      }
+    }
+  }
+
   return null;
 }
 
@@ -1438,11 +1502,32 @@ function findEdgeAtPosition(pos, tolerance = 10) {
       for (let j = 0; j < shape.vertices.length; j++) {
         const vertex1 = shape.vertices[j];
         const vertex2 = shape.vertices[(j + 1) % shape.vertices.length];
-        
+
         const distanceToEdge = distancePointToLineSegment(pos, vertex1, vertex2);
         if (distanceToEdge <= scaledTolerance) {
           return {
             object: { type: 'shape', index: i, data: shape },
+            edgeIndex: j,
+            insertPosition: pos
+          };
+        }
+      }
+    }
+  }
+
+  if (editorMap.dynamicObjects) {
+    for (let i = 0; i < editorMap.dynamicObjects.length; i++) {
+      const dynObj = editorMap.dynamicObjects[i];
+      if (!dynObj.vertices) continue;
+
+      for (let j = 0; j < dynObj.vertices.length; j++) {
+        const vertex1 = dynObj.vertices[j];
+        const vertex2 = dynObj.vertices[(j + 1) % dynObj.vertices.length];
+
+        const distanceToEdge = distancePointToLineSegment(pos, vertex1, vertex2);
+        if (distanceToEdge <= scaledTolerance) {
+          return {
+            object: { type: 'dynamicObject', index: i, data: dynObj },
             edgeIndex: j,
             insertPosition: pos
           };
@@ -1536,10 +1621,25 @@ function hideContextMenu() {
   contextMenu.classList.add('hidden');
   contextMenuVisible = false;
   contextMenuTarget = null;
-  
+
   // Reset menu items visibility
   document.getElementById('addVertexOption').style.display = 'block';
   document.getElementById('removeVertexOption').style.display = 'block';
+}
+
+function showShapeHoverMenu() {
+  const shapeToolBtn = document.getElementById('createShapeTool');
+  const shapeHoverMenu = document.getElementById('shapeToolHoverMenu');
+  const rect = shapeToolBtn.getBoundingClientRect();
+
+  shapeHoverMenu.style.left = (rect.right + 5) + 'px';
+  shapeHoverMenu.style.top = rect.top + 'px';
+  shapeHoverMenu.classList.remove('hidden');
+}
+
+function hideShapeHoverMenu() {
+  const shapeHoverMenu = document.getElementById('shapeToolHoverMenu');
+  shapeHoverMenu.classList.add('hidden');
 }
 
 function handleAddVertex() {
@@ -1594,6 +1694,13 @@ function handleRemoveVertex() {
 
 function findObjectAtPosition(pos) {
   const tolerance = 10 / zoom; // Adjust tolerance based on zoom level
+
+  // Check start area first (highest priority)
+  if (editorMap.start && editorMap.start.vertices) {
+    if (isPointInPolygon(pos, editorMap.start.vertices)) {
+      return { type: 'startArea', index: 0, data: editorMap.start };
+    }
+  }
 
   if (editorMap.dynamicObjects) {
     for (let i = editorMap.dynamicObjects.length - 1; i >= 0; i--) {
@@ -1759,6 +1866,34 @@ function finishCreatingAreaEffect() {
   renderEditor();
 }
 
+function finishCreatingDynamic() {
+  if (newDynamicVertices.length > 2) {
+    if (!editorMap.dynamicObjects) {
+      editorMap.dynamicObjects = [];
+    }
+    saveToHistory();
+    editorMap.dynamicObjects.push({
+      id: generateDynamicId(),
+      vertices: newDynamicVertices,
+      isStatic: false,
+      density: 0.3,
+      friction: 0.3,
+      frictionAir: 0.2,
+      restitution: 0.1,
+      damageScale: 0,
+      fillColor: [139, 69, 19],
+      strokeColor: [101, 67, 33],
+      strokeWidth: 4
+    });
+  }
+
+  creatingDynamic = false;
+  newDynamicVertices = [];
+  selectTool('select');
+  updateStatusBar();
+  renderEditor();
+}
+
 function deleteSelectedObject() {
   if (selectedObjects.length === 0) return;
   deleteSelectedObjects();
@@ -1767,11 +1902,24 @@ function deleteSelectedObject() {
 function deleteSelectedObjects() {
   if (selectedObjects.length === 0) return;
 
+  // Filter out start area (cannot be deleted)
+  const hasStartArea = selectedObjects.some(obj => obj.type === 'startArea');
+  if (hasStartArea) {
+    console.warn('Start area cannot be deleted');
+    // Remove startArea from selection but keep other objects
+    selectedObjects = selectedObjects.filter(obj => obj.type !== 'startArea');
+    if (selectedObjects.length === 0) {
+      updatePropertiesPanel();
+      renderEditor();
+      return;
+    }
+  }
+
   saveToHistory();
-  
+
   // Sort by index in reverse order to avoid index shifting issues
   const sortedObjects = selectedObjects.slice().sort((a, b) => b.index - a.index);
-  
+
   sortedObjects.forEach(obj => {
     switch (obj.type) {
       case 'shape':
@@ -1786,6 +1934,9 @@ function deleteSelectedObjects() {
       case 'dynamicObject':
         editorMap.dynamicObjects.splice(obj.index, 1);
         break;
+      case 'startArea':
+        // Should never reach here due to filter above
+        break;
     }
   });
 
@@ -1796,6 +1947,17 @@ function deleteSelectedObjects() {
   updateLayersPanel();
   renderEditor();
 }
+
+function removeAxis(index) {
+  if (!editorMap.dynamicObjects[index]) return;
+  saveToHistory();
+  delete editorMap.dynamicObjects[index].axis;
+  updatePropertiesPanel();
+  renderEditor();
+}
+
+// Make removeAxis globally accessible for onclick handler
+window.removeAxis = removeAxis;
 
 function renderEditor() {
   if (!editorCanvas || !editorCtx) return;
@@ -1848,7 +2010,9 @@ function renderEditor() {
   }
 
   if (editorMap.start && Array.isArray(editorMap.start.vertices)) {
-    drawStartArea(editorMap.start);
+    const isStartSelected = selectedObjects.some(obj => obj.type === 'startArea');
+    const isStartHovered = hoveredObject && hoveredObject.type === 'startArea';
+    drawStartArea(editorMap.start, isStartSelected, isStartHovered);
   }
 
   // Draw new shape being created
@@ -1862,8 +2026,8 @@ function renderEditor() {
   }
   
   // Draw dynamic object being created
-  if (creatingDynamic && dynamicStartPoint) {
-    drawDynamicPreview();
+  if (creatingDynamic && newDynamicVertices.length > 0) {
+    drawNewDynamic();
   }
   
   // Draw area effect being created
@@ -1926,7 +2090,7 @@ function drawShape(shape, isSelected, isHovered = false) {
   } else {
     editorCtx.fillStyle = '#555';
   }
-  editorCtx.fill();
+  editorCtx.fill('evenodd');
 
   // Draw border with alternating colors if available
   if (Array.isArray(shape.borderColors) && shape.borderColors.length > 0 && shape.borderWidth > 0) {
@@ -2171,24 +2335,71 @@ function drawDynamicObject(obj, isSelected, isHovered = false) {
     editorCtx.strokeStyle = '#ffff00';
     editorCtx.lineWidth = 3 / zoom;
     editorCtx.stroke();
-    
+
     // Draw vertices for manipulation
     drawVertices(obj.vertices);
+
+    // Draw axis point if it exists
+    if (obj.axis) {
+      editorCtx.save();
+
+      // Draw circle at axis point
+      editorCtx.fillStyle = '#ff0000';
+      editorCtx.strokeStyle = '#ffffff';
+      editorCtx.lineWidth = 2 / zoom;
+
+      editorCtx.beginPath();
+      editorCtx.arc(obj.axis.x, -obj.axis.y, 6 / zoom, 0, 2 * Math.PI);
+      editorCtx.fill();
+      editorCtx.stroke();
+
+      // Draw crosshair at axis point
+      const size = 12 / zoom;
+      editorCtx.beginPath();
+      editorCtx.moveTo(obj.axis.x - size, -obj.axis.y);
+      editorCtx.lineTo(obj.axis.x + size, -obj.axis.y);
+      editorCtx.moveTo(obj.axis.x, -(obj.axis.y - size));
+      editorCtx.lineTo(obj.axis.x, -(obj.axis.y + size));
+      editorCtx.lineWidth = 2 / zoom;
+      editorCtx.strokeStyle = '#ff0000';
+      editorCtx.stroke();
+
+      editorCtx.restore();
+    }
   }
 }
 
-function drawStartArea(start) {
+function drawStartArea(start, isSelected = false, isHovered = false) {
   if (!Array.isArray(start.vertices)) return;
 
-  editorCtx.strokeStyle = '#00ff00';
-  editorCtx.lineWidth = 2 / zoom;
   editorCtx.beginPath();
   editorCtx.moveTo(start.vertices[0].x, -start.vertices[0].y);
   for (let i = 1; i < start.vertices.length; i++) {
     editorCtx.lineTo(start.vertices[i].x, -start.vertices[i].y);
   }
   editorCtx.closePath();
+
+  // Base green color
+  editorCtx.strokeStyle = '#00ff00';
+  editorCtx.lineWidth = 2 / zoom;
   editorCtx.stroke();
+
+  // Hover highlight
+  if (isHovered && !isSelected) {
+    editorCtx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+    editorCtx.lineWidth = 4 / zoom;
+    editorCtx.stroke();
+  }
+
+  // Selection highlight
+  if (isSelected) {
+    editorCtx.strokeStyle = '#ffff00';
+    editorCtx.lineWidth = 3 / zoom;
+    editorCtx.stroke();
+
+    // Draw vertex handles
+    drawVertices(start.vertices);
+  }
 }
 
 function drawNewShape() {
@@ -2358,55 +2569,48 @@ function drawCheckpointPreview() {
   editorCtx.fill();
 }
 
-function drawDynamicPreview() {
-  const mousePos = getMouseCanvasPos();
-  if (!mousePos) return;
-  
-  const width = Math.abs(mousePos.x - dynamicStartPoint.x);
-  const height = Math.abs(mousePos.y - dynamicStartPoint.y);
-  const centerX = (dynamicStartPoint.x + mousePos.x) / 2;
-  const centerY = (dynamicStartPoint.y + mousePos.y) / 2;
-  
-  editorCtx.fillStyle = 'rgba(139, 69, 19, 0.5)';
-  editorCtx.beginPath();
-  editorCtx.rect(centerX - width/2, -(centerY - height/2), width, -height);
-  editorCtx.fill();
-  
+function drawNewDynamic() {
+  if (newDynamicVertices.length === 0) return;
+
+  // Draw filled preview if we have 3 or more vertices
+  if (newDynamicVertices.length >= 3) {
+    editorCtx.fillStyle = 'rgba(139, 69, 19, 0.4)';
+    editorCtx.beginPath();
+    editorCtx.moveTo(newDynamicVertices[0].x, -newDynamicVertices[0].y);
+    for (let i = 1; i < newDynamicVertices.length; i++) {
+      editorCtx.lineTo(newDynamicVertices[i].x, -newDynamicVertices[i].y);
+    }
+    editorCtx.closePath();
+    editorCtx.fill('evenodd');
+  }
+
   editorCtx.strokeStyle = '#8b4513';
   editorCtx.lineWidth = 2 / zoom;
-  editorCtx.setLineDash([5 / zoom, 5 / zoom]);
+  editorCtx.setLineDash([3 / zoom, 3 / zoom]);
+
+  editorCtx.beginPath();
+  editorCtx.moveTo(newDynamicVertices[0].x, -newDynamicVertices[0].y);
+  for (let i = 1; i < newDynamicVertices.length; i++) {
+    editorCtx.lineTo(newDynamicVertices[i].x, -newDynamicVertices[i].y);
+  }
+
+  // Draw preview line to close the shape if we have enough vertices
+  if (newDynamicVertices.length >= 2) {
+    const mousePos = getMouseCanvasPos();
+    if (mousePos) {
+      editorCtx.lineTo(mousePos.x, -mousePos.y);
+      // Show closing line to first vertex
+      if (newDynamicVertices.length >= 3) {
+        editorCtx.lineTo(newDynamicVertices[0].x, -newDynamicVertices[0].y);
+      }
+    }
+  }
+
   editorCtx.stroke();
   editorCtx.setLineDash([]);
-  
-  editorCtx.fillStyle = '#8b4513';
-  editorCtx.font = `${12 / zoom}px Arial`;
-  editorCtx.textAlign = 'center';
-  const dimensionsText = `${width.toFixed(0)} × ${height.toFixed(0)}`;
-  editorCtx.fillText(dimensionsText, centerX, -(centerY - 8 / zoom));
-  
-  editorCtx.fillStyle = '#8b4513';
-  const cornerSize = 6 / zoom;
-  
-  // Draw all four corners
-  const corners = [
-    [centerX - width/2, centerY - height/2],
-    [centerX + width/2, centerY - height/2],
-    [centerX + width/2, centerY + height/2],
-    [centerX - width/2, centerY + height/2]
-  ];
-  
-  corners.forEach(([x, y]) => {
-    editorCtx.fillRect(x - cornerSize/2, -y - cornerSize/2, cornerSize, cornerSize);
-  });
-  
-  editorCtx.strokeStyle = '#8b4513';
-  editorCtx.lineWidth = 1 / zoom;
-  editorCtx.beginPath();
-  editorCtx.moveTo(centerX - 8 / zoom, -centerY);
-  editorCtx.lineTo(centerX + 8 / zoom, -centerY);
-  editorCtx.moveTo(centerX, -(centerY - 8 / zoom));
-  editorCtx.lineTo(centerX, -(centerY + 8 / zoom));
-  editorCtx.stroke();
+
+  // Draw vertices being created
+  drawVertices(newDynamicVertices, '#8b4513');
 }
 
 // Preset preview drawing functions
@@ -2534,7 +2738,7 @@ function drawNewAreaEffect() {
       editorCtx.lineTo(areaEffectVertices[i].x, -areaEffectVertices[i].y);
     }
     editorCtx.closePath();
-    editorCtx.fill();
+    editorCtx.fill('evenodd');
     editorCtx.stroke();
   } else {
     editorCtx.beginPath();
@@ -2757,7 +2961,20 @@ function buildDynamicObjectProperties(obj, index) {
   html += createColorInput('Stroke Color', obj.strokeColor, `dynamic_strokeColor_${index}`);
   html += createNumberInput('Stroke Width', obj.strokeWidth, `dynamic_strokeWidth_${index}`, 0, 20, 1);
   html += '</div>';
-  
+
+  html += '<div class="property-group"><h5>Axis/Pivot Point</h5>';
+  if (obj.axis) {
+    html += `<p class="property-info" style="color: #aaa; font-size: 0.9em; margin: 5px 0;">Pivot at (${obj.axis.x.toFixed(1)}, ${obj.axis.y.toFixed(1)})</p>`;
+    html += createSliderInput('Damping', obj.axis.damping || 0.1, `dynamic_axisDamping_${index}`, 0, 1, 0.01);
+    html += createSliderInput('Stiffness', obj.axis.stiffness || 1, `dynamic_axisStiffness_${index}`, 0, 1, 0.01);
+    html += createSliderInput('Motor Speed', obj.axis.motorSpeed || 0, `dynamic_axisMotorSpeed_${index}`, -100, 100, 1);
+    html += '<p class="property-info" style="color: #888; font-size: 0.85em; margin: 2px 0 8px 0; font-style: italic;">Negative = counter-clockwise, Positive = clockwise, 0 = off</p>';
+    html += `<button onclick="removeAxis(${index})" class="delete-btn" style="background: #c44; color: #fff; border: none; padding: 6px 12px; margin-top: 8px; border-radius: 4px; cursor: pointer;">Remove Axis</button>`;
+  } else {
+    html += '<p class="property-info" style="color: #aaa; font-size: 0.9em; margin: 5px 0;">No pivot point set. Use Axis tool to add.</p>';
+  }
+  html += '</div>';
+
   return html;
 }
 
@@ -2976,17 +3193,32 @@ function handleSliderChange(event) {
   const objectType = idParts[0];
   const property = idParts[1];
   const index = parseInt(idParts[2]);
-  
+
   const objectData = getSelectedObjectData();
   if (!objectData) return;
-  
-  objectData[property] = value;
-  
+
+  if (property === 'axisDamping' || property === 'axisStiffness' || property === 'axisMotorSpeed') {
+    if (!objectData.axis) {
+      objectData.axis = {};
+    }
+    let axisProp;
+    if (property === 'axisDamping') {
+      axisProp = 'damping';
+    } else if (property === 'axisStiffness') {
+      axisProp = 'stiffness';
+    } else if (property === 'axisMotorSpeed') {
+      axisProp = 'motorSpeed';
+    }
+    objectData.axis[axisProp] = value;
+  } else {
+    objectData[property] = value;
+  }
+
   const valueDisplay = document.getElementById(`${input.id}_value`);
   if (valueDisplay) {
     valueDisplay.textContent = value.toFixed(2);
   }
-  
+
   updateMapAndRender();
 }
 
@@ -3391,7 +3623,7 @@ function renderPreview(previewCtx, previewCanvas, bounds) {
     }
 
     if (editorMap.start && Array.isArray(editorMap.start.vertices)) {
-      drawStartArea(editorMap.start);
+      drawStartArea(editorMap.start, false, false);
     }
   } finally {
     editorCtx = originalCtx;
@@ -3537,6 +3769,16 @@ function hideBrowseModal() {
   document.getElementById('browseMapModal').classList.add('hidden');
 }
 
+function showEditorOptionsModal() {
+  const modal = document.getElementById('editorOptionsModal');
+  modal.classList.remove('hidden');
+}
+
+function closeEditorOptionsModal() {
+  const modal = document.getElementById('editorOptionsModal');
+  modal.classList.add('hidden');
+}
+
 function displayMapsInBrowser(maps) {
   const grid = document.getElementById('mapsGrid');
   
@@ -3591,19 +3833,21 @@ function updateStatusBar() {
     'select': 'Select Tool',
     'createShape': 'Create Shape',
     'checkpoint': 'Create Checkpoint',
-    'dynamic': 'Create Dynamic Object', 
+    'dynamic': 'Create Dynamic Object',
     'areaEffect': 'Create Area Effect',
+    'axis': 'Add Pivot Point',
     'createCircle': 'Create Circle',
     'createRectangle': 'Create Rectangle',
     'createTriangle': 'Create Triangle'
   };
-  
+
   const toolHints = {
     'select': 'Click to select objects, drag to move them. Ctrl+click for multi-select. Arrow keys to nudge.',
     'createShape': 'Click to add vertices, press Enter to complete the shape, Escape to cancel.',
     'checkpoint': 'Click two points to create a checkpoint line. Hold Shift to snap angles to 15 degree increments.',
-    'dynamic': 'Click and drag to create a dynamic object rectangle.',
+    'dynamic': 'Click to add vertices, press Enter to complete the dynamic object, Escape to cancel.',
     'areaEffect': 'Click to add vertices, press Enter to complete the area effect, Escape to cancel.',
+    'axis': 'Click on a dynamic object to set its pivot point. Adjust damping and stiffness in properties panel.',
     'createCircle': 'Click to set center, then click again to set radius.',
     'createRectangle': 'Click first corner, then click opposite corner.',
     'createTriangle': 'Click to set center, then click again to set size.'
@@ -3616,10 +3860,10 @@ function updateStatusBar() {
     hintElement.textContent = 'Press Enter to complete the shape, or Escape to cancel.';
   } else if (creatingAreaEffect && areaEffectVertices.length > 2) {
     hintElement.textContent = 'Press Enter to complete the area effect, or Escape to cancel.';
+  } else if (creatingDynamic && newDynamicVertices.length > 2) {
+    hintElement.textContent = 'Press Enter to complete the dynamic object, or Escape to cancel.';
   } else if (creatingCheckpoint && checkpointStartPoint) {
     hintElement.textContent = 'Click the second point to complete the checkpoint. Hold Shift to snap angle.';
-  } else if (creatingDynamic && dynamicStartPoint) {
-    hintElement.textContent = 'Click to set the size of the dynamic object.';
   } else if (creatingCircle && presetStartPoint) {
     hintElement.textContent = 'Click to set the radius of the circle.';
   } else if (creatingRectangle && presetStartPoint) {

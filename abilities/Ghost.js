@@ -79,8 +79,6 @@ class GhostModeAbility extends Ability {
     car.isGhost = false;
     car.ghostStartTime = undefined;
     car.ghostExpiresAt = undefined;
-
-    console.log(`Car ${car.id} exited ghost mode`);
   }
 
 

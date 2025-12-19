@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const formidable = require('formidable');
 const { Server } = require('socket.io');
 const Matter = require('matter-js');
@@ -21,13 +22,20 @@ const io = new Server(server, {
   maxHttpBufferSize: 1e6,
 });
 
-const DEBUG_MODE = false;
+const DEBUG_MODE = true;
 
 const userDb = new UserDatabase();
 
-// Session management for preventing multiple logins
+function isValidFilename(filename) {
+  if (!filename || typeof filename !== 'string') return false;
+  if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) return false;
+  if (path.isAbsolute(filename)) return false;
+  return true;
+}
+
 const activeUserSessions = new Map();
 const activeGuestSessions = new Map();
+const sessionRegistrationLocks = new Set();
 
 // Configuration for duplicate login handling
 const DUPLICATE_LOGIN_POLICY = {
@@ -38,14 +46,47 @@ const DUPLICATE_LOGIN_POLICY = {
 // Current policy - can be changed as needed
 const currentDuplicateLoginPolicy = DUPLICATE_LOGIN_POLICY.KICK_EXISTING;
 
+// XP and Level calculation (matches client-side logic)
+const BASE_XP_LEVEL_1 = 10;
+const XP_SCALE_PER_LEVEL = 1.2;
+
+function getXPRequiredForLevel(level) {
+  // level 1 requires 10 XP, each subsequent level requires 20% more XP
+  return Math.round(BASE_XP_LEVEL_1 * Math.pow(XP_SCALE_PER_LEVEL, level - 1));
+}
+
+function calculateLevel(totalXP) {
+  if (totalXP < 10) return 1;
+
+  let level = 1;
+  let xpForCurrentLevel = 0;
+
+  while (true) {
+    const xpRequiredForNextLevel = getXPRequiredForLevel(level);
+    if (xpForCurrentLevel + xpRequiredForNextLevel > totalXP) {
+      break;
+    }
+    xpForCurrentLevel += xpRequiredForNextLevel;
+    level++;
+  }
+
+  return level;
+}
+
+if (!process.env.SESSION_SECRET) {
+  const randomSecret = crypto.randomBytes(32).toString('hex');
+  console.warn('WARNING: No SESSION_SECRET environment variable set. Using random secret. Sessions will not persist across restarts.');
+  process.env.SESSION_SECRET = randomSecret;
+}
+
 const sessionMiddleware = session({
-  secret: process.env.SESSION_SECRET || 'driftout-secret-key-change-in-production',
+  secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   cookie: {
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    maxAge: 24 * 60 * 60 * 1000
   }
 });
 
@@ -120,7 +161,7 @@ app.post('/api/maps', requireAuth, async (req, res) => {
       if (!['official', 'community'].includes(targetDirectory)) {
         return sendError(res, 400, 'Invalid directory in key.');
       }
-      
+
     } else {
       // Creating a new map
       targetDirectory = directory || 'community';
@@ -133,6 +174,10 @@ app.post('/api/maps', requireAuth, async (req, res) => {
         return sendError(res, 400, 'Map data must include a UUID (id field)');
       }
       filename = mapData.id;
+    }
+
+    if (!isValidFilename(filename)) {
+      return sendError(res, 400, 'Invalid filename: path traversal not allowed');
     }
     
     const enhancedMapData = {
@@ -179,6 +224,10 @@ app.put('/api/maps/:key', requireAuth, async (req, res) => {
   try {
     const { key } = req.params;
     const { name, mapData } = req.body;
+
+    if (!isValidFilename(key)) {
+      return sendError(res, 400, 'Invalid filename: path traversal not allowed');
+    }
     
     const mapInfo = userDb.getMapByFilename(key);
     if (!mapInfo || mapInfo.author_id !== req.session.userId) {
@@ -216,7 +265,11 @@ app.put('/api/maps/:key', requireAuth, async (req, res) => {
 app.delete('/api/maps/:key', requireAuth, async (req, res) => {
   try {
     const { key } = req.params;
-    
+
+    if (!isValidFilename(key)) {
+      return sendError(res, 400, 'Invalid filename: path traversal not allowed');
+    }
+
     const mapInfo = userDb.getMapByFilename(key);
     if (!mapInfo || mapInfo.author_id !== req.session.userId) {
       return sendError(res, 403, 'You can only delete your own maps');
@@ -336,16 +389,16 @@ app.get('/api/rooms', (req, res) => {
     if (roomMembers.length > 0) {
     }
     
-    const playersList = roomMembers
-      .filter(member => member.name && member.name !== 'Connecting...' && member.name.trim() !== '')
-      .map(member => {
-        // Clean up the name by removing " in lobby..." suffix for display
-        let displayName = member.name;
-        if (displayName.endsWith(' in lobby...')) {
-          displayName = displayName.replace(' in lobby...', '');
-        }
-        return displayName;
-      });
+    // const playersList = roomMembers
+    //   .filter(member => member.name && member.name !== 'Connecting...' && member.name.trim() !== '')
+    //   .map(member => {
+    //     // Clean up the name by removing " in lobby..." suffix for display
+    //     let displayName = member.name;
+    //     if (displayName.endsWith(' in lobby...')) {
+    //       displayName = displayName.replace(' in lobby...', '');
+    //     }
+    //     return displayName;
+    //   });
     
     return {
       id: room.id,
@@ -353,7 +406,6 @@ app.get('/api/rooms', (req, res) => {
       currentMap: room.currentMapKey,
       mapDisplayName: mapDisplayName,
       mapPreviewUrl: mapPreviewUrl,
-      playersList: playersList,
       activePlayerCount: room.activePlayerCount,
       spectatorCount: room.spectatorCount,
       totalOccupancy: room.totalOccupancy,
@@ -760,34 +812,58 @@ function kickExistingSessions(userId, currentSocketId) {
 
 
 
+function applyMotorForces(room) {
+  try {
+    for (const body of room.currentDynamicBodies) {
+      if (body.dynamicObject &&
+          body.dynamicObject.axis &&
+          typeof body.dynamicObject.axis.motorSpeed === 'number') {
+
+        const motorSpeed = body.dynamicObject.axis.motorSpeed;
+        if (motorSpeed === 0) continue;
+
+        const angularVelocity = motorSpeed * 0.1;
+
+        Matter.Body.setAngularVelocity(body, angularVelocity);
+      }
+    }
+  } catch (error) {
+    console.error('Error applying motor forces:', error);
+  }
+}
+
 function applyAreaEffects(room) {
-  const { category: categoryToGet, key: keyToGet } = HELPERS.parseMapKey(room.currentMapKey);
-  const map = mapManager.getMap(keyToGet, categoryToGet);
-  
-  if (!map || !map.areaEffects) return;
+  try {
+    const { category: categoryToGet, key: keyToGet } = room.currentMapParsed;
+    const map = mapManager.getMap(keyToGet, categoryToGet);
 
-  for (const [sid, car] of room.players.entries()) {
-    if (car.crashedAt) continue; // Skip crashed cars
-    
-    const carX = car.body.position.x;
-    const carY = car.body.position.y;
-    
-    if (!car._areaEffectsInit) {
-      initAreaEffectsForCar(car);
+    if (!map || !map.areaEffects) return;
+
+    for (const [sid, car] of room.players.entries()) {
+      if (car.crashedAt) continue;
+
+      const carX = car.body.position.x;
+      const carY = car.body.position.y;
+
+      if (!car._areaEffectsInit) {
+        initAreaEffectsForCar(car);
+      }
+
+      let currentEffects = [];
+
+      for (const areaEffect of map.areaEffects) {
+        if (!areaEffect.vertices || !Array.isArray(areaEffect.vertices)) continue;
+
+        const isInside = HELPERS.pointInPolygon(carX, carY, areaEffect.vertices);
+
+        if (isInside)
+          currentEffects.push(areaEffect);
+      }
+
+      applyCurrentEffects(car, currentEffects);
     }
-
-    let currentEffects = [];
-    
-    for (const areaEffect of map.areaEffects) {
-      if (!areaEffect.vertices || !Array.isArray(areaEffect.vertices)) continue;
-      
-      const isInside = HELPERS.pointInPolygon(carX, carY, areaEffect.vertices);
-      
-      if (isInside)
-        currentEffects.push(areaEffect);
-    }
-
-    applyCurrentEffects(car, currentEffects);
+  } catch (error) {
+    console.error('Error applying area effects:', error);
   }
 }
 
@@ -968,11 +1044,12 @@ function getCollisionNormal(pair, bodyA, bodyB) {
 }
 
 class Car {
-  constructor(id, type, roomId, socketId, name, room = null) {
+  constructor(id, type, roomId, socketId, name, level, room = null) {
     this.id = id;
     this.roomId = roomId;
     this.socketId = socketId;
     this.name = name || '';
+    this.level = level;
     this.type = type;
     this.room = room; // Reference to the room for accessing world and gameState
     this.stats = {
@@ -994,13 +1071,17 @@ class Car {
     this.prevFinishCheck = null; // used for lap crossing on square track
     this.cursor = { x: 0, y: 0 }; // direction and intensity from client
     this.justCrashed = false;
+    this.crashedByPlayer = false;
+    this.killFeedSent = false;
+    this.crashedAt = null;
+    this.damageTagHistory = []; 
     this.godMode = true; // Spawn protection
     this.spawnProtectionEnd = Date.now() + SPAWN_PROTECTION_MS; // 1 second of spawn protection
-    
+
     this.maxBoost = CAR_TYPES[type].boost;
     this.currentBoost = this.maxBoost;
     this.boostActive = false;
-    
+
     const carDef = CAR_TYPES[type];
     this.ability = carDef.ability ? abilityRegistry.create(carDef.ability) : null;
     this.isGhost = false;
@@ -1115,6 +1196,7 @@ class Car {
   }
   update(dt) {
     this.updateSpawnProtection();
+    this.cleanupExpiredTags();
     this.updateAbility(dt);
     this.updatePhysicsAndSteering(dt);
     this.regenerateHealth(dt);
@@ -1127,6 +1209,14 @@ class Car {
       this.godMode = false;
       this.spawnProtectionEnd = null;
     }
+  }
+
+  cleanupExpiredTags() {
+    const now = Date.now();
+    const TAG_WINDOW_MS = 2000;
+    this.damageTagHistory = this.damageTagHistory.filter(
+      tag => now - tag.timestamp <= TAG_WINDOW_MS
+    );
   }
 
   updateAbility(dt) {
@@ -1193,7 +1283,7 @@ class Car {
 
   updateCheckpoints() {
     const pos = this.body.position
-    const roomMapKey = this.room ? this.room.currentMapKey : currentMapKey;
+    const roomMapKey = this.room ? this.room.currentMapKey : 'square';
     const { category: mapCategory, key: mapKey } = HELPERS.parseMapKey(roomMapKey);
     const map = mapManager.getMap(mapKey, mapCategory);
     const checkpoints = map?.checkpoints || []
@@ -1237,7 +1327,7 @@ class Car {
   }
 
   checkLapCompletion() {
-    const roomMapKey = this.room ? this.room.currentMapKey : currentMapKey;
+    const roomMapKey = this.room ? this.room.currentMapKey : 'square';
     const { category: mapCategory, key: mapKey } = HELPERS.parseMapKey(roomMapKey);
     const mapDef = mapManager.getMap(mapKey, mapCategory);
 
@@ -1264,7 +1354,7 @@ class Car {
     }
   }
   resetCar() {
-    const roomMapKey = this.room ? this.room.currentMapKey : currentMapKey;
+    const roomMapKey = this.room ? this.room.currentMapKey : 'square';
     
     const { category: mapCategory, key: mapKey } = HELPERS.parseMapKey(roomMapKey);
     
@@ -1295,6 +1385,8 @@ class Car {
     this.justCrashed = false;
     this.crashedByPlayer = false;
     this.killFeedSent = false;
+    this.crashedAt = null;
+    this.damageTagHistory = []; // Clear damage tags on respawn
     this.godMode = true; // Respawn protection
     this.spawnProtectionEnd = Date.now() + SPAWN_PROTECTION_MS; // 1 second of spawn protection
     Matter.Body.setPosition(this.body, { x: startPos.x, y: startPos.y });
@@ -1363,7 +1455,8 @@ class Car {
       this.room.mapStats.set(this.socketId, {
         kills: this.kills,
         deaths: this.deaths,
-        bestLapTime: this.bestLapTime
+        bestLapTime: this.bestLapTime,
+        level: this.level
       });
     }
   }
@@ -1421,6 +1514,8 @@ class Room {
     this.id = id;
     this.name = `Room ${id.substring(0, 8)}`; // Default name using first 8 chars of UUID
     this.players = new Map(); // socket.id -> Car (active players)
+    this.carIdMap = new Map(); // car.id -> Car (for O(1) lookups)
+    this.carBodyMap = new Map(); // car.body -> Car (for collision detection)
     this.spectators = new Map(); // socket.id -> socket (spectators)
     this.allMembers = new Map(); // socket.id -> {socket, state, joinedAt} (all connected users)
     this.sockets = new Map();
@@ -1441,9 +1536,14 @@ class Room {
     const mapKeys = mapManager.getAllMapKeys();
     this.currentMapIndex = 0;
     this.currentMapKey = mapKey || mapKeys[this.currentMapIndex] || 'square';
+    this.currentMapParsed = HELPERS.parseMapKey(this.currentMapKey);
     this.currentTrackBodies = [];
     this.currentDynamicBodies = [];
-    
+    this.currentConstraints = [];
+
+    this.playerIdMap = new Map();
+    this.nextPlayerId = 1;
+
     this.winMessageSent = false;
     
     // Per-map statistics tracking (preserved until map changes)
@@ -1523,24 +1623,22 @@ class Room {
         const isCannonballB = bodyB.label === 'cannonball'
 
         const findCarFromBody = (body) => {
-          // First try direct match
-          let car = [...this.players.values()].find(c => c.body === body)
+          let car = this.carBodyMap.get(body)
           if (car) {
             return car
           }
-          
+
           if (body.label?.includes('car-') && body.label?.includes('shape-')) {
-            // Extract car ID from shape label (e.g., "car-d0a4f375-7638-49d7-a851-c0b8e8bed711-shape-0")
             const match = body.label.match(/^car-(.+)-shape-\d+$/)
             if (match) {
               const carId = match[1]
-              car = [...this.players.values()].find(c => c.id.toString() === carId)
+              car = this.carIdMap.get(carId)
               if (car) {
                 return car
               }
             }
           }
-          
+
           return null
         }
     
@@ -1564,7 +1662,6 @@ class Room {
           }
         }
 
-        // cannonball collision handling
         if (isCannonballA && carB) {
           const projectile = this.gameState.abilityObjects.find(obj => obj.body === bodyA)
           if (projectile) {
@@ -1627,26 +1724,9 @@ class Room {
     
     const damageA = this.calculateCollisionDamage(carA, carB.body, relativeSpeed, collisionPair);
     const damageB = this.calculateCollisionDamage(carB, carA.body, relativeSpeed, collisionPair);
-    
-    // Determine which car has less remaining health
-    const carAHealthRemaining = carA.currentHealth;
-    const carBHealthRemaining = carB.currentHealth;
-    
-    let finalDamageA = damageA;
-    let finalDamageB = damageB;
-    
-    if (damageB > carBHealthRemaining) {
-      const overflow = damageB - carBHealthRemaining;
-      finalDamageA = Math.min(finalDamageA, overflow);
-    }
-    
-    if (damageA > carAHealthRemaining) {
-      const overflow = damageA - carAHealthRemaining;
-      finalDamageB = Math.min(finalDamageB, overflow);
-    }
-    
-    carA.currentHealth -= finalDamageA;
-    carB.currentHealth -= finalDamageB;
+
+    carA.currentHealth -= damageA;
+    carB.currentHealth -= damageB;
     
     const carACrashed = carA.currentHealth <= 0;
     const carBCrashed = carB.currentHealth <= 0;
@@ -1667,7 +1747,7 @@ class Room {
       carA.deaths += 1; // Track death
       carB.saveStatsToRoom();
       carA.saveStatsToRoom();
-      
+
       // Broadcast kill feed message to this room
       this.broadcastKillFeedMessage(`${carB.name} crashed ${carA.name}!`, 'crash');
     } else if (carBCrashed && !carACrashed) {
@@ -1676,7 +1756,7 @@ class Room {
       carB.deaths += 1; // Track death
       carA.saveStatsToRoom();
       carB.saveStatsToRoom();
-      
+
       // Broadcast kill feed message to this room
       this.broadcastKillFeedMessage(`${carA.name} crashed ${carB.name}!`, 'crash');
     } else if (carACrashed && carBCrashed) {
@@ -1686,6 +1766,11 @@ class Room {
       carA.saveStatsToRoom();
       carB.saveStatsToRoom();
       this.broadcastKillFeedMessage(`${carA.name} and ${carB.name} crashed!`, 'crash');
+    } else {
+      // Both cars survived - add damage tags for potential delayed kill credit
+      const now = Date.now();
+      carA.damageTagHistory.push({ attackerId: carB.id, timestamp: now });
+      carB.damageTagHistory.push({ attackerId: carA.id, timestamp: now });
     }
   }
   
@@ -1768,9 +1853,8 @@ class Room {
   }
   
   setTrackBodies(mapKey) {
-    // Reset per-map statistics when changing maps
     this.mapStats.clear();
-    
+
     for (const body of this.currentTrackBodies) {
       Matter.World.remove(this.world, body)
     }
@@ -1781,8 +1865,23 @@ class Room {
     }
     this.currentDynamicBodies = []
 
-    // Parse category/key format if present
-    const { category: categoryToCheck, key: keyToCheck } = HELPERS.parseMapKey(mapKey);
+    if (this.currentConstraints) {
+      for (const constraint of this.currentConstraints) {
+        Matter.World.remove(this.world, constraint)
+      }
+      this.currentConstraints = []
+    }
+
+    for (const obj of this.gameState.abilityObjects) {
+      if (obj.body) {
+        Matter.World.remove(this.world, obj.body);
+      }
+    }
+    this.gameState.abilityObjects = [];
+    this.gameState.activeEffects = [];
+
+    this.currentMapParsed = HELPERS.parseMapKey(mapKey);
+    const { category: categoryToCheck, key: keyToCheck } = this.currentMapParsed;
 
     const map = mapManager.getMap(keyToCheck, categoryToCheck)
     const thickness = 10
@@ -1838,13 +1937,37 @@ class Room {
         }
         
         const body = Matter.Bodies.fromVertices(centroid.x, centroid.y, [relativeVertices], bodyOptions)
-        
+
         if (typeof dynObj.frictionAir === 'number') {
           body.frictionAir = dynObj.frictionAir;
         }
-        
+
         body.dynamicObject = dynObj
         this.currentDynamicBodies.push(body)
+
+        // Create constraint if axis is defined
+        if (dynObj.axis && typeof dynObj.axis.x === 'number' && typeof dynObj.axis.y === 'number') {
+          // Calculate local point on the body where axis should attach
+          const localX = dynObj.axis.x - centroid.x
+          const localY = dynObj.axis.y - centroid.y
+
+          const constraint = Matter.Constraint.create({
+            pointA: { x: dynObj.axis.x, y: dynObj.axis.y },  // World position (fixed)
+            bodyB: body,                                       // The dynamic object
+            pointB: { x: localX, y: localY },                  // Local point on object
+            length: 0,                                          // Fixed pivot
+            stiffness: dynObj.axis.stiffness || 1,             // Rigidity
+            damping: dynObj.axis.damping || 0.1                // Resistance
+          })
+
+          Matter.World.add(this.world, constraint)
+
+          // Store constraint reference for cleanup
+          if (!this.currentConstraints) {
+            this.currentConstraints = []
+          }
+          this.currentConstraints.push(constraint)
+        }
       }
     }
 
@@ -1882,23 +2005,36 @@ class Room {
   removeMember(socketId) {
     const member = this.allMembers.get(socketId);
     if (!member) return false;
-    
+
     this.spectators.delete(socketId);
     if (this.players.has(socketId)) {
       const car = this.players.get(socketId);
-      if (car) {
+      if (car && car.body) {
+        this.carBodyMap.delete(car.body);
         Matter.World.remove(this.world, car.body);
+        car.body = null;
+      }
+      if (car) {
+        this.carIdMap.delete(car.id);
       }
       this.players.delete(socketId);
     }
-    
+
     this.allMembers.delete(socketId);
-    
+    this.playerIdMap.delete(socketId);
+
     return true;
+  }
+
+  getPlayerNumericId(socketId) {
+    if (!this.playerIdMap.has(socketId)) {
+      this.playerIdMap.set(socketId, this.nextPlayerId++);
+    }
+    return this.playerIdMap.get(socketId);
   }
   
   // Transition user from spectator to player
-  promoteToPlayer(socket, carType, name) {
+  promoteToPlayer(socket, carType, name, level) {
     const member = this.allMembers.get(socket.id);
     if (!member) {
       throw new Error('User not in room');
@@ -1909,11 +2045,15 @@ class Room {
     }
     
     this.spectators.delete(socket.id);
-    
+
     const carId = uuidv4();
-    const car = new Car(carId, carType, this.id, socket.id, name, this);
+    const car = new Car(carId, carType, this.id, socket.id, name, level, this);
     this.players.set(socket.id, car);
-    
+    this.carIdMap.set(carId, car);
+    if (car.body) {
+      this.carBodyMap.set(car.body, car);
+    }
+
     member.state = Room.USER_STATES.PLAYING;
     
     return car;
@@ -1928,12 +2068,17 @@ class Room {
     
     if (this.players.has(socketId)) {
       const car = this.players.get(socketId);
-      if (car) {
+      if (car && car.body) {
+        this.carBodyMap.delete(car.body);
         Matter.World.remove(this.world, car.body);
+        car.body = null;
+      }
+      if (car) {
+        this.carIdMap.delete(car.id);
       }
       this.players.delete(socketId);
     }
-    
+
     this.spectators.set(socketId, member.socket);
     
     member.state = Room.USER_STATES.SPECTATING;
@@ -1994,20 +2139,6 @@ class Room {
       }
     }
   }
-  
-  addPlayer(socket, carType, name) {
-    const carId = uuidv4();
-    const car = new Car(carId, carType, this.id, socket.id, name, this);
-    this.players.set(socket.id, car);
-    return car;
-  }
-  removePlayer(socket) {
-    const car = this.players.get(socket.id);
-    if (car) {
-      Matter.World.remove(this.world, car.body);
-      this.players.delete(socket.id);
-    }
-  }
   get state() {
     const cars = [];
     for (const [sid, car] of this.players.entries()) {
@@ -2026,6 +2157,7 @@ class Room {
         upgradePoints: car.upgradePoints,
         upgradeUsage: car.upgradeUsage,
         name: car.name,
+        level: car.level,
         checkpointsVisited: Array.from(car.checkpointsVisited),
         // Only send vertices and color for single-shape cars (backward compatibility)
         ...((CAR_TYPES[car.type]?.shapes?.length === 1) ? {
@@ -2053,7 +2185,8 @@ class Room {
       car.resetCar();
       car.upgradePoints = 0;
     }
-    // Reset race state flags
+    this.gameState.abilityObjects = [];
+    this.gameState.activeEffects = [];
     this.winMessageSent = false;
   }
   
@@ -2066,14 +2199,11 @@ class Room {
 
       let name = 'Connecting...';
       let isAuthenticated = false;
+      let level = null;
 
       if (session?.username) {
-        name = session.isGuest ? session.username : session.username;
+        name = session.username;
         isAuthenticated = !session.isGuest;
-
-        if (member.state === Room.USER_STATES.SPECTATING) {
-          name = `${session.username} in lobby...`;
-        }
       }
 
       if (member.state === Room.USER_STATES.PLAYING) {
@@ -2081,7 +2211,16 @@ class Room {
         if (car && car.name) {
           name = car.name;
           isAuthenticated = true;
+          level = car.level; // Get level from active car
         }
+      }
+
+      // Get session stats from mapStats (for spectators or if car doesn't have stats yet)
+      const stats = this.mapStats.get(socketId);
+
+      // For spectators, get level from mapStats if available
+      if (member.state !== Room.USER_STATES.PLAYING && stats?.level) {
+        level = stats.level;
       }
 
       members.push({
@@ -2089,7 +2228,12 @@ class Room {
         name: name,
         state: member.state,
         isAuthenticated: isAuthenticated,
-        joinedAt: member.joinedAt
+        joinedAt: member.joinedAt,
+        // Include session stats so spectators can see their kills/deaths/best lap
+        kills: stats?.kills || 0,
+        deaths: stats?.deaths || 0,
+        bestLapTime: stats?.bestLapTime || null,
+        level: level // null for guests, level number for authenticated users
       });
     }
 
@@ -2188,15 +2332,45 @@ initializeRooms();
 
 const spectators = new Map(); // socket.id -> socket
 
-// Delta compression - track last sent state per client
 const clientLastStates = new Map();
+const binaryBufferCache = new Map();
+
+function clonePlayerState(player) {
+  const cloned = {
+    socketId: player.socketId,
+    id: player.id,
+    type: player.type,
+    x: player.x,
+    y: player.y,
+    angle: player.angle,
+    health: player.health,
+    maxHealth: player.maxHealth,
+    laps: player.laps,
+    maxLaps: player.maxLaps,
+    upgradePoints: player.upgradePoints,
+    upgradeUsage: { ...player.upgradeUsage },
+    name: player.name,
+    level: player.level,
+    checkpointsVisited: [...player.checkpointsVisited],
+    abilityCooldownReduction: player.abilityCooldownReduction,
+    crashed: player.crashed
+  };
+  if (player.vertices) {
+    cloned.vertices = player.vertices.map(v => ({ x: v.x, y: v.y }));
+  }
+  if (player.color) {
+    cloned.color = player.color;
+  }
+  return cloned;
+}
 
 function createDeltaState(socketId, currentState) {
   const lastState = clientLastStates.get(socketId);
-  
+
   if (!lastState) {
-    // First time - send full state
-    clientLastStates.set(socketId, JSON.parse(JSON.stringify(currentState)));
+    clientLastStates.set(socketId, {
+      players: currentState.players.map(clonePlayerState)
+    });
     return currentState;
   }
 
@@ -2245,8 +2419,10 @@ function createDeltaState(socketId, currentState) {
     }
   });
 
-  clientLastStates.set(socketId, JSON.parse(JSON.stringify(currentState)));
-  
+  clientLastStates.set(socketId, {
+    players: currentState.players.map(clonePlayerState)
+  });
+
   return delta.players.length > 0 ? delta : null;
 }
 
@@ -2308,22 +2484,30 @@ function cleanupEmptyRooms() {
 }
 
 io.on('connection', (socket) => {
-  
-  
-  // Register session for duplicate login prevention
+
+
   if (socket.request.session && socket.request.session.username) {
     const session = socket.request.session;
+    const lockKey = session.isGuest ? `guest:${socket.request.sessionID}` : `user:${session.userId}`;
+
+    if (sessionRegistrationLocks.has(lockKey)) {
+      return;
+    }
+
+    sessionRegistrationLocks.add(lockKey);
+
     if (session.isGuest) {
       registerGuestSession(socket.request.sessionID, socket.id);
     } else if (session.userId) {
-      // Register user session and handle existing sessions
       const userId = session.userId;
       registerUserSession(userId, socket.id);
-      
+
       if (currentDuplicateLoginPolicy === DUPLICATE_LOGIN_POLICY.KICK_EXISTING) {
         kickExistingSessions(userId, socket.id);
       }
     }
+
+    sessionRegistrationLocks.delete(lockKey);
   }
   
   let currentRoom = null;
@@ -2331,15 +2515,19 @@ io.on('connection', (socket) => {
   let clientSupportsBinary = false;
   
   socket.on('refreshSession', () => {
-    // Only reload if session exists and has been initialized
     if (socket.request.session && socket.request.sessionID && socket.request.session.username) {
       socket.request.session.reload((err) => {
         if (err) {
           console.error('Session refresh error:', err);
+          socket.emit('sessionRefreshFailed', { error: 'Failed to refresh session' });
         } else {
+          socket.request.session.save((saveErr) => {
+            if (saveErr) {
+              console.error('Session save error after refresh:', saveErr);
+            }
+          });
         }
       });
-    } else {
     }
   });
   
@@ -2425,6 +2613,15 @@ io.on('connection', (socket) => {
       socket.emit('joinError', { error: 'Please provide a valid name' });
       return;
     }
+
+    let playerLevel = null;
+    const session = socket.request.session;
+    if (session?.userId && !session.isGuest) {
+      const userData = userDb.getUserById(session.userId);
+      if (userData && userData.xp) {
+        playerLevel = calculateLevel(userData.xp);
+      }
+    }
     
     // Find target room - either specified room ID or auto-assign
     let targetRoom = null;
@@ -2458,10 +2655,10 @@ io.on('connection', (socket) => {
     try {
       if (targetRoom.canRejoinAsPlayer(socket.id)) {
         // User is spectating, promote them to player
-        myCar = targetRoom.promoteToPlayer(socket, carType, playerName);
+        myCar = targetRoom.promoteToPlayer(socket, carType, playerName, playerLevel);
       } else {
         targetRoom.addMember(socket, Room.USER_STATES.SPECTATING);
-        myCar = targetRoom.promoteToPlayer(socket, carType, playerName);
+        myCar = targetRoom.promoteToPlayer(socket, carType, playerName, playerLevel);
       }
       
       currentRoom = targetRoom;
@@ -2506,24 +2703,28 @@ io.on('connection', (socket) => {
     };
   }
   
-  // Binary state encoder function
-  function encodeBinaryState(players, timestamp) {
-    let bufferSize = 8 + 1; // timestamp (8) + player count (1)
-    
+  function encodeBinaryState(players, timestamp, room) {
+    let bufferSize = 8 + 1;
+
     for (const player of players) {
-      bufferSize += 4 + 4 + 1; // socketId (4) + id (4) + type (1)
-      bufferSize += 4 + 4 + 4; // x (4) + y (4) + angle (4)
-      bufferSize += 2 + 2; // health (2) + maxHealth (2)
-      bufferSize += 1 + 1; // laps (1) + maxLaps (1)
-      bufferSize += 2 + 2; // currentBoost (2) + maxBoost (2)
-      bufferSize += 1 + 1; // upgradePoints (1) + flags (1)
+      bufferSize += 4 + 4 + 1;
+      bufferSize += 4 + 4 + 4;
+      bufferSize += 2 + 2;
+      bufferSize += 1 + 1;
+      bufferSize += 2 + 2;
+      bufferSize += 1 + 1;
       if (player.crashed || player.crashedAt) {
-        bufferSize += 8; // crashedAt timestamp (8)
+        bufferSize += 8;
       }
-      bufferSize += 2 + 2; // kills (2) + deaths (2)
+      bufferSize += 2 + 2;
     }
-    
-    const buffer = new ArrayBuffer(bufferSize);
+
+    let cached = binaryBufferCache.get(room.id);
+    if (!cached || cached.byteLength < bufferSize) {
+      cached = new ArrayBuffer(bufferSize);
+      binaryBufferCache.set(room.id, cached);
+    }
+    const buffer = cached;
     const view = new DataView(buffer);
     let offset = 0;
     
@@ -2534,7 +2735,7 @@ io.on('connection', (socket) => {
     const typeMap = { 'Stream': 0, 'Tank': 1, 'Bullet': 2, 'Prankster': 3 };
     
     for (const player of players) {
-      view.setUint32(offset, parseInt(player.socketId) || 0, true); offset += 4; // Use hash of socketId
+      view.setUint32(offset, room.getPlayerNumericId(player.socketId), true); offset += 4;
       view.setUint32(offset, player.id, true); offset += 4;
       view.setUint8(offset, typeMap[player.type] || 0); offset += 1;
       
@@ -2571,8 +2772,8 @@ io.on('connection', (socket) => {
       view.setUint16(offset, player.kills || 0, true); offset += 2;
       view.setUint16(offset, player.deaths || 0, true); offset += 2;
     }
-    
-    return buffer;
+
+    return buffer.slice(0, bufferSize);
   }
   
   socket.on('binaryInput', (buffer) => {
@@ -2636,8 +2837,10 @@ io.on('connection', (socket) => {
     }
   });
   socket.on('upgrade', (data) => {
-    if (!myCar) return;
+    if (!myCar || !data || typeof data.stat !== 'string') return;
     const stat = data.stat;
+    const validStats = ['maxHealth', 'acceleration', 'regen', 'size', 'abilityCooldown', 'projectileSpeed', 'projectileDensity'];
+    if (!validStats.includes(stat)) return;
     if (myCar.upgradePoints > 0) {
       const carType = CAR_TYPES[myCar.type];
       const upgradeConfig = carType.upgrades[stat];
@@ -2798,10 +3001,10 @@ io.on('connection', (socket) => {
     socket.on('debug:forceAbility', () => {
       if (!myCar || !myCar.ability) return;
       const originalLastUsed = myCar.ability.lastUsed;
-      myCar.ability.lastUsed = 0; // Reset cooldown temporarily
-      const result = myCar.useAbility(gameState);
+      myCar.ability.lastUsed = 0;
+      const result = myCar.useAbility(currentRoom.gameState);
       if (!result.success) {
-        myCar.ability.lastUsed = originalLastUsed; // Restore if failed
+        myCar.ability.lastUsed = originalLastUsed;
       }
       socket.emit('abilityResult', result);
     });
@@ -2845,16 +3048,23 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
+    if (socket.request.session && socket.request.session.username) {
+      const session = socket.request.session;
+      const lockKey = session.isGuest ? `guest:${socket.request.sessionID}` : `user:${session.userId}`;
+      sessionRegistrationLocks.delete(lockKey);
+    }
+
     cleanupSocketSession(socket);
     removeFromAllRooms(socket.id);
-    
+
     spectators.delete(socket.id);
-    
+    clientLastStates.delete(socket.id);
+
     currentRoom = null;
     myCar = null;
-    
+
     ensureDefaultRoom();
-    
+
     cleanupEmptyRooms();
   });
 });
@@ -2881,73 +3091,115 @@ function gameLoop() {
         return true;
       });
       let roundWinner = null;
+      const now = Date.now();
+      const crashedPlayers = [];
+
       for (const [sid, car] of room.players.entries()) {
         car.update(timeStep);
         if (!roundWinner && car.laps >= car.maxLaps) {
           roundWinner = car;
         }
-      }
-        if (roundWinner && !room.winMessageSent) {
-          const winnerName = roundWinner.name;
-          
-          // Award XP to registered user winners
-          const winnerSocket = io.sockets.sockets.get(roundWinner.socketId);
-          if (winnerSocket && winnerSocket.request.session && winnerSocket.request.session.userId && !winnerSocket.request.session.isGuest) {
-            const userId = winnerSocket.request.session.userId;
-            const xpAwarded = userDb.addXP(userId, 10);
-            if (xpAwarded) {
-              
-              // Notify the winner about XP gain
-              winnerSocket.emit('xpGained', { amount: 10, reason: 'Race Win' });
-            }
-          }
-          
-          // Broadcast win message to kill feed (only once per race)
-          for (const [sid, car] of room.players.entries()) {
-            emitToSocket(sid, 'killFeedMessage', {
-              text: `${winnerName} has won!`,
-              type: 'win'
-            });
-          }
-          
-          // Mark that win message has been sent for this race
-          room.winMessageSent = true;
-          
-          // Short delay to let the kill feed message display before returning to menu
-          setTimeout(() => {
-            // Cycle to next map for this room
-            const mapKeys = mapManager.getAllMapKeys();
-            room.currentMapIndex = (room.currentMapIndex + 1) % mapKeys.length;
-            room.currentMapKey = mapKeys[room.currentMapIndex] || 'square';
-            room.setTrackBodies(room.currentMapKey);
-            room.resetRound();
-            for (const [sid, car] of room.players.entries()) {
-              emitToSocket(sid, 'returnToMenu', { winner: winnerName });
-            }
-            for (const [sid, car] of room.players.entries()) {
-              Matter.World.remove(room.world, car.body);
-            }
-            room.players.clear();
-          }, 1500); // 1.5 second delay to show win message
-          continue;
+        if (car.crashedAt && now - car.crashedAt > CRASH_CLEANUP_DELAY_MS) {
+          crashedPlayers.push(sid);
         }
+      }
+
+      for (const sid of crashedPlayers) {
+        room.demoteToSpectator(sid);
+      }
+
+      if (roundWinner && !room.winMessageSent) {
+        const winnerName = roundWinner.name;
+
+        const winnerSocket = io.sockets.sockets.get(roundWinner.socketId);
+        if (winnerSocket && winnerSocket.request.session && winnerSocket.request.session.userId && !winnerSocket.request.session.isGuest) {
+          const userId = winnerSocket.request.session.userId;
+          const xpAwarded = userDb.addXP(userId, 10);
+          if (xpAwarded) {
+            winnerSocket.emit('xpGained', { amount: 10, reason: 'Race Win' });
+          }
+        }
+
+        for (const [sid] of room.players.entries()) {
+          emitToSocket(sid, 'killFeedMessage', {
+            text: `${winnerName} has won!`,
+            type: 'win'
+          });
+        }
+
+        room.winMessageSent = true;
+
+        setTimeout(() => {
+          const mapKeys = mapManager.getAllMapKeys();
+          room.currentMapIndex = (room.currentMapIndex + 1) % mapKeys.length;
+          room.currentMapKey = mapKeys[room.currentMapIndex] || 'square';
+          room.setTrackBodies(room.currentMapKey);
+          room.resetRound();
+          for (const [sid, car] of room.players.entries()) {
+            emitToSocket(sid, 'returnToMenu', { winner: winnerName });
+            if (car && car.body) {
+              Matter.World.remove(room.world, car.body);
+              car.body = null;
+            }
+          }
+          room.players.clear();
+          room.carIdMap.clear();
+          room.carBodyMap.clear();
+        }, 1500);
+        continue;
+      }
+
       for (const [sid, car] of [...room.players.entries()]) {
         if (car.justCrashed) {
           const sock = io.sockets.sockets.get(sid);
           if (sock) {
             if (!car.crashedByPlayer && !car.killFeedSent) {
-              car.deaths += 1;
-              car.saveStatsToRoom();
-              
-              // Broadcast solo crash message to kill feed (send once to each player)
-              for (const [socketId, otherCar] of room.players.entries()) {
-                emitToSocket(socketId, 'killFeedMessage', {
-                  text: `${car.name} crashed!`,
-                  type: 'crash'
-                });
+              // Check for damage tags (delayed kill credit)
+              const now = Date.now();
+              const TAG_WINDOW_MS = 2000;
+              const validTags = car.damageTagHistory.filter(
+                tag => now - tag.timestamp <= TAG_WINDOW_MS
+              );
+
+              if (validTags.length > 0) {
+                const mostRecentTag = validTags[validTags.length - 1];
+                const attackerCar = room.carIdMap.get(mostRecentTag.attackerId);
+
+                if (attackerCar) {
+                  // Award delayed kill credit
+                  attackerCar.upgradePoints += 1;
+                  attackerCar.kills += 1;
+                  car.deaths += 1;
+                  attackerCar.saveStatsToRoom();
+                  car.saveStatsToRoom();
+
+                  // Broadcast kill feed message
+                  room.broadcastKillFeedMessage(`${attackerCar.name} crashed ${car.name}!`, 'crash');
+
+                  // Mark as player kill to prevent "X crashed!" message
+                  car.crashedByPlayer = true;
+                  car.killFeedSent = true;
+
+                  // Clear damage tags
+                  car.damageTagHistory = [];
+                }
               }
-              // Mark that killfeed message has been sent for this crash
-              car.killFeedSent = true;
+
+              // If no valid tag found, broadcast solo crash message
+              if (!car.crashedByPlayer && !car.killFeedSent) {
+                car.deaths += 1;
+                car.saveStatsToRoom();
+
+                // Broadcast solo crash message to kill feed (send once to each player)
+                for (const [socketId] of room.players.entries()) {
+                  emitToSocket(socketId, 'killFeedMessage', {
+                    text: `${car.name} crashed!`,
+                    type: 'crash'
+                  });
+                }
+                // Mark that killfeed message has been sent for this crash
+                car.killFeedSent = true;
+              }
             }
             
             // Mark the crash timestamp for delayed cleanup
@@ -2963,20 +3215,9 @@ function gameLoop() {
           }
         }
       }
-      
-      for (const [sid, car] of [...room.players.entries()]) {
-        if (car.crashedAt && Date.now() - car.crashedAt > CRASH_CLEANUP_DELAY_MS) {
-          
-          // Demote crashed player to spectator instead of removing entirely
-          const wasPlayer = room.players.has(sid);
-          if (wasPlayer) {
-            room.demoteToSpectator(sid);
-          }
-        }
-      }
-      
+
       applyAreaEffects(room);
-      
+      applyMotorForces(room);
       Matter.Engine.update(room.engine, timeStep * 1000);
     }
     physicsAccumulator -= timeStep;
@@ -2988,15 +3229,21 @@ gameLoop();
 setInterval(() => {
   for (const room of rooms) {
     const state = room.state;
-    const playerSocketIds = Array.from(room.players.values()).map(p => p.socketId);
-    const roomSpectatorSocketIds = Array.from(room.spectators.keys());
-    const globalSpectatorSocketIds = Array.from(spectators.keys()); // Legacy support
-    const allSocketIds = [...new Set([...playerSocketIds, ...roomSpectatorSocketIds, ...globalSpectatorSocketIds])];
+    const allSocketIds = new Set();
+    for (const car of room.players.values()) {
+      allSocketIds.add(car.socketId);
+    }
+    for (const sid of room.spectators.keys()) {
+      allSocketIds.add(sid);
+    }
+    for (const sid of spectators.keys()) {
+      allSocketIds.add(sid);
+    }
 
     for (const socketId of allSocketIds) {
       const socket = io.sockets.sockets.get(socketId);
       if (socket) {
-        const { category: categoryToGet, key: keyToGet } = HELPERS.parseMapKey(room.currentMapKey);
+        const { category: categoryToGet, key: keyToGet } = room.currentMapParsed;
         const map = mapManager.getMap(keyToGet, categoryToGet);
         const clientAbilityObjects = room.serializeAbilityObjects();
         
@@ -3013,10 +3260,11 @@ setInterval(() => {
         };
 
         const deltaState = createDeltaState(socketId, { players: state });
-        
+
         if (deltaState) {
           socket.emit('delta', {
-            ...deltaState,
+            players: deltaState.players,
+            fullUpdate: deltaState.fullUpdate,
             roomMembers: room.getRoomMembersData(),
             mySocketId: socketId,
             abilityObjects: clientAbilityObjects,
@@ -3028,10 +3276,9 @@ setInterval(() => {
           socket.emit('heartbeat', { timestamp: Date.now() });
         }
         
-        // Send full state occasionally to prevent drift
-        if (Math.random() < FULL_STATE_BROADCAST_CHANCE) { // 10% chance = roughly every second at 30Hz
+        if (Math.random() < FULL_STATE_BROADCAST_CHANCE) {
           if (socket.clientSupportsBinary) {
-            const binaryState = encodeBinaryState(state, Date.now());
+            const binaryState = encodeBinaryState(state, Date.now(), room);
             socket.emit('binaryState', binaryState);
           } else {
             socket.emit('state', fullState);
@@ -3057,10 +3304,10 @@ function broadcastToSpectators() {
   // Broadcast to spectators in each room + global spectators for the first room
   for (const room of rooms) {
     const clientAbilityObjects = room.serializeAbilityObjects();
-    
+
     const clientDynamicObjects = room.serializeDynamicObjects();
 
-    const { category: categoryToGet, key: keyToGet } = HELPERS.parseMapKey(room.currentMapKey);
+    const { category: categoryToGet, key: keyToGet } = room.currentMapParsed;
     const roomMapData = mapManager.getMap(keyToGet, categoryToGet);
     
     const spectatorState = {
@@ -3069,6 +3316,7 @@ function broadcastToSpectators() {
         .map(car => ({
         id: car.id,
         name: car.name,
+        level: car.level,
         type: car.type,
         x: car.body.position.x,
         y: car.body.position.y,

@@ -2,3 +2,4 @@ node_modules/
 shared/users.db
 maps/community/
 .claude/
+users.db
