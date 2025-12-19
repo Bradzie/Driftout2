@@ -1997,7 +1997,7 @@ function drawShape(shape, isSelected, isHovered = false) {
   } else {
     editorCtx.fillStyle = '#555';
   }
-  editorCtx.fill();
+  editorCtx.fill('evenodd');
 
   // Draw border with alternating colors if available
   if (Array.isArray(shape.borderColors) && shape.borderColors.length > 0 && shape.borderWidth > 0) {
@@ -2460,7 +2460,7 @@ function drawNewDynamic() {
       editorCtx.lineTo(newDynamicVertices[i].x, -newDynamicVertices[i].y);
     }
     editorCtx.closePath();
-    editorCtx.fill();
+    editorCtx.fill('evenodd');
   }
 
   editorCtx.strokeStyle = '#8b4513';
@@ -2617,7 +2617,7 @@ function drawNewAreaEffect() {
       editorCtx.lineTo(areaEffectVertices[i].x, -areaEffectVertices[i].y);
     }
     editorCtx.closePath();
-    editorCtx.fill();
+    editorCtx.fill('evenodd');
     editorCtx.stroke();
   } else {
     editorCtx.beginPath();

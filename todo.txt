@@ -1,4 +1,4 @@
-- (map editor) allow multiple vertecies and easy point by point setup for dynamic objects (create and edit like regular shapes?)
+X (map editor) allow multiple vertecies and easy point by point setup for dynamic objects (create and edit like regular shapes?)
 X (map editor) re-sizable finish lines
 X (server/client) fix trap ability (currently not doing damage, funky styling and low density)
 - (client) fix disconnect message (currently showing in the top-left of the screen)
@@ -15,4 +15,9 @@ X (server/client) remove hammer
 - (client) start line can have the same stutter/glitch effect
 - (server/client) make the spawn point anywhere on the start line with some pixel padding to keep cars on the inside of borders
 - (client) fix the favicon, it needs that transparent background and could look cleaner
-- (client) fix rendering of shapes that have concave vertecies, currently only the shape of the outer-most verticies are rendered
+X (client) fix rendering of shapes that have concave vertecies, currently only the shape of the outer-most verticies are rendered
+- (client) can we get stripe rendering on shape edges to alternate around the entire shape? stripes currently alternate for each side, which leaves many double colors on anything with alot of sides/verticies
+- (server/client) add kill 'tagging'. if a car causes damage to another car and they crash within a small window afterwards (2 seconds?), it is treated as a kill via the damager
+- (server/client) kills via ability objects credit the ability object owner for the kill
+- (server/client) XP for kills
+- (client) real-time xp animations?

@@ -3020,7 +3020,7 @@
             ctx.lineTo(verts[i].x, verts[i].y);
           }
           ctx.closePath();
-          ctx.fill();
+          ctx.fill('evenodd');
           
           // draw map shape border stripes if they exist
           if (Array.isArray(shape.borderColors) && shape.borderColors.length > 0) {
@@ -3127,7 +3127,7 @@
               ctx.lineTo(screenVerts[i].x, screenVerts[i].y);
             }
             ctx.closePath();
-            ctx.fill();
+            ctx.fill('evenodd');
           }
         }
       }
@@ -3182,7 +3182,7 @@
         
         if (fillColor && Array.isArray(fillColor)) {
           ctx.fillStyle = `rgb(${fillColor[0]}, ${fillColor[1]}, ${fillColor[2]})`;
-          ctx.fill();
+          ctx.fill('evenodd');
         }
         
         if (strokeColor && Array.isArray(strokeColor)) {
@@ -3247,9 +3247,9 @@
               }
           });
           ctx.closePath();
-          
+
           ctx.fillStyle = obj.render?.fillStyle || '#888888';
-          ctx.fill();
+          ctx.fill('evenodd');
           ctx.strokeStyle = obj.render?.strokeStyle || '#444444';
           ctx.lineWidth = (obj.render?.lineWidth || 2) * scale;
           ctx.lineJoin = 'round';
@@ -3288,7 +3288,7 @@
           ctx.closePath();
 
           ctx.fillStyle = obj.render?.fillStyle || '#2c3e50';
-          ctx.fill();
+          ctx.fill('evenodd');
           ctx.strokeStyle = obj.render?.strokeStyle || '#34495e';
           ctx.lineWidth = (obj.render?.lineWidth || 2) * scale;
           ctx.lineJoin = 'round';
