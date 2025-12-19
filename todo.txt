@@ -14,7 +14,7 @@ X (server/client) remove hammer
 - (client) clean chat when changing rooms
 - (client) start line can have the same stutter/glitch effect
 - (server/client) make the spawn point anywhere on the start line with some pixel padding to keep cars on the inside of borders
-- (client) fix the favicon, it needs that transparent background and could look cleaner
+X (client) fix the favicon, it needs that transparent background and could look cleaner
 \ (client) fix rendering of shapes that have concave vertecies, currently only the shape of the outer-most verticies are rendered, UPDATE: HTML canvas can't do this unless every vertex array is split into 'shape' and 'shape incuts', putting this on hold.
 - (client) can we get stripe rendering on shape edges to alternate around the entire shape? stripes currently alternate for each side, which leaves many double colors on anything with alot of sides/verticies
 X (server/client) add kill 'tagging'. if a car causes damage to another car and they crash within a small window afterwards (2 seconds?), it is treated as a kill via the damager

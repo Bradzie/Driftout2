@@ -78,18 +78,18 @@ function initEventListeners() {
   document.getElementById('newMapButton').addEventListener('click', createNewMap);
   document.getElementById('mapEditorBrowseButton').addEventListener('click', showBrowseModal);
   document.getElementById('closeBrowseModal').addEventListener('click', hideBrowseModal);
-  
-  // Browse modal close handlers
+  document.getElementById('editorOptionsButton').addEventListener('click', showEditorOptionsModal);
+  document.getElementById('closeEditorOptionsModal').addEventListener('click', closeEditorOptionsModal);
+
   document.getElementById('browseMapModal').addEventListener('click', (e) => {
     if (e.target.id === 'browseMapModal') {
       hideBrowseModal();
     }
   });
-  
-  // ESC key to close browse modal
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !document.getElementById('browseMapModal').classList.contains('hidden')) {
-      hideBrowseModal();
+
+  document.getElementById('editorOptionsModal').addEventListener('click', (e) => {
+    if (e.target.id === 'editorOptionsModal') {
+      closeEditorOptionsModal();
     }
   });
 
@@ -3657,6 +3657,16 @@ function showBrowseModal() {
 
 function hideBrowseModal() {
   document.getElementById('browseMapModal').classList.add('hidden');
+}
+
+function showEditorOptionsModal() {
+  const modal = document.getElementById('editorOptionsModal');
+  modal.classList.remove('hidden');
+}
+
+function closeEditorOptionsModal() {
+  const modal = document.getElementById('editorOptionsModal');
+  modal.classList.add('hidden');
 }
 
 function displayMapsInBrowser(maps) {

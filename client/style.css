@@ -3242,8 +3242,6 @@ select.property-input {
 
 .modal-content {
   background: #1a1a1a;
-  border: 2px solid #333;
-  border-radius: 10px;
   padding: 0;
   min-width: 400px;
   max-width: 500px;
@@ -3375,7 +3373,6 @@ select.property-input {
 .btn {
   padding: 10px 20px;
   border: none;
-  border-radius: 6px;
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;

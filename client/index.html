@@ -497,6 +497,7 @@
           <button id="saveMapButton">Save</button>
           <button id="saveAsMapButton">Save As...</button>
           <button id="setPreviewButton">Set Preview Image</button>
+          <button id="editorOptionsButton">Editor Options</button>
         </div>
       </div>
       
@@ -511,20 +512,6 @@
         </div>
       </div>
 
-      <div class="editor-section">
-        <h3>Grid</h3>
-        <label><input type="checkbox" id="showGrid" checked> Show Grid</label>
-        <label><input type="checkbox" id="snapToGrid" checked> Snap to Grid</label>
-        <label>Grid Size: 
-          <select id="gridSize">
-            <option value="10">10px</option>
-            <option value="25" selected>25px</option>
-            <option value="50">50px</option>
-            <option value="100">100px</option>
-          </select>
-        </label>
-      </div>
-      
       <div class="editor-section">
         <h3>Properties</h3>
         <div id="propertiesPanel">
@@ -616,6 +603,33 @@
     <div class="hover-menu-item" data-preset="circle">Circle</div>
     <div class="hover-menu-item" data-preset="rectangle">Rectangle</div>
     <div class="hover-menu-item" data-preset="triangle">Triangle</div>
+  </div>
+
+  <div id="editorOptionsModal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Editor Options</h3>
+        <button class="modal-close" id="closeEditorOptionsModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="options-section">
+          <h4>Grid Settings</h4>
+          <label><input type="checkbox" id="showGrid" checked> Show Grid</label>
+          <label><input type="checkbox" id="snapToGrid" checked> Snap to Grid</label>
+          <label>Grid Size:
+            <select id="gridSize">
+              <option value="10">10px</option>
+              <option value="25" selected>25px</option>
+              <option value="50">50px</option>
+              <option value="100">100px</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" onclick="closeEditorOptionsModal()">Close</button>
+      </div>
+    </div>
   </div>
 
   <script src="client.js"></script>
