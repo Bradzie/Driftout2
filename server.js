@@ -380,7 +380,6 @@ app.get('/api/rooms', (req, res) => {
       currentMap: room.currentMapKey,
       mapDisplayName: mapDisplayName,
       mapPreviewUrl: mapPreviewUrl,
-      playersList: playersList,
       activePlayerCount: room.activePlayerCount,
       spectatorCount: room.spectatorCount,
       totalOccupancy: room.totalOccupancy,
