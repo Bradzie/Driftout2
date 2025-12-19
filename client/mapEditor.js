@@ -820,7 +820,8 @@ function handleAxisMouseDown(mousePos) {
     x: mousePos.x,
     y: mousePos.y,
     damping: 0.1,
-    stiffness: 1
+    stiffness: 1,
+    motorSpeed: 0
   };
 
   // Select the object to show properties
@@ -2966,6 +2967,8 @@ function buildDynamicObjectProperties(obj, index) {
     html += `<p class="property-info" style="color: #aaa; font-size: 0.9em; margin: 5px 0;">Pivot at (${obj.axis.x.toFixed(1)}, ${obj.axis.y.toFixed(1)})</p>`;
     html += createSliderInput('Damping', obj.axis.damping || 0.1, `dynamic_axisDamping_${index}`, 0, 1, 0.01);
     html += createSliderInput('Stiffness', obj.axis.stiffness || 1, `dynamic_axisStiffness_${index}`, 0, 1, 0.01);
+    html += createSliderInput('Motor Speed', obj.axis.motorSpeed || 0, `dynamic_axisMotorSpeed_${index}`, -100, 100, 1);
+    html += '<p class="property-info" style="color: #888; font-size: 0.85em; margin: 2px 0 8px 0; font-style: italic;">Negative = counter-clockwise, Positive = clockwise, 0 = off</p>';
     html += `<button onclick="removeAxis(${index})" class="delete-btn" style="background: #c44; color: #fff; border: none; padding: 6px 12px; margin-top: 8px; border-radius: 4px; cursor: pointer;">Remove Axis</button>`;
   } else {
     html += '<p class="property-info" style="color: #aaa; font-size: 0.9em; margin: 5px 0;">No pivot point set. Use Axis tool to add.</p>';
@@ -3194,12 +3197,18 @@ function handleSliderChange(event) {
   const objectData = getSelectedObjectData();
   if (!objectData) return;
 
-  // Handle axis properties (nested in axis object)
-  if (property === 'axisDamping' || property === 'axisStiffness') {
+  if (property === 'axisDamping' || property === 'axisStiffness' || property === 'axisMotorSpeed') {
     if (!objectData.axis) {
       objectData.axis = {};
     }
-    const axisProp = property === 'axisDamping' ? 'damping' : 'stiffness';
+    let axisProp;
+    if (property === 'axisDamping') {
+      axisProp = 'damping';
+    } else if (property === 'axisStiffness') {
+      axisProp = 'stiffness';
+    } else if (property === 'axisMotorSpeed') {
+      axisProp = 'motorSpeed';
+    }
     objectData.axis[axisProp] = value;
   } else {
     objectData[property] = value;

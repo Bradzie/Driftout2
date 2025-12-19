@@ -1,0 +1,126 @@
+{
+  "id": "321df9e3-fc89-458e-a9dd-3865300ef344",
+  "displayName": "Death Spinner",
+  "scale": {
+    "player": 0.002,
+    "spectator": 0.0005
+  },
+  "start": {
+    "type": "polygon",
+    "vertices": [
+      {
+        "x": -50,
+        "y": -10
+      },
+      {
+        "x": 50,
+        "y": -10
+      },
+      {
+        "x": 50,
+        "y": 10
+      },
+      {
+        "x": -50,
+        "y": 10
+      }
+    ]
+  },
+  "shapes": [
+    {
+      "vertices": [
+        {
+          "x": -1125,
+          "y": 475
+        },
+        {
+          "x": -1125,
+          "y": -575
+        },
+        {
+          "x": 200,
+          "y": -575
+        },
+        {
+          "x": 200,
+          "y": 475
+        }
+      ],
+      "fillColor": [
+        128,
+        128,
+        128
+      ],
+      "borderColors": [
+        "#ff4d4d",
+        "#ffffff"
+      ],
+      "borderWidth": 20
+    }
+  ],
+  "checkpoints": [
+    {
+      "type": "line",
+      "vertices": [
+        {
+          "x": -1118.0400000000006,
+          "y": -558.3545000000004
+        },
+        {
+          "x": -1004.9050000000005,
+          "y": -438.56450000000024
+        }
+      ],
+      "id": "checkpoint-1"
+    }
+  ],
+  "areaEffects": [],
+  "dynamicObjects": [
+    {
+      "id": "dynamicBox1",
+      "vertices": [
+        {
+          "x": -625,
+          "y": 425
+        },
+        {
+          "x": -650,
+          "y": -25
+        },
+        {
+          "x": -600,
+          "y": -25
+        }
+      ],
+      "isStatic": false,
+      "density": 0.1,
+      "friction": 0.22,
+      "frictionAir": 0.01,
+      "restitution": 0.1,
+      "damageScale": 0,
+      "fillColor": [
+        139,
+        69,
+        19
+      ],
+      "strokeColor": [
+        101,
+        67,
+        33
+      ],
+      "strokeWidth": 4,
+      "axis": {
+        "x": -624.2390000000004,
+        "y": 13.975500000000007,
+        "damping": 0.1,
+        "stiffness": 0.1,
+        "motorSpeed": 2
+      }
+    }
+  ],
+  "author": "Bradzie",
+  "created_at": "2025-12-19T16:07:50.143Z",
+  "updated_at": "2025-12-19T16:23:46.196Z",
+  "author_id": 1,
+  "category": "official"
+}

@@ -786,10 +786,26 @@ function kickExistingSessions(userId, currentSocketId) {
 
 
 
+function applyMotorForces(room) {
+  for (const body of room.currentDynamicBodies) {
+    if (body.dynamicObject &&
+        body.dynamicObject.axis &&
+        typeof body.dynamicObject.axis.motorSpeed === 'number') {
+
+      const motorSpeed = body.dynamicObject.axis.motorSpeed;
+      if (motorSpeed === 0) continue;
+
+      const angularVelocity = motorSpeed * 0.005;
+
+      Matter.Body.setAngularForce(body, angularVelocity);
+    }
+  }
+}
+
 function applyAreaEffects(room) {
   const { category: categoryToGet, key: keyToGet } = HELPERS.parseMapKey(room.currentMapKey);
   const map = mapManager.getMap(keyToGet, categoryToGet);
-  
+
   if (!map || !map.areaEffects) return;
 
   for (const [sid, car] of room.players.entries()) {
@@ -3106,7 +3122,7 @@ function gameLoop() {
       }
       
       applyAreaEffects(room);
-      
+      applyMotorForces(room);
       Matter.Engine.update(room.engine, timeStep * 1000);
     }
     physicsAccumulator -= timeStep;
