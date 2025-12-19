@@ -2239,6 +2239,12 @@ input[type="number"]:focus {
 }
 
 /* Stats highlighting */
+.leaderboard-table .stat-laps {
+  color: #ff6b6b;
+  font-family: 'Overpass', sans-serif;
+  font-weight: bold;
+}
+
 .leaderboard-table .stat-kills {
   color: #ff6b6b;
   font-family: 'Overpass', sans-serif;

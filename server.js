@@ -38,6 +38,33 @@ const DUPLICATE_LOGIN_POLICY = {
 // Current policy - can be changed as needed
 const currentDuplicateLoginPolicy = DUPLICATE_LOGIN_POLICY.KICK_EXISTING;
 
+// XP and Level calculation (matches client-side logic)
+const BASE_XP_LEVEL_1 = 10;
+const XP_SCALE_PER_LEVEL = 1.2;
+
+function getXPRequiredForLevel(level) {
+  // level 1 requires 10 XP, each subsequent level requires 20% more XP
+  return Math.round(BASE_XP_LEVEL_1 * Math.pow(XP_SCALE_PER_LEVEL, level - 1));
+}
+
+function calculateLevel(totalXP) {
+  if (totalXP < 10) return 1;
+
+  let level = 1;
+  let xpForCurrentLevel = 0;
+
+  while (true) {
+    const xpRequiredForNextLevel = getXPRequiredForLevel(level);
+    if (xpForCurrentLevel + xpRequiredForNextLevel > totalXP) {
+      break;
+    }
+    xpForCurrentLevel += xpRequiredForNextLevel;
+    level++;
+  }
+
+  return level;
+}
+
 const sessionMiddleware = session({
   secret: process.env.SESSION_SECRET || 'driftout-secret-key-change-in-production',
   resave: false,
@@ -968,11 +995,12 @@ function getCollisionNormal(pair, bodyA, bodyB) {
 }
 
 class Car {
-  constructor(id, type, roomId, socketId, name, room = null) {
+  constructor(id, type, roomId, socketId, name, level, room = null) {
     this.id = id;
     this.roomId = roomId;
     this.socketId = socketId;
     this.name = name || '';
+    this.level = level;
     this.type = type;
     this.room = room; // Reference to the room for accessing world and gameState
     this.stats = {
@@ -1363,7 +1391,8 @@ class Car {
       this.room.mapStats.set(this.socketId, {
         kills: this.kills,
         deaths: this.deaths,
-        bestLapTime: this.bestLapTime
+        bestLapTime: this.bestLapTime,
+        level: this.level
       });
     }
   }
@@ -1897,7 +1926,7 @@ class Room {
   }
   
   // Transition user from spectator to player
-  promoteToPlayer(socket, carType, name) {
+  promoteToPlayer(socket, carType, name, level) {
     const member = this.allMembers.get(socket.id);
     if (!member) {
       throw new Error('User not in room');
@@ -1910,7 +1939,7 @@ class Room {
     this.spectators.delete(socket.id);
     
     const carId = uuidv4();
-    const car = new Car(carId, carType, this.id, socket.id, name, this);
+    const car = new Car(carId, carType, this.id, socket.id, name, level, this);
     this.players.set(socket.id, car);
     
     member.state = Room.USER_STATES.PLAYING;
@@ -1993,20 +2022,6 @@ class Room {
       }
     }
   }
-  
-  addPlayer(socket, carType, name) {
-    const carId = uuidv4();
-    const car = new Car(carId, carType, this.id, socket.id, name, this);
-    this.players.set(socket.id, car);
-    return car;
-  }
-  removePlayer(socket) {
-    const car = this.players.get(socket.id);
-    if (car) {
-      Matter.World.remove(this.world, car.body);
-      this.players.delete(socket.id);
-    }
-  }
   get state() {
     const cars = [];
     for (const [sid, car] of this.players.entries()) {
@@ -2025,6 +2040,7 @@ class Room {
         upgradePoints: car.upgradePoints,
         upgradeUsage: car.upgradeUsage,
         name: car.name,
+        level: car.level,
         checkpointsVisited: Array.from(car.checkpointsVisited),
         // Only send vertices and color for single-shape cars (backward compatibility)
         ...((CAR_TYPES[car.type]?.shapes?.length === 1) ? {
@@ -2065,6 +2081,7 @@ class Room {
 
       let name = 'Connecting...';
       let isAuthenticated = false;
+      let level = null;
 
       if (session?.username) {
         name = session.isGuest ? session.username : session.username;
@@ -2076,11 +2093,17 @@ class Room {
         if (car && car.name) {
           name = car.name;
           isAuthenticated = true;
+          level = car.level; // Get level from active car
         }
       }
 
-      // Get session stats from mapStats for spectators
+      // Get session stats from mapStats (for spectators or if car doesn't have stats yet)
       const stats = this.mapStats.get(socketId);
+
+      // For spectators, get level from mapStats if available
+      if (member.state !== Room.USER_STATES.PLAYING && stats?.level) {
+        level = stats.level;
+      }
 
       members.push({
         socketId: socketId,
@@ -2091,7 +2114,8 @@ class Room {
         // Include session stats so spectators can see their kills/deaths/best lap
         kills: stats?.kills || 0,
         deaths: stats?.deaths || 0,
-        bestLapTime: stats?.bestLapTime || null
+        bestLapTime: stats?.bestLapTime || null,
+        level: level // null for guests, level number for authenticated users
       });
     }
 
@@ -2427,6 +2451,15 @@ io.on('connection', (socket) => {
       socket.emit('joinError', { error: 'Please provide a valid name' });
       return;
     }
+
+    let playerLevel = null;
+    const session = socket.request.session;
+    if (session?.userId && !session.isGuest) {
+      const userData = userDb.getUserById(session.userId);
+      if (userData && userData.xp) {
+        playerLevel = calculateLevel(userData.xp);
+      }
+    }
     
     // Find target room - either specified room ID or auto-assign
     let targetRoom = null;
@@ -2460,10 +2493,10 @@ io.on('connection', (socket) => {
     try {
       if (targetRoom.canRejoinAsPlayer(socket.id)) {
         // User is spectating, promote them to player
-        myCar = targetRoom.promoteToPlayer(socket, carType, playerName);
+        myCar = targetRoom.promoteToPlayer(socket, carType, playerName, playerLevel);
       } else {
         targetRoom.addMember(socket, Room.USER_STATES.SPECTATING);
-        myCar = targetRoom.promoteToPlayer(socket, carType, playerName);
+        myCar = targetRoom.promoteToPlayer(socket, carType, playerName, playerLevel);
       }
       
       currentRoom = targetRoom;
@@ -3071,6 +3104,7 @@ function broadcastToSpectators() {
         .map(car => ({
         id: car.id,
         name: car.name,
+        level: car.level,
         type: car.type,
         x: car.body.position.x,
         y: car.body.position.y,
