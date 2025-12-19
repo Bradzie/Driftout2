@@ -336,16 +336,16 @@ app.get('/api/rooms', (req, res) => {
     if (roomMembers.length > 0) {
     }
     
-    const playersList = roomMembers
-      .filter(member => member.name && member.name !== 'Connecting...' && member.name.trim() !== '')
-      .map(member => {
-        // Clean up the name by removing " in lobby..." suffix for display
-        let displayName = member.name;
-        if (displayName.endsWith(' in lobby...')) {
-          displayName = displayName.replace(' in lobby...', '');
-        }
-        return displayName;
-      });
+    // const playersList = roomMembers
+    //   .filter(member => member.name && member.name !== 'Connecting...' && member.name.trim() !== '')
+    //   .map(member => {
+    //     // Clean up the name by removing " in lobby..." suffix for display
+    //     let displayName = member.name;
+    //     if (displayName.endsWith(' in lobby...')) {
+    //       displayName = displayName.replace(' in lobby...', '');
+    //     }
+    //     return displayName;
+    //   });
     
     return {
       id: room.id,
@@ -2069,10 +2069,6 @@ class Room {
       if (session?.username) {
         name = session.isGuest ? session.username : session.username;
         isAuthenticated = !session.isGuest;
-
-        if (member.state === Room.USER_STATES.SPECTATING) {
-          name = `${session.username} in lobby...`;
-        }
       }
 
       if (member.state === Room.USER_STATES.PLAYING) {
@@ -2083,12 +2079,19 @@ class Room {
         }
       }
 
+      // Get session stats from mapStats for spectators
+      const stats = this.mapStats.get(socketId);
+
       members.push({
         socketId: socketId,
         name: name,
         state: member.state,
         isAuthenticated: isAuthenticated,
-        joinedAt: member.joinedAt
+        joinedAt: member.joinedAt,
+        // Include session stats so spectators can see their kills/deaths/best lap
+        kills: stats?.kills || 0,
+        deaths: stats?.deaths || 0,
+        bestLapTime: stats?.bestLapTime || null
       });
     }
 

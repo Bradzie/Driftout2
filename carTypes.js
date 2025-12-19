@@ -83,8 +83,8 @@ const CAR_TYPES = {
       },
       acceleration: {
         name: 'Speed',
-        amount: 0.003,
-        maxUpgrades: 8,
+        amount: 0.006,
+        maxUpgrades: 6,
         color: '#3b82f6' // blue
       },
       regen: {

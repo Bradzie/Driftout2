@@ -21,3 +21,6 @@ X (client) fix rendering of shapes that have concave vertecies, currently only t
 - (server/client) kills via ability objects credit the ability object owner for the kill
 - (server/client) XP for kills
 - (client) real-time xp animations?
+- (client) 'Can't find player, returning to menu' error after crashing. Worringly the logic could be relying on this break to get back to spectating
+- (server) there's something going on with the auth. session names can't be found until a player has played a lap and then crashed? they should be able to be seen after auth
+- (client) title redesign? could be done in canvas so we can have nice rounded edges in a different colour than white? put title builder in a helper function so we can build it whenever, wherever (loading screens, auth, title, etc.)
