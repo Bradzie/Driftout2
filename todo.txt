@@ -17,7 +17,7 @@ X (server/client) remove hammer
 - (client) fix the favicon, it needs that transparent background and could look cleaner
 X (client) fix rendering of shapes that have concave vertecies, currently only the shape of the outer-most verticies are rendered
 - (client) can we get stripe rendering on shape edges to alternate around the entire shape? stripes currently alternate for each side, which leaves many double colors on anything with alot of sides/verticies
-- (server/client) add kill 'tagging'. if a car causes damage to another car and they crash within a small window afterwards (2 seconds?), it is treated as a kill via the damager
+X (server/client) add kill 'tagging'. if a car causes damage to another car and they crash within a small window afterwards (2 seconds?), it is treated as a kill via the damager
 - (server/client) kills via ability objects credit the ability object owner for the kill
 - (server/client) XP for kills
 - (client) real-time xp animations?
@@ -26,4 +26,4 @@ X (client) fix rendering of shapes that have concave vertecies, currently only t
 - (client) title redesign? could be done in canvas so we can have nice rounded edges in a different colour than white? put title builder in a helper function so we can build it whenever, wherever (loading screens, auth, title, etc.)
 - (client) leaderboard stats for KDR and laps can sometimes be the wrong style - white?
 - (client) leaderboard best time doesn't seem to be working, it's not even sent in the state it looks like.
-- (client) show level of player in leaderboard
+X (client) show level of player in leaderboard

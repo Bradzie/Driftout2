@@ -1022,13 +1022,17 @@ class Car {
     this.prevFinishCheck = null; // used for lap crossing on square track
     this.cursor = { x: 0, y: 0 }; // direction and intensity from client
     this.justCrashed = false;
+    this.crashedByPlayer = false;
+    this.killFeedSent = false;
+    this.crashedAt = null;
+    this.damageTagHistory = []; 
     this.godMode = true; // Spawn protection
     this.spawnProtectionEnd = Date.now() + SPAWN_PROTECTION_MS; // 1 second of spawn protection
-    
+
     this.maxBoost = CAR_TYPES[type].boost;
     this.currentBoost = this.maxBoost;
     this.boostActive = false;
-    
+
     const carDef = CAR_TYPES[type];
     this.ability = carDef.ability ? abilityRegistry.create(carDef.ability) : null;
     this.isGhost = false;
@@ -1143,6 +1147,7 @@ class Car {
   }
   update(dt) {
     this.updateSpawnProtection();
+    this.cleanupExpiredTags();
     this.updateAbility(dt);
     this.updatePhysicsAndSteering(dt);
     this.regenerateHealth(dt);
@@ -1155,6 +1160,14 @@ class Car {
       this.godMode = false;
       this.spawnProtectionEnd = null;
     }
+  }
+
+  cleanupExpiredTags() {
+    const now = Date.now();
+    const TAG_WINDOW_MS = 2000;
+    this.damageTagHistory = this.damageTagHistory.filter(
+      tag => now - tag.timestamp <= TAG_WINDOW_MS
+    );
   }
 
   updateAbility(dt) {
@@ -1323,6 +1336,8 @@ class Car {
     this.justCrashed = false;
     this.crashedByPlayer = false;
     this.killFeedSent = false;
+    this.crashedAt = null;
+    this.damageTagHistory = []; // Clear damage tags on respawn
     this.godMode = true; // Respawn protection
     this.spawnProtectionEnd = Date.now() + SPAWN_PROTECTION_MS; // 1 second of spawn protection
     Matter.Body.setPosition(this.body, { x: startPos.x, y: startPos.y });
@@ -1695,7 +1710,7 @@ class Room {
       carA.deaths += 1; // Track death
       carB.saveStatsToRoom();
       carA.saveStatsToRoom();
-      
+
       // Broadcast kill feed message to this room
       this.broadcastKillFeedMessage(`${carB.name} crashed ${carA.name}!`, 'crash');
     } else if (carBCrashed && !carACrashed) {
@@ -1704,7 +1719,7 @@ class Room {
       carB.deaths += 1; // Track death
       carA.saveStatsToRoom();
       carB.saveStatsToRoom();
-      
+
       // Broadcast kill feed message to this room
       this.broadcastKillFeedMessage(`${carA.name} crashed ${carB.name}!`, 'crash');
     } else if (carACrashed && carBCrashed) {
@@ -1714,6 +1729,11 @@ class Room {
       carA.saveStatsToRoom();
       carB.saveStatsToRoom();
       this.broadcastKillFeedMessage(`${carA.name} and ${carB.name} crashed!`, 'crash');
+    } else {
+      // Both cars survived - add damage tags for potential delayed kill credit
+      const now = Date.now();
+      carA.damageTagHistory.push({ attackerId: carB.id, timestamp: now });
+      carB.damageTagHistory.push({ attackerId: carA.id, timestamp: now });
     }
   }
   
@@ -2971,18 +2991,61 @@ function gameLoop() {
           const sock = io.sockets.sockets.get(sid);
           if (sock) {
             if (!car.crashedByPlayer && !car.killFeedSent) {
-              car.deaths += 1;
-              car.saveStatsToRoom();
-              
-              // Broadcast solo crash message to kill feed (send once to each player)
-              for (const [socketId, otherCar] of room.players.entries()) {
-                emitToSocket(socketId, 'killFeedMessage', {
-                  text: `${car.name} crashed!`,
-                  type: 'crash'
-                });
+              // Check for damage tags (delayed kill credit)
+              const now = Date.now();
+              const TAG_WINDOW_MS = 2000;
+              const validTags = car.damageTagHistory.filter(
+                tag => now - tag.timestamp <= TAG_WINDOW_MS
+              );
+
+              if (validTags.length > 0) {
+                // Get the most recent attacker
+                const mostRecentTag = validTags[validTags.length - 1];
+
+                // Find the attacker car in the room
+                let attackerCar = null;
+                for (const [, otherCar] of room.players.entries()) {
+                  if (otherCar.id === mostRecentTag.attackerId) {
+                    attackerCar = otherCar;
+                    break;
+                  }
+                }
+
+                if (attackerCar) {
+                  // Award delayed kill credit
+                  attackerCar.upgradePoints += 1;
+                  attackerCar.kills += 1;
+                  car.deaths += 1;
+                  attackerCar.saveStatsToRoom();
+                  car.saveStatsToRoom();
+
+                  // Broadcast kill feed message
+                  room.broadcastKillFeedMessage(`${attackerCar.name} crashed ${car.name}!`, 'crash');
+
+                  // Mark as player kill to prevent "X crashed!" message
+                  car.crashedByPlayer = true;
+                  car.killFeedSent = true;
+
+                  // Clear damage tags
+                  car.damageTagHistory = [];
+                }
               }
-              // Mark that killfeed message has been sent for this crash
-              car.killFeedSent = true;
+
+              // If no valid tag found, broadcast solo crash message
+              if (!car.crashedByPlayer && !car.killFeedSent) {
+                car.deaths += 1;
+                car.saveStatsToRoom();
+
+                // Broadcast solo crash message to kill feed (send once to each player)
+                for (const [socketId] of room.players.entries()) {
+                  emitToSocket(socketId, 'killFeedMessage', {
+                    text: `${car.name} crashed!`,
+                    type: 'crash'
+                  });
+                }
+                // Mark that killfeed message has been sent for this crash
+                car.killFeedSent = true;
+              }
             }
             
             // Mark the crash timestamp for delayed cleanup
