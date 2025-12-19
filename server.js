@@ -1249,7 +1249,7 @@ class Car {
 
   updateCheckpoints() {
     const pos = this.body.position
-    const roomMapKey = this.room ? this.room.currentMapKey : currentMapKey;
+    const roomMapKey = this.room ? this.room.currentMapKey : 'square';
     const { category: mapCategory, key: mapKey } = HELPERS.parseMapKey(roomMapKey);
     const map = mapManager.getMap(mapKey, mapCategory);
     const checkpoints = map?.checkpoints || []
@@ -1293,7 +1293,7 @@ class Car {
   }
 
   checkLapCompletion() {
-    const roomMapKey = this.room ? this.room.currentMapKey : currentMapKey;
+    const roomMapKey = this.room ? this.room.currentMapKey : 'square';
     const { category: mapCategory, key: mapKey } = HELPERS.parseMapKey(roomMapKey);
     const mapDef = mapManager.getMap(mapKey, mapCategory);
 
@@ -1320,7 +1320,7 @@ class Car {
     }
   }
   resetCar() {
-    const roomMapKey = this.room ? this.room.currentMapKey : currentMapKey;
+    const roomMapKey = this.room ? this.room.currentMapKey : 'square';
     
     const { category: mapCategory, key: mapKey } = HELPERS.parseMapKey(roomMapKey);
     
@@ -2901,10 +2901,10 @@ io.on('connection', (socket) => {
     socket.on('debug:forceAbility', () => {
       if (!myCar || !myCar.ability) return;
       const originalLastUsed = myCar.ability.lastUsed;
-      myCar.ability.lastUsed = 0; // Reset cooldown temporarily
-      const result = myCar.useAbility(gameState);
+      myCar.ability.lastUsed = 0;
+      const result = myCar.useAbility(currentRoom.gameState);
       if (!result.success) {
-        myCar.ability.lastUsed = originalLastUsed; // Restore if failed
+        myCar.ability.lastUsed = originalLastUsed;
       }
       socket.emit('abilityResult', result);
     });
