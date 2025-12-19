@@ -1487,7 +1487,8 @@ class Room {
     this.currentMapKey = mapKey || mapKeys[this.currentMapIndex] || 'square';
     this.currentTrackBodies = [];
     this.currentDynamicBodies = [];
-    
+    this.currentConstraints = [];
+
     this.winMessageSent = false;
     
     // Per-map statistics tracking (preserved until map changes)
@@ -1829,6 +1830,14 @@ class Room {
     }
     this.currentDynamicBodies = []
 
+    // Remove constraints
+    if (this.currentConstraints) {
+      for (const constraint of this.currentConstraints) {
+        Matter.World.remove(this.world, constraint)
+      }
+      this.currentConstraints = []
+    }
+
     // Parse category/key format if present
     const { category: categoryToCheck, key: keyToCheck } = HELPERS.parseMapKey(mapKey);
 
@@ -1886,13 +1895,37 @@ class Room {
         }
         
         const body = Matter.Bodies.fromVertices(centroid.x, centroid.y, [relativeVertices], bodyOptions)
-        
+
         if (typeof dynObj.frictionAir === 'number') {
           body.frictionAir = dynObj.frictionAir;
         }
-        
+
         body.dynamicObject = dynObj
         this.currentDynamicBodies.push(body)
+
+        // Create constraint if axis is defined
+        if (dynObj.axis && typeof dynObj.axis.x === 'number' && typeof dynObj.axis.y === 'number') {
+          // Calculate local point on the body where axis should attach
+          const localX = dynObj.axis.x - centroid.x
+          const localY = dynObj.axis.y - centroid.y
+
+          const constraint = Matter.Constraint.create({
+            pointA: { x: dynObj.axis.x, y: dynObj.axis.y },  // World position (fixed)
+            bodyB: body,                                       // The dynamic object
+            pointB: { x: localX, y: localY },                  // Local point on object
+            length: 0,                                          // Fixed pivot
+            stiffness: dynObj.axis.stiffness || 1,             // Rigidity
+            damping: dynObj.axis.damping || 0.1                // Resistance
+          })
+
+          Matter.World.add(this.world, constraint)
+
+          // Store constraint reference for cleanup
+          if (!this.currentConstraints) {
+            this.currentConstraints = []
+          }
+          this.currentConstraints.push(constraint)
+        }
       }
     }
 

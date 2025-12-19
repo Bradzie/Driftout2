@@ -37,6 +37,8 @@ let creatingDynamic = false;
 let newDynamicVertices = [];
 let creatingAreaEffect = false;
 let areaEffectVertices = [];
+let placingAxis = false;
+let axisTargetObject = null;
 
 let creatingCircle = false;
 let creatingRectangle = false;
@@ -195,6 +197,10 @@ function selectTool(tool) {
     creatingTriangle = false;
     presetStartPoint = null;
   }
+  if (placingAxis) {
+    placingAxis = false;
+    axisTargetObject = null;
+  }
 
   currentTool = tool;
   selectedObject = null;
@@ -250,6 +256,9 @@ function handleMouseDown(e) {
         break;
       case 'areaEffect':
         handleCreateAreaEffectMouseDown(mousePos);
+        break;
+      case 'axis':
+        handleAxisMouseDown(mousePos);
         break;
       case 'createCircle':
         handleCreateCircleMouseDown(mousePos);
@@ -780,15 +789,48 @@ function handleCreateDynamicMouseDown(mousePos) {
 
 function handleCreateAreaEffectMouseDown(mousePos) {
   const snappedPos = snapToGridPos(mousePos);
-  
+
   if (!creatingAreaEffect) {
     creatingAreaEffect = true;
     areaEffectVertices = [];
   }
-  
+
   areaEffectVertices.push({ x: snappedPos.x, y: snappedPos.y });
   updateStatusBar();
   renderEditor();
+}
+
+function handleAxisMouseDown(mousePos) {
+  // Find dynamic object at click position
+  const clickedObject = findObjectAtPosition(mousePos);
+
+  if (!clickedObject || clickedObject.type !== 'dynamicObject') {
+    console.warn('Axis tool: Click on a dynamic object to set its pivot point');
+    updateStatusBar('Click on a dynamic object to set its pivot point');
+    return;
+  }
+
+  const dynObj = editorMap.dynamicObjects[clickedObject.index];
+  if (!dynObj) return;
+
+  saveToHistory();
+
+  // Set axis at clicked position (world coordinates)
+  dynObj.axis = {
+    x: mousePos.x,
+    y: mousePos.y,
+    damping: 0.1,
+    stiffness: 1
+  };
+
+  // Select the object to show properties
+  selectedObjects = [clickedObject];
+  selectedObject = clickedObject;
+
+  updatePropertiesPanel();
+  renderEditor();
+
+  console.log(`Axis set for ${dynObj.id} at (${mousePos.x.toFixed(1)}, ${mousePos.y.toFixed(1)})`);
 }
 
 function resetCreationStates() {
@@ -1905,6 +1947,17 @@ function deleteSelectedObjects() {
   renderEditor();
 }
 
+function removeAxis(index) {
+  if (!editorMap.dynamicObjects[index]) return;
+  saveToHistory();
+  delete editorMap.dynamicObjects[index].axis;
+  updatePropertiesPanel();
+  renderEditor();
+}
+
+// Make removeAxis globally accessible for onclick handler
+window.removeAxis = removeAxis;
+
 function renderEditor() {
   if (!editorCanvas || !editorCtx) return;
   
@@ -2281,9 +2334,37 @@ function drawDynamicObject(obj, isSelected, isHovered = false) {
     editorCtx.strokeStyle = '#ffff00';
     editorCtx.lineWidth = 3 / zoom;
     editorCtx.stroke();
-    
+
     // Draw vertices for manipulation
     drawVertices(obj.vertices);
+
+    // Draw axis point if it exists
+    if (obj.axis) {
+      editorCtx.save();
+
+      // Draw circle at axis point
+      editorCtx.fillStyle = '#ff0000';
+      editorCtx.strokeStyle = '#ffffff';
+      editorCtx.lineWidth = 2 / zoom;
+
+      editorCtx.beginPath();
+      editorCtx.arc(obj.axis.x, -obj.axis.y, 6 / zoom, 0, 2 * Math.PI);
+      editorCtx.fill();
+      editorCtx.stroke();
+
+      // Draw crosshair at axis point
+      const size = 12 / zoom;
+      editorCtx.beginPath();
+      editorCtx.moveTo(obj.axis.x - size, -obj.axis.y);
+      editorCtx.lineTo(obj.axis.x + size, -obj.axis.y);
+      editorCtx.moveTo(obj.axis.x, -(obj.axis.y - size));
+      editorCtx.lineTo(obj.axis.x, -(obj.axis.y + size));
+      editorCtx.lineWidth = 2 / zoom;
+      editorCtx.strokeStyle = '#ff0000';
+      editorCtx.stroke();
+
+      editorCtx.restore();
+    }
   }
 }
 
@@ -2879,7 +2960,18 @@ function buildDynamicObjectProperties(obj, index) {
   html += createColorInput('Stroke Color', obj.strokeColor, `dynamic_strokeColor_${index}`);
   html += createNumberInput('Stroke Width', obj.strokeWidth, `dynamic_strokeWidth_${index}`, 0, 20, 1);
   html += '</div>';
-  
+
+  html += '<div class="property-group"><h5>Axis/Pivot Point</h5>';
+  if (obj.axis) {
+    html += `<p class="property-info" style="color: #aaa; font-size: 0.9em; margin: 5px 0;">Pivot at (${obj.axis.x.toFixed(1)}, ${obj.axis.y.toFixed(1)})</p>`;
+    html += createSliderInput('Damping', obj.axis.damping || 0.1, `dynamic_axisDamping_${index}`, 0, 1, 0.01);
+    html += createSliderInput('Stiffness', obj.axis.stiffness || 1, `dynamic_axisStiffness_${index}`, 0, 1, 0.01);
+    html += `<button onclick="removeAxis(${index})" class="delete-btn" style="background: #c44; color: #fff; border: none; padding: 6px 12px; margin-top: 8px; border-radius: 4px; cursor: pointer;">Remove Axis</button>`;
+  } else {
+    html += '<p class="property-info" style="color: #aaa; font-size: 0.9em; margin: 5px 0;">No pivot point set. Use Axis tool to add.</p>';
+  }
+  html += '</div>';
+
   return html;
 }
 
@@ -3098,17 +3190,26 @@ function handleSliderChange(event) {
   const objectType = idParts[0];
   const property = idParts[1];
   const index = parseInt(idParts[2]);
-  
+
   const objectData = getSelectedObjectData();
   if (!objectData) return;
-  
-  objectData[property] = value;
-  
+
+  // Handle axis properties (nested in axis object)
+  if (property === 'axisDamping' || property === 'axisStiffness') {
+    if (!objectData.axis) {
+      objectData.axis = {};
+    }
+    const axisProp = property === 'axisDamping' ? 'damping' : 'stiffness';
+    objectData.axis[axisProp] = value;
+  } else {
+    objectData[property] = value;
+  }
+
   const valueDisplay = document.getElementById(`${input.id}_value`);
   if (valueDisplay) {
     valueDisplay.textContent = value.toFixed(2);
   }
-  
+
   updateMapAndRender();
 }
 
@@ -3723,19 +3824,21 @@ function updateStatusBar() {
     'select': 'Select Tool',
     'createShape': 'Create Shape',
     'checkpoint': 'Create Checkpoint',
-    'dynamic': 'Create Dynamic Object', 
+    'dynamic': 'Create Dynamic Object',
     'areaEffect': 'Create Area Effect',
+    'axis': 'Add Pivot Point',
     'createCircle': 'Create Circle',
     'createRectangle': 'Create Rectangle',
     'createTriangle': 'Create Triangle'
   };
-  
+
   const toolHints = {
     'select': 'Click to select objects, drag to move them. Ctrl+click for multi-select. Arrow keys to nudge.',
     'createShape': 'Click to add vertices, press Enter to complete the shape, Escape to cancel.',
     'checkpoint': 'Click two points to create a checkpoint line. Hold Shift to snap angles to 15 degree increments.',
     'dynamic': 'Click to add vertices, press Enter to complete the dynamic object, Escape to cancel.',
     'areaEffect': 'Click to add vertices, press Enter to complete the area effect, Escape to cancel.',
+    'axis': 'Click on a dynamic object to set its pivot point. Adjust damping and stiffness in properties panel.',
     'createCircle': 'Click to set center, then click again to set radius.',
     'createRectangle': 'Click first corner, then click opposite corner.',
     'createTriangle': 'Click to set center, then click again to set size.'
