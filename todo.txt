@@ -30,3 +30,5 @@ X (client) show level of player in leaderboard
 X (client) remove 'rank' column on the leaderboard
 - (client) lay area affects under shape borders (striped lines) but above the filled shape.
 - (client) change `alert()` errors for something more sensible (vuetify-style rules/validation errors?)
+- (map editor) option to turn off collisions with walls on dynamic objects, it would allow spinners to clip through the side
+- (map editor / client / server) Change the way shapes work completely. We rely on hollow shapes for collisions when we could just be using full shapes with holes in the center? It gives us so much more control over border thickness and level design.
