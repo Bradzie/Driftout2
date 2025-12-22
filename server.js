@@ -22,7 +22,7 @@ const io = new Server(server, {
   maxHttpBufferSize: 1e6,
 });
 
-const DEBUG_MODE = true;
+const DEBUG_MODE = false;
 
 const userDb = new UserDatabase();
 
@@ -49,6 +49,7 @@ const currentDuplicateLoginPolicy = DUPLICATE_LOGIN_POLICY.KICK_EXISTING;
 // XP and Level calculation (matches client-side logic)
 const BASE_XP_LEVEL_1 = 10;
 const XP_SCALE_PER_LEVEL = 1.2;
+const KILL_XP_REWARD = 1;
 
 function getXPRequiredForLevel(level) {
   // level 1 requires 10 XP, each subsequent level requires 20% more XP
@@ -552,14 +553,15 @@ app.post('/api/auth/login', async (req, res) => {
         if (err) {
           console.error('Session save error after login:', err);
         }
-        res.json({ 
-          success: true, 
-          user: { 
-            id: result.user.id, 
-            username: result.user.username, 
+        res.json({
+          success: true,
+          user: {
+            id: result.user.id,
+            username: result.user.username,
             email: result.user.email,
-            isGuest: false
-          } 
+            isGuest: false,
+            xp: result.user.xp || 0
+          }
         });
       });
     } else {
@@ -822,7 +824,7 @@ function applyMotorForces(room) {
         const motorSpeed = body.dynamicObject.axis.motorSpeed;
         if (motorSpeed === 0) continue;
 
-        const angularVelocity = motorSpeed * 0.1;
+        const angularVelocity = motorSpeed * 0.01;
 
         Matter.Body.setAngularVelocity(body, angularVelocity);
       }
@@ -926,8 +928,10 @@ function applyCurrentEffects(car, currentEffects) {
     car.stats.acceleration = newAcceleration;
     car._activeAreaEffects.add(`boost_${maxBoostStrength}`);
   } else if (maxSlowStrength > 0) {
-    const newAcceleration = originalAcceleration * (1 - maxSlowStrength);
-    car.stats.acceleration = Math.max(0.1, newAcceleration); // Prevent going to zero
+    const frictionMultiplier = 1 + (maxSlowStrength * 25);
+    const newFriction = originalFriction * frictionMultiplier;
+    car.body.frictionAir = newFriction;
+    car.stats.acceleration = originalAcceleration;
     car._activeAreaEffects.add(`slow_${maxSlowStrength}`);
   } else {
     // No acceleration effects - restore original
@@ -1748,6 +1752,18 @@ class Room {
       carB.saveStatsToRoom();
       carA.saveStatsToRoom();
 
+      // Award XP for kill in official rooms
+      if (this.isOfficial) {
+        const killerSocket = io.sockets.sockets.get(carB.socketId);
+        if (killerSocket && killerSocket.request.session && killerSocket.request.session.userId && !killerSocket.request.session.isGuest) {
+          const userId = killerSocket.request.session.userId;
+          const xpAwarded = userDb.addXP(userId, KILL_XP_REWARD);
+          if (xpAwarded) {
+            killerSocket.emit('xpGained', { amount: KILL_XP_REWARD, reason: 'Kill' });
+          }
+        }
+      }
+
       // Broadcast kill feed message to this room
       this.broadcastKillFeedMessage(`${carB.name} crashed ${carA.name}!`, 'crash');
     } else if (carBCrashed && !carACrashed) {
@@ -1756,6 +1772,18 @@ class Room {
       carB.deaths += 1; // Track death
       carA.saveStatsToRoom();
       carB.saveStatsToRoom();
+
+      // Award XP for kill in official rooms
+      if (this.isOfficial) {
+        const killerSocket = io.sockets.sockets.get(carA.socketId);
+        if (killerSocket && killerSocket.request.session && killerSocket.request.session.userId && !killerSocket.request.session.isGuest) {
+          const userId = killerSocket.request.session.userId;
+          const xpAwarded = userDb.addXP(userId, KILL_XP_REWARD);
+          if (xpAwarded) {
+            killerSocket.emit('xpGained', { amount: KILL_XP_REWARD, reason: 'Kill' });
+          }
+        }
+      }
 
       // Broadcast kill feed message to this room
       this.broadcastKillFeedMessage(`${carA.name} crashed ${carB.name}!`, 'crash');
@@ -1884,7 +1912,6 @@ class Room {
     const { category: categoryToCheck, key: keyToCheck } = this.currentMapParsed;
 
     const map = mapManager.getMap(keyToCheck, categoryToCheck)
-    const thickness = 10
     if (!map) return
 
     if (map.shapes) {
@@ -1909,7 +1936,7 @@ class Room {
             ...HELPERS.getBodyOptionsFromShape(shape),
             angle
           }
-          const wall = Matter.Bodies.rectangle(cx, cy, length + thickness, thickness, bodyOptions)
+          const wall = Matter.Bodies.rectangle(cx, cy, length + shape.borderWidth, shape.borderWidth, bodyOptions)
           this.currentTrackBodies.push(wall)
         }
       }
@@ -1942,6 +1969,7 @@ class Room {
           body.frictionAir = dynObj.frictionAir;
         }
 
+        body.originalVertices = relativeVertices;
         body.dynamicObject = dynObj
         this.currentDynamicBodies.push(body)
 
@@ -2265,7 +2293,7 @@ class Room {
         id: body.dynamicObject?.id || body.id,
         position: body.position,
         angle: body.angle,
-        vertices: body.vertices.map(v => ({ x: v.x - body.position.x, y: v.y - body.position.y })),
+        vertices: body.originalVertices || body.vertices.map(v => ({ x: v.x - body.position.x, y: v.y - body.position.y })),
         fillColor: body.dynamicObject?.fillColor || [139, 69, 19],
         strokeColor: body.dynamicObject?.strokeColor || [101, 67, 33],
         strokeWidth: body.dynamicObject?.strokeWidth || 2
@@ -3172,6 +3200,18 @@ function gameLoop() {
                   car.deaths += 1;
                   attackerCar.saveStatsToRoom();
                   car.saveStatsToRoom();
+
+                  // Award XP for kill in official rooms
+                  if (room.isOfficial) {
+                    const killerSocket = io.sockets.sockets.get(attackerCar.socketId);
+                    if (killerSocket && killerSocket.request.session && killerSocket.request.session.userId && !killerSocket.request.session.isGuest) {
+                      const userId = killerSocket.request.session.userId;
+                      const xpAwarded = userDb.addXP(userId, KILL_XP_REWARD);
+                      if (xpAwarded) {
+                        killerSocket.emit('xpGained', { amount: KILL_XP_REWARD, reason: 'Kill' });
+                      }
+                    }
+                  }
 
                   // Broadcast kill feed message
                   room.broadcastKillFeedMessage(`${attackerCar.name} crashed ${car.name}!`, 'crash');

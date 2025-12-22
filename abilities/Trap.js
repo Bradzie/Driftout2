@@ -147,6 +147,15 @@ class SpikeTrapAbility extends Ability {
 
     car.currentHealth -= trap.damage;
     car.trapDamageHistory.set(trap.id, now);
+
+    if (!car.damageTagHistory) {
+      car.damageTagHistory = [];
+    }
+    car.damageTagHistory.push({
+      attackerId: trap.createdBy,
+      timestamp: now
+    });
+
     if (car.currentHealth <= 0)
       car.justCrashed = true;
     

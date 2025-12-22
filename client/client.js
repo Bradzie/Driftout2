@@ -211,10 +211,8 @@
         if (data.user.isGuest) {
           // guests need to re-authenticate every session
           currentUser = null;
-          showAuthScreen();
         } else {
           // auto-login if registered
-          console.log('Auto-login for registered user');
           currentUser = data.user;
           refreshSocketSession();
           showMainMenu();
@@ -285,7 +283,6 @@
     show(registerForm);
     document.getElementById('registerUsername').focus();
   }
-
 
   function showAuthLoading() {
     hide(authSelection);
@@ -740,6 +737,30 @@
   let sendInputInterval = null;
   // to stop any rendering before first state packet
   let hasReceivedFirstState = false;
+
+  // Mobile detection and controls
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+    || ('ontouchstart' in window)
+    || (window.matchMedia && window.matchMedia("(max-width: 768px)").matches);
+  let joystickActive = false;
+  let joystickStartPos = { x: 0, y: 0 };
+  let joystickCurrentPos = { x: 0, y: 0 };
+
+  // Function to show/hide mobile controls based on game state
+  function updateMobileControlsVisibility() {
+    const mobileControls = document.getElementById('mobileControls');
+    if (!mobileControls) return;
+
+    // Show mobile controls only when:
+    // - Device is mobile
+    // - Player is actively in game (sendInputInterval is running)
+    // - Chat is not focused
+    if (isMobile && sendInputInterval !== null && !isChatFocused) {
+      mobileControls.classList.remove('hidden');
+    } else {
+      mobileControls.classList.add('hidden');
+    }
+  }
   // TODO: test using the binary encoder, could improve latency and bandwidth
   let useBinaryEncoding = false;
   let inputSequenceNumber = 0;
@@ -957,6 +978,10 @@
     playerCrashTime = null;
     mySocketId = null;
     hide(loadingScreen);
+
+    // Hide mobile controls when returning to menu
+    updateMobileControlsVisibility();
+
     setTimeout(() => startSpectating(), 100); // small delay to ensure UI is ready
   }
 
@@ -997,6 +1022,7 @@
       <div class="mini-leaderboard-entry">
         <div class="mini-leaderboard-player">
           <div class="mini-leaderboard-color" style="background-color: ${player.color}"></div>
+          <div class="leaderboard-player-color" style="background-color: rgb(${player.color.fill[0]}, ${player.color.fill[1]}, ${player.color.fill[2]}); border: 3px solid rgb(${player.color.stroke[0]}, ${player.color.stroke[1]}, ${player.color.stroke[2]})"></div>
           <div class="mini-leaderboard-name">${player.name || 'Nameless'}</div>
         </div>
         <div class="mini-leaderboard-laps">${player.laps}</div>
@@ -1021,7 +1047,6 @@
         playerSocketIds.add(player.socketId);
         allEntries.push({
           type: 'player',
-          rank: index + 1,
           player: player
         });
       });
@@ -1058,13 +1083,8 @@
         }
 
         const bestLapText = player.bestLapTime ? formatTime(player.bestLapTime) : '--';
-        // custom styling for top 3 on leaderboard
-        const rankClass = rank === 1 ? 'rank-1' : rank === 2 ? 'rank-2' : rank === 3 ? 'rank-3' : '';
-
-        //TODO: make it so that kills, deaths and kdr are always shown even in spectate mode? currently they are hidden for spectators
         return `
           <tr>
-            <td class="${rankClass}">#${rank}</td>
             <td>
               <div class="leaderboard-player-cell">
                 <div class="leaderboard-player-color" style="background-color: rgb(${player.color.fill[0]}, ${player.color.fill[1]}, ${player.color.fill[2]}); border: 3px solid rgb(${player.color.stroke[0]}, ${player.color.stroke[1]}, ${player.color.stroke[2]})"></div>
@@ -1352,7 +1372,7 @@
       const previewImageUrl = map.id ? `/previews/${map.id}.png` : `/previews/${map.key.replace(/\//g, '_')}.png`;
 
       return `
-        <div class="map-entry" data-map-key="${map.key}">
+        <div class="map-entry" data-map-key="${map.key}" onclick="selectMapForRoom('${map.key}', '${map.name}')">
           <div class="map-preview">
             <img src="${previewImageUrl}" alt="${map.name} preview" class="preview-image"
                  onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
@@ -1361,8 +1381,7 @@
           <div class="map-info">
             <h4 class="map-name">${map.name}</h4>
             <p class="map-author">Author: ${author}</p>
-            <p class="map-category">Category: ${category.charAt(0).toUpperCase() + category.slice(1)}</p>
-            <button class="select-map-btn" onclick="selectMapForRoom('${map.key}', '${map.name}')">Select</button>
+            <p class="map-category">${category.charAt(0).toUpperCase() + category.slice(1)}</p>
           </div>
         </div>
       `;
@@ -1853,6 +1872,9 @@
     sendInputInterval = setInterval(() => {
       sendInput();
     }, 1000 / 60);
+
+    // Show mobile controls when game starts
+    updateMobileControlsVisibility();
   });
 
   socket.on('state', (data) => {
@@ -2104,6 +2126,139 @@
     if (typeof sendInput === 'function') sendInput();
   });
 
+  // Mobile Virtual Joystick
+  if (isMobile) {
+    const joystick = document.getElementById('mobileJoystick');
+    const joystickKnob = document.querySelector('.joystick-knob');
+    const JOYSTICK_RADIUS = 75; // Half of 150px diameter
+    const KNOB_RADIUS = 30; // Half of 60px diameter
+    const MAX_DISTANCE = JOYSTICK_RADIUS - KNOB_RADIUS;
+
+    function updateJoystickPosition(touch) {
+      const rect = joystick.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+
+      // Calculate distance from center
+      const deltaX = touch.clientX - centerX;
+      const deltaY = touch.clientY - centerY;
+      const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+      // Clamp to max distance
+      const clampedDistance = Math.min(distance, MAX_DISTANCE);
+      const angle = Math.atan2(deltaY, deltaX);
+
+      // Update knob position
+      const knobX = Math.cos(angle) * clampedDistance;
+      const knobY = Math.sin(angle) * clampedDistance;
+      joystickKnob.style.transform = `translate(calc(-50% + ${knobX}px), calc(-50% + ${knobY}px))`;
+
+      // Convert to cursor coordinates (scale to reasonable game movement)
+      const CURSOR_SCALE = 200; // Max cursor distance from center
+      const normalizedDistance = clampedDistance / MAX_DISTANCE;
+      inputState.cursor.x = Math.cos(angle) * normalizedDistance * CURSOR_SCALE;
+      inputState.cursor.y = Math.sin(angle) * normalizedDistance * CURSOR_SCALE;
+
+      // Instant input send
+      if (typeof sendInput === 'function') sendInput();
+    }
+
+    joystick.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      joystickActive = true;
+      joystickKnob.classList.add('active');
+
+      const touch = e.touches[0];
+      joystickStartPos = { x: touch.clientX, y: touch.clientY };
+      updateJoystickPosition(touch);
+    }, { passive: false });
+
+    joystick.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (!joystickActive) return;
+
+      const touch = e.touches[0];
+      joystickCurrentPos = { x: touch.clientX, y: touch.clientY };
+      updateJoystickPosition(touch);
+    }, { passive: false });
+
+    joystick.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      joystickActive = false;
+      joystickKnob.classList.remove('active');
+
+      // Reset knob to center
+      joystickKnob.style.transform = 'translate(-50%, -50%)';
+
+      // Reset cursor to neutral
+      inputState.cursor.x = 0;
+      inputState.cursor.y = 0;
+
+      // Instant input send
+      if (typeof sendInput === 'function') sendInput();
+    }, { passive: false });
+
+    joystick.addEventListener('touchcancel', (e) => {
+      e.preventDefault();
+      joystickActive = false;
+      joystickKnob.classList.remove('active');
+      joystickKnob.style.transform = 'translate(-50%, -50%)';
+      inputState.cursor.x = 0;
+      inputState.cursor.y = 0;
+      if (typeof sendInput === 'function') sendInput();
+    }, { passive: false });
+
+    // Mobile Boost Button
+    const boostButton = document.getElementById('mobileBoostButton');
+    boostButton.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      inputState.boostActive = true;
+      if (typeof sendInput === 'function') sendInput();
+    }, { passive: false });
+
+    boostButton.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      inputState.boostActive = false;
+      if (typeof sendInput === 'function') sendInput();
+    }, { passive: false });
+
+    boostButton.addEventListener('touchcancel', (e) => {
+      e.preventDefault();
+      inputState.boostActive = false;
+      if (typeof sendInput === 'function') sendInput();
+    }, { passive: false });
+
+    // Mobile Ability Button
+    const abilityButton = document.getElementById('mobileAbilityButton');
+    abilityButton.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+
+      if (myAbility) {
+        const now = getServerTime();
+        const remaining = Math.max(0, myAbility.cooldown - (now - lastAbilityUse));
+
+        if (remaining === 0) {
+          // Visual feedback (same as keyboard spacebar)
+          abilityButton.style.transform = 'scale(0.9)';
+          setTimeout(() => {
+            abilityButton.style.transform = '';
+          }, 100);
+
+          socket.emit('useAbility');
+        } else {
+          // Show disabled state briefly if on cooldown
+          abilityButton.classList.add('disabled');
+          setTimeout(() => {
+            abilityButton.classList.remove('disabled');
+          }, 200);
+        }
+      } else {
+        // No ability available
+        socket.emit('useAbility');
+      }
+    }, { passive: false });
+  }
+
   let isChatFocused = false;
   let playerName = '';
   const chatInputArea = document.getElementById('chatInputArea');
@@ -2123,6 +2278,8 @@
       chatInput.blur();
       chatInput.value = '';
     }
+    // Update mobile controls visibility when chat focus changes
+    updateMobileControlsVisibility();
   }
 
   function sendChatMessage() {

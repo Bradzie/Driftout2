@@ -152,6 +152,14 @@ class CannonAbility extends Ability {
     car.currentHealth -= projectile.damage;
     car.cannonballDamageHistory.set(projectile.id, now);
 
+    if (!car.damageTagHistory) {
+      car.damageTagHistory = [];
+    }
+    car.damageTagHistory.push({
+      attackerId: projectile.createdBy,
+      timestamp: now
+    });
+
     if (car.currentHealth <= 0) {
       car.justCrashed = true;
     }

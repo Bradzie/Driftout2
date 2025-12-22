@@ -114,7 +114,7 @@
         "y": 13.975500000000007,
         "damping": 0.1,
         "stiffness": 0.1,
-        "motorSpeed": 2
+        "motorSpeed": 1
       }
     }
   ],
