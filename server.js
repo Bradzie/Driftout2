@@ -552,14 +552,15 @@ app.post('/api/auth/login', async (req, res) => {
         if (err) {
           console.error('Session save error after login:', err);
         }
-        res.json({ 
-          success: true, 
-          user: { 
-            id: result.user.id, 
-            username: result.user.username, 
+        res.json({
+          success: true,
+          user: {
+            id: result.user.id,
+            username: result.user.username,
             email: result.user.email,
-            isGuest: false
-          } 
+            isGuest: false,
+            xp: result.user.xp || 0
+          }
         });
       });
     } else {

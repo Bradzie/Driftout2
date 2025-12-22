@@ -211,10 +211,8 @@
         if (data.user.isGuest) {
           // guests need to re-authenticate every session
           currentUser = null;
-          showAuthScreen();
         } else {
           // auto-login if registered
-          console.log('Auto-login for registered user');
           currentUser = data.user;
           refreshSocketSession();
           showMainMenu();
@@ -285,7 +283,6 @@
     show(registerForm);
     document.getElementById('registerUsername').focus();
   }
-
 
   function showAuthLoading() {
     hide(authSelection);
