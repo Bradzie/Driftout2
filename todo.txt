@@ -18,8 +18,8 @@ X (client) fix the favicon, it needs that transparent background and could look 
 \ (client) fix rendering of shapes that have concave vertecies, currently only the shape of the outer-most verticies are rendered, UPDATE: HTML canvas can't do this unless every vertex array is split into 'shape' and 'shape incuts', putting this on hold.
 - (client) can we get stripe rendering on shape edges to alternate around the entire shape? stripes currently alternate for each side, which leaves many double colors on anything with alot of sides/verticies
 X (server/client) add kill 'tagging'. if a car causes damage to another car and they crash within a small window afterwards (2 seconds?), it is treated as a kill via the damager
-- (server/client) kills via ability objects credit the ability object owner for the kill
-- (server/client) XP for kills
+X (server/client) kills via ability objects credit the ability object owner for the kill
+X (server/client) XP for kills
 - (client) real-time xp animations?
 - (client) 'Can't find player, returning to menu' error after crashing. Worringly the logic could be relying on this break to get back to spectating
 - (server) there's something going on with the auth. session names can't be found until a player has played a lap and then crashed? they should be able to be seen after auth
