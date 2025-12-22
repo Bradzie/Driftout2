@@ -22,7 +22,7 @@ const io = new Server(server, {
   maxHttpBufferSize: 1e6,
 });
 
-const DEBUG_MODE = true;
+const DEBUG_MODE = false;
 
 const userDb = new UserDatabase();
 

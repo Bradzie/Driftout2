@@ -994,6 +994,7 @@
       <div class="mini-leaderboard-entry">
         <div class="mini-leaderboard-player">
           <div class="mini-leaderboard-color" style="background-color: ${player.color}"></div>
+          <div class="leaderboard-player-color" style="background-color: rgb(${player.color.fill[0]}, ${player.color.fill[1]}, ${player.color.fill[2]}); border: 3px solid rgb(${player.color.stroke[0]}, ${player.color.stroke[1]}, ${player.color.stroke[2]})"></div>
           <div class="mini-leaderboard-name">${player.name || 'Nameless'}</div>
         </div>
         <div class="mini-leaderboard-laps">${player.laps}</div>
