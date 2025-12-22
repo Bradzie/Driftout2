@@ -1912,7 +1912,7 @@ input[type="number"]:focus {
 
 .selected-map-name {
   font-weight: 600;
-  color: #4CAF50;
+  color: #ff5f5f;
 }
 
 .no-map-selected {
@@ -1922,7 +1922,7 @@ input[type="number"]:focus {
 
 .browse-map-button {
   padding: 12px 20px;
-  background: #4CAF50;
+  background: #ff5f5f;
   color: white;
   border: none;
   font-size: 1rem;
@@ -1932,7 +1932,7 @@ input[type="number"]:focus {
 }
 
 .browse-map-button:hover {
-  background: #45a049;
+  background: #993939;
   transform: translateY(-1px);
 }
 
@@ -3243,6 +3243,7 @@ select.property-input {
 .modal-content {
   background: #1a1a1a;
   padding: 0;
+  margin-top: 5vh;
   min-width: 400px;
   max-width: 500px;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
@@ -3321,7 +3322,6 @@ select.property-input {
   padding: 12px 15px;
   background: #2a2a2a;
   border: 2px solid #444;
-  border-radius: 6px;
   color: #fff;
   font-size: 0.9rem;
   transition: all 0.2s ease;
@@ -3475,7 +3475,7 @@ select.property-input {
   padding: 12px 15px;
   background: #2a2a2a;
   border: 2px solid #444;
-  border-radius: 6px;
+  border-radius: 0;
   color: #fff;
   font-size: 0.9rem;
   transition: all 0.2s ease;
@@ -3542,7 +3542,6 @@ select.property-input {
 
 .map-entry {
   background: #2a2a2a;
-  border-radius: 8px;
   padding: 15px;
   border: 2px solid #444;
   transition: all 0.3s ease;
@@ -3553,6 +3552,10 @@ select.property-input {
   border-color: #ff5f5f;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(255, 95, 95, 0.2);
+}
+
+.map-category {
+  color: #ff5f5f;
 }
 
 .map-preview {
@@ -3594,24 +3597,6 @@ select.property-input {
   margin: 4px 0;
   color: #ccc;
   font-size: 14px;
-}
-
-.select-map-btn {
-  background: #55a3ff;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  margin-top: 10px;
-  transition: background-color 0.2s;
-  width: 100%;
-}
-
-.select-map-btn:hover {
-  background: #4a91e2;
 }
 
 .no-maps-message {

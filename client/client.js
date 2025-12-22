@@ -1352,7 +1352,7 @@
       const previewImageUrl = map.id ? `/previews/${map.id}.png` : `/previews/${map.key.replace(/\//g, '_')}.png`;
 
       return `
-        <div class="map-entry" data-map-key="${map.key}">
+        <div class="map-entry" data-map-key="${map.key}" onclick="selectMapForRoom('${map.key}', '${map.name}')">
           <div class="map-preview">
             <img src="${previewImageUrl}" alt="${map.name} preview" class="preview-image"
                  onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
@@ -1361,8 +1361,7 @@
           <div class="map-info">
             <h4 class="map-name">${map.name}</h4>
             <p class="map-author">Author: ${author}</p>
-            <p class="map-category">Category: ${category.charAt(0).toUpperCase() + category.slice(1)}</p>
-            <button class="select-map-btn" onclick="selectMapForRoom('${map.key}', '${map.name}')">Select</button>
+            <p class="map-category">${category.charAt(0).toUpperCase() + category.slice(1)}</p>
           </div>
         </div>
       `;
