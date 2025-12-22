@@ -1018,7 +1018,6 @@
         playerSocketIds.add(player.socketId);
         allEntries.push({
           type: 'player',
-          rank: index + 1,
           player: player
         });
       });
@@ -1055,13 +1054,8 @@
         }
 
         const bestLapText = player.bestLapTime ? formatTime(player.bestLapTime) : '--';
-        // custom styling for top 3 on leaderboard
-        const rankClass = rank === 1 ? 'rank-1' : rank === 2 ? 'rank-2' : rank === 3 ? 'rank-3' : '';
-
-        //TODO: make it so that kills, deaths and kdr are always shown even in spectate mode? currently they are hidden for spectators
         return `
           <tr>
-            <td class="${rankClass}">#${rank}</td>
             <td>
               <div class="leaderboard-player-cell">
                 <div class="leaderboard-player-color" style="background-color: rgb(${player.color.fill[0]}, ${player.color.fill[1]}, ${player.color.fill[2]}); border: 3px solid rgb(${player.color.stroke[0]}, ${player.color.stroke[1]}, ${player.color.stroke[2]})"></div>
