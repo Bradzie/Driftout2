@@ -49,6 +49,7 @@ const currentDuplicateLoginPolicy = DUPLICATE_LOGIN_POLICY.KICK_EXISTING;
 // XP and Level calculation (matches client-side logic)
 const BASE_XP_LEVEL_1 = 10;
 const XP_SCALE_PER_LEVEL = 1.2;
+const KILL_XP_REWARD = 1;
 
 function getXPRequiredForLevel(level) {
   // level 1 requires 10 XP, each subsequent level requires 20% more XP
@@ -1751,6 +1752,18 @@ class Room {
       carB.saveStatsToRoom();
       carA.saveStatsToRoom();
 
+      // Award XP for kill in official rooms
+      if (this.isOfficial) {
+        const killerSocket = io.sockets.sockets.get(carB.socketId);
+        if (killerSocket && killerSocket.request.session && killerSocket.request.session.userId && !killerSocket.request.session.isGuest) {
+          const userId = killerSocket.request.session.userId;
+          const xpAwarded = userDb.addXP(userId, KILL_XP_REWARD);
+          if (xpAwarded) {
+            killerSocket.emit('xpGained', { amount: KILL_XP_REWARD, reason: 'Kill' });
+          }
+        }
+      }
+
       // Broadcast kill feed message to this room
       this.broadcastKillFeedMessage(`${carB.name} crashed ${carA.name}!`, 'crash');
     } else if (carBCrashed && !carACrashed) {
@@ -1759,6 +1772,18 @@ class Room {
       carB.deaths += 1; // Track death
       carA.saveStatsToRoom();
       carB.saveStatsToRoom();
+
+      // Award XP for kill in official rooms
+      if (this.isOfficial) {
+        const killerSocket = io.sockets.sockets.get(carA.socketId);
+        if (killerSocket && killerSocket.request.session && killerSocket.request.session.userId && !killerSocket.request.session.isGuest) {
+          const userId = killerSocket.request.session.userId;
+          const xpAwarded = userDb.addXP(userId, KILL_XP_REWARD);
+          if (xpAwarded) {
+            killerSocket.emit('xpGained', { amount: KILL_XP_REWARD, reason: 'Kill' });
+          }
+        }
+      }
 
       // Broadcast kill feed message to this room
       this.broadcastKillFeedMessage(`${carA.name} crashed ${carB.name}!`, 'crash');
@@ -3175,6 +3200,18 @@ function gameLoop() {
                   car.deaths += 1;
                   attackerCar.saveStatsToRoom();
                   car.saveStatsToRoom();
+
+                  // Award XP for kill in official rooms
+                  if (room.isOfficial) {
+                    const killerSocket = io.sockets.sockets.get(attackerCar.socketId);
+                    if (killerSocket && killerSocket.request.session && killerSocket.request.session.userId && !killerSocket.request.session.isGuest) {
+                      const userId = killerSocket.request.session.userId;
+                      const xpAwarded = userDb.addXP(userId, KILL_XP_REWARD);
+                      if (xpAwarded) {
+                        killerSocket.emit('xpGained', { amount: KILL_XP_REWARD, reason: 'Kill' });
+                      }
+                    }
+                  }
 
                   // Broadcast kill feed message
                   room.broadcastKillFeedMessage(`${attackerCar.name} crashed ${car.name}!`, 'crash');
