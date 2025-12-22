@@ -822,7 +822,7 @@ function applyMotorForces(room) {
         const motorSpeed = body.dynamicObject.axis.motorSpeed;
         if (motorSpeed === 0) continue;
 
-        const angularVelocity = motorSpeed * 0.1;
+        const angularVelocity = motorSpeed * 0.01;
 
         Matter.Body.setAngularVelocity(body, angularVelocity);
       }
@@ -1942,6 +1942,7 @@ class Room {
           body.frictionAir = dynObj.frictionAir;
         }
 
+        body.originalVertices = relativeVertices;
         body.dynamicObject = dynObj
         this.currentDynamicBodies.push(body)
 
@@ -2265,7 +2266,7 @@ class Room {
         id: body.dynamicObject?.id || body.id,
         position: body.position,
         angle: body.angle,
-        vertices: body.vertices.map(v => ({ x: v.x - body.position.x, y: v.y - body.position.y })),
+        vertices: body.originalVertices || body.vertices.map(v => ({ x: v.x - body.position.x, y: v.y - body.position.y })),
         fillColor: body.dynamicObject?.fillColor || [139, 69, 19],
         strokeColor: body.dynamicObject?.strokeColor || [101, 67, 33],
         strokeWidth: body.dynamicObject?.strokeWidth || 2
