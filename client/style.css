@@ -3404,7 +3404,6 @@ select.property-input {
 #browseMapModal {
   background: rgba(0, 0, 0, 0.2);
   backdrop-filter: blur(2px);
-  z-index: 1002;
 }
 
 .browse-modal {

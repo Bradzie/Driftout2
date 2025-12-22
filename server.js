@@ -1884,7 +1884,6 @@ class Room {
     const { category: categoryToCheck, key: keyToCheck } = this.currentMapParsed;
 
     const map = mapManager.getMap(keyToCheck, categoryToCheck)
-    const thickness = 10
     if (!map) return
 
     if (map.shapes) {
@@ -1909,7 +1908,7 @@ class Room {
             ...HELPERS.getBodyOptionsFromShape(shape),
             angle
           }
-          const wall = Matter.Bodies.rectangle(cx, cy, length + thickness, thickness, bodyOptions)
+          const wall = Matter.Bodies.rectangle(cx, cy, length + shape.borderWidth, shape.borderWidth, bodyOptions)
           this.currentTrackBodies.push(wall)
         }
       }
