@@ -383,7 +383,7 @@
         }
       ],
       "effect": "boost",
-      "strength": 0.95,
+      "strength": 5,
       "fillColor": [
         249,
         255,
@@ -410,7 +410,7 @@
         }
       ],
       "effect": "slow",
-      "strength": 0.95,
+      "strength": 1,
       "fillColor": [
         130,
         60,
@@ -1765,7 +1765,7 @@
   ],
   "author": "Bradzie",
   "created_at": "2025-08-27T15:54:24.269Z",
-  "updated_at": "2025-12-22T14:53:18.399Z",
+  "updated_at": "2025-12-22T15:22:02.336Z",
   "author_id": 1,
   "category": "community"
 }

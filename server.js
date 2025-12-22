@@ -926,8 +926,10 @@ function applyCurrentEffects(car, currentEffects) {
     car.stats.acceleration = newAcceleration;
     car._activeAreaEffects.add(`boost_${maxBoostStrength}`);
   } else if (maxSlowStrength > 0) {
-    const newAcceleration = originalAcceleration * (1 - maxSlowStrength);
-    car.stats.acceleration = Math.max(0.1, newAcceleration); // Prevent going to zero
+    const frictionMultiplier = 1 + (maxSlowStrength * 25);
+    const newFriction = originalFriction * frictionMultiplier;
+    car.body.frictionAir = newFriction;
+    car.stats.acceleration = originalAcceleration;
     car._activeAreaEffects.add(`slow_${maxSlowStrength}`);
   } else {
     // No acceleration effects - restore original

@@ -257,8 +257,8 @@
           "y": 200
         }
       ],
-      "effect": "slow",
-      "strength": 0.5,
+      "effect": "boost",
+      "strength": 3,
       "fillColor": [
         255,
         255,
@@ -284,8 +284,8 @@
           "y": 200
         }
       ],
-      "effect": "boost",
-      "strength": 0.5,
+      "effect": "slow",
+      "strength": 1,
       "fillColor": [
         128,
         64,
@@ -296,7 +296,7 @@
   "dynamicObjects": [],
   "author": "Bradzie",
   "created_at": "2025-09-03T19:53:01.803Z",
-  "updated_at": "2025-09-05T15:09:04.173Z",
+  "updated_at": "2025-12-22T15:25:51.766Z",
   "author_id": 1,
   "category": "official"
 }
