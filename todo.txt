@@ -32,3 +32,9 @@ X (client) remove 'rank' column on the leaderboard
 - (client) change `alert()` errors for something more sensible (vuetify-style rules/validation errors?)
 - (map editor) option to turn off collisions with walls on dynamic objects, it would allow spinners to clip through the side
 - (map editor / client / server) Change the way shapes work completely. We rely on hollow shapes for collisions when we could just be using full shapes with holes in the center? It gives us so much more control over border thickness and level design.
+- (client/server) update debugger to only show for isDev players
+- (client/server) gamemodes? deathmatch, teams
+- (client/server) round modifiers? peaceful (no collide), double upgrade points, randomizer abilities/upgrades (ability objects could use car colour, then could be suitible for all cars!)
+- (client/server) change the colour of the default shape borders, the red is a bit strong, go lighter
+- (map editor) allow shape layer editing for proper overlapping of shapes
+- (client/server) leaderboard for registered accounts / shows top levels and their career stats (will require tracking of kills/deaths/wins in official servers) would be really cool to track their main cartype too

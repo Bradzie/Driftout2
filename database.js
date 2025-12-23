@@ -41,41 +41,41 @@ class UserDatabase {
     createMapsTable.run();
     
     // Migration: Add new columns to existing users table if they don't exist
-    this.migrateUsersTable();
+    //this.migrateUsersTable();
     
     console.log('Database initialized');
   }
 
-  migrateUsersTable() {
-    try {
-      const checkXpColumn = this.db.prepare(`
-        PRAGMA table_info(users)
-      `);
-      const columns = checkXpColumn.all();
-      const hasXpColumn = columns.some(col => col.name === 'xp');
-      const hasIsDevColumn = columns.some(col => col.name === 'isDev');
+  // migrateUsersTable() {
+  //   try {
+  //     const checkXpColumn = this.db.prepare(`
+  //       PRAGMA table_info(users)
+  //     `);
+  //     const columns = checkXpColumn.all();
+  //     const hasXpColumn = columns.some(col => col.name === 'xp');
+  //     const hasIsDevColumn = columns.some(col => col.name === 'isDev');
 
-      if (!hasXpColumn) {
-        console.log('Adding xp column to users table...');
-        this.db.exec('ALTER TABLE users ADD COLUMN xp INTEGER DEFAULT 0');
-      }
+  //     if (!hasXpColumn) {
+  //       console.log('Adding xp column to users table...');
+  //       this.db.exec('ALTER TABLE users ADD COLUMN xp INTEGER DEFAULT 0');
+  //     }
 
-      if (!hasIsDevColumn) {
-        console.log('Adding isDev column to users table...');
-        this.db.exec('ALTER TABLE users ADD COLUMN isDev BOOLEAN DEFAULT 0');
-      }
+  //     if (!hasIsDevColumn) {
+  //       console.log('Adding isDev column to users table...');
+  //       this.db.exec('ALTER TABLE users ADD COLUMN isDev BOOLEAN DEFAULT 0');
+  //     }
 
-      const setDevUser = this.db.prepare(`
-        UPDATE users SET isDev = 1 WHERE id = 1
-      `);
-      const result = setDevUser.run();
-      if (result.changes > 0) {
-        console.log('Set user ID 1 as developer');
-      }
-    } catch (error) {
-      console.error('Migration error:', error);
-    }
-  }
+  //     const setDevUser = this.db.prepare(`
+  //       UPDATE users SET isDev = 1 WHERE id = 1
+  //     `);
+  //     const result = setDevUser.run();
+  //     if (result.changes > 0) {
+  //       console.log('Set user ID 1 as developer');
+  //     }
+  //   } catch (error) {
+  //     console.error('Migration error:', error);
+  //   }
+  // }
 
   async hashPassword(password) {
     return bcrypt.hash(password, 12);
@@ -85,7 +85,6 @@ class UserDatabase {
     return bcrypt.compare(password, hash);
   }
 
-  // Register a new user
   async registerUser(username, email, password) {
     try {
       const passwordHash = await this.hashPassword(password);

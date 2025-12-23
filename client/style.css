@@ -68,7 +68,7 @@ html, body {
 
 .room-name-display {
   background: #ff5f5f;
-  color: #ffffff;
+  color: #fafafa;
   text-align: center;
   margin-bottom: 1rem;
   padding-top: 10px;
@@ -77,6 +77,12 @@ html, body {
   padding-right: 20px;
   line-height: 200%;
   font-size: 1rem;
+  font-weight: 600;
+  font-family: 'Overpass', sans-serif;';
+}
+
+.room-name-display-room {
+  font-size: 1.2rem;
   font-weight: 600;
   font-family: 'Overpass', sans-serif;';
 }

@@ -520,7 +520,7 @@
     }
   }
 
-  function updateRoomNameDisplay(roomName, mapName) {
+  function updateRoomNameDisplay(roomName, map) {
     const roomNameDisplay = document.getElementById('roomNameDisplay');
     const roomNameText = document.getElementById('roomNameText');
     const roomMapText = document.getElementById('roomMapText');
@@ -529,9 +529,9 @@
       return;
     }
     
-    if (roomName && mapName && isSpectating) {
+    if (roomName && map && map.displayName && isSpectating) {
       roomNameText.textContent = roomName;
-      roomMapText.textContent = mapName;
+      roomMapText.textContent = `${map.displayName} by ${map.author || 'Unknown'}`;
       show(roomNameDisplay);
     } else {
       hide(roomNameDisplay);
@@ -2050,7 +2050,7 @@
       currentRoomId = data.roomId;
     }
     
-    updateRoomNameDisplay(data.roomName, data.map.displayName);
+    updateRoomNameDisplay(data.roomName, data.map);
 
     if (data.map) {
       // we need a map key to handle the same map in different rooms
