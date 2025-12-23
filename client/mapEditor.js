@@ -2948,12 +2948,22 @@ function buildShapeProperties(shape, index) {
 
   html += createColorInput('Fill Color', shape.fillColor, `shape_fillColor_${index}`);
 
+  // Initialize fill collision if missing (default: false for backward compatibility)
+  if (shape.fillCollision === undefined) {
+    shape.fillCollision = false;
+  }
+  html += createCheckboxInput('Fill Collision', shape.fillCollision, `shape_fillCollision_${index}`);
+
   // Initialize border properties if missing
   if (!shape.borderColors) {
     shape.borderColors = [];
   }
   if (shape.borderWidth === undefined) {
     shape.borderWidth = 0;
+  }
+  // Initialize border collision if missing (default: true for backward compatibility)
+  if (shape.borderCollision === undefined) {
+    shape.borderCollision = true;
   }
 
   const borderEnabled = shape.borderWidth > 0 && shape.borderColors.length > 0;
@@ -2963,6 +2973,7 @@ function buildShapeProperties(shape, index) {
   html += createCheckboxInput('Border Enabled', borderEnabled, `shape_borderEnabled_${index}`);
 
   if (borderEnabled) {
+    html += createCheckboxInput('Border Collision', shape.borderCollision, `shape_borderCollision_${index}`);
     html += createSelectInput('Border Mode', borderMode, `shape_borderMode_${index}`, [
       { value: 'single', label: 'Single Color' },
       { value: 'dual', label: 'Dual Color' }
@@ -2985,10 +2996,16 @@ function buildShapeProperties(shape, index) {
 
 function buildDynamicObjectProperties(obj, index) {
   let html = '';
-  
+
   html += createTextInput('ID', obj.id, `dynamic_id_${index}`, 'Object identifier');
-  
+
+  // Initialize collision if missing (default: true for backward compatibility)
+  if (obj.collision === undefined) {
+    obj.collision = true;
+  }
+
   html += '<div class="property-group"><h5>Physics</h5>';
+  html += createCheckboxInput('Collision Enabled', obj.collision, `dynamic_collision_${index}`);
   html += createCheckboxInput('Static', obj.isStatic, `dynamic_isStatic_${index}`);
   html += createSliderInput('Density', obj.density, `dynamic_density_${index}`, 0, 5, 0.01);
   html += createSliderInput('Friction', obj.friction, `dynamic_friction_${index}`, 0, 2, 0.01);

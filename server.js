@@ -1981,11 +1981,24 @@ class Room {
 
     if (map.shapes) {
       for (const shape of map.shapes) {
-        if (shape.hollow) continue
         if (!Array.isArray(shape.vertices)) continue
 
         const verts = shape.vertices
         if (verts.length < 3) continue
+
+        // Create fill collision body if fillCollision is enabled
+        if (shape.fillCollision === true) {
+          const fillBodyOptions = HELPERS.getBodyOptionsFromShape(shape)
+          const fillBody = Matter.Bodies.fromVertices(0, 0, [verts], fillBodyOptions, true)
+
+          if (fillBody) {
+            fillBody.label = 'shape-fill'
+            this.currentTrackBodies.push(fillBody)
+          }
+        }
+
+        // Create border collision bodies (skip if hollow or borderCollision is false)
+        if (shape.hollow || shape.borderCollision === false) continue
 
         for (let i = 0; i < verts.length; i++) {
           const a = verts[i]
@@ -2036,6 +2049,12 @@ class Room {
 
         body.originalVertices = relativeVertices;
         body.dynamicObject = dynObj
+
+        // Mark if collision is disabled (default: true for backward compatibility)
+        if (dynObj.collision === false) {
+          body.noCollision = true
+        }
+
         this.currentDynamicBodies.push(body)
 
         // Create constraint if axis is defined
@@ -2068,7 +2087,11 @@ class Room {
       Matter.World.add(this.world, this.currentTrackBodies)
     }
     if (this.currentDynamicBodies.length > 0) {
-      Matter.World.add(this.world, this.currentDynamicBodies)
+      // Only add dynamic bodies that have collision enabled
+      const collisionEnabledBodies = this.currentDynamicBodies.filter(body => !body.noCollision)
+      if (collisionEnabledBodies.length > 0) {
+        Matter.World.add(this.world, collisionEnabledBodies)
+      }
     }
   }
   
