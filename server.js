@@ -8,8 +8,11 @@ const { Server } = require('socket.io');
 const Matter = require('matter-js');
 const decomp = require('poly-decomp');
 Matter.Common.setDecomp(decomp);
-const { v4: uuidv4 } = require('uuid');
+const { v4: uuidv4, validate: isUUID } = require('uuid');
 const session = require('express-session');
+const rateLimit = require('express-rate-limit');
+const validator = require('validator');
+const { fileTypeFromFile } = require('file-type');
 const UserDatabase = require('./database');
 
 const app = express();
@@ -30,7 +33,70 @@ function isValidFilename(filename) {
   if (!filename || typeof filename !== 'string') return false;
   if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) return false;
   if (path.isAbsolute(filename)) return false;
+  // Additional check: must be a valid UUID
+  if (!isUUID(filename)) return false;
   return true;
+}
+
+// Validate map data structure to prevent injection attacks
+function validateMapData(mapData) {
+  if (!mapData || typeof mapData !== 'object') {
+    return { valid: false, error: 'Map data must be an object' };
+  }
+
+  // Check required fields
+  if (!mapData.id || typeof mapData.id !== 'string') {
+    return { valid: false, error: 'Map must have a valid id' };
+  }
+
+  if (!isUUID(mapData.id)) {
+    return { valid: false, error: 'Map id must be a valid UUID' };
+  }
+
+  // Validate shapes array
+  if (mapData.shapes && !Array.isArray(mapData.shapes)) {
+    return { valid: false, error: 'Shapes must be an array' };
+  }
+
+  if (mapData.shapes && mapData.shapes.length > 1000) {
+    return { valid: false, error: 'Too many shapes (max 1000)' };
+  }
+
+  // Validate each shape
+  if (mapData.shapes) {
+    for (const shape of mapData.shapes) {
+      if (!shape || typeof shape !== 'object') {
+        return { valid: false, error: 'Each shape must be an object' };
+      }
+      if (shape.vertices && !Array.isArray(shape.vertices)) {
+        return { valid: false, error: 'Shape vertices must be an array' };
+      }
+      if (shape.vertices && shape.vertices.length > 100) {
+        return { valid: false, error: 'Shape has too many vertices (max 100 per shape)' };
+      }
+    }
+  }
+
+  // Validate strings to prevent XSS
+  if (mapData.displayName && typeof mapData.displayName === 'string') {
+    if (mapData.displayName.length > 100) {
+      return { valid: false, error: 'Display name too long (max 100 characters)' };
+    }
+  }
+
+  if (mapData.description && typeof mapData.description === 'string') {
+    if (mapData.description.length > 500) {
+      return { valid: false, error: 'Description too long (max 500 characters)' };
+    }
+  }
+
+  // Limit total JSON size to prevent memory exhaustion
+  const jsonSize = JSON.stringify(mapData).length;
+  if (jsonSize > 1024 * 1024) { // 1MB limit
+    return { valid: false, error: 'Map data too large (max 1MB)' };
+  }
+
+  return { valid: true };
 }
 
 const activeUserSessions = new Map();
@@ -87,12 +153,47 @@ const sessionMiddleware = session({
   cookie: {
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000
+    maxAge: 24 * 60 * 60 * 1000,
+    sameSite: 'strict' // CSRF protection
   }
+});
+
+// Rate limiting configurations
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 attempts per window
+  message: 'Too many authentication attempts, please try again later',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const mapUploadLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10, // 10 map uploads per hour
+  message: 'Too many map uploads, please try again later',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const roomCreationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 room creations per 15 minutes
+  message: 'Too many room creation attempts, please try again later',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const generalApiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 60, // 60 requests per minute
+  message: 'Too many requests, please slow down',
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
 app.use(express.json());
 app.use(sessionMiddleware);
+app.use('/api/', generalApiLimiter); // Apply general rate limiting to all API routes
 app.use(express.static('client'));
 app.use('/previews', express.static('maps/previews')); // Serve preview images
 
@@ -140,12 +241,23 @@ app.get('/api/maps/:category/:key', (req, res) => {
 // New map management endpoints
 
 // Upload a new community map or overwrite an existing one (authenticated users only)
-app.post('/api/maps', requireAuth, async (req, res) => {
+app.post('/api/maps', mapUploadLimiter, requireAuth, async (req, res) => {
   try {
     const { name, mapData, directory, key } = req.body;
-    
+
     if (!name || !mapData) {
       return sendError(res, 400, 'Name and map data are required');
+    }
+
+    // Validate name length
+    if (typeof name !== 'string' || name.length < 1 || name.length > 100) {
+      return sendError(res, 400, 'Map name must be between 1 and 100 characters');
+    }
+
+    // Validate map data structure
+    const validation = validateMapData(mapData);
+    if (!validation.valid) {
+      return sendError(res, 400, validation.error);
     }
 
     let filename;
@@ -178,12 +290,15 @@ app.post('/api/maps', requireAuth, async (req, res) => {
     }
 
     if (!isValidFilename(filename)) {
-      return sendError(res, 400, 'Invalid filename: path traversal not allowed');
+      return sendError(res, 400, 'Invalid filename: must be a valid UUID');
     }
-    
+
+    // Sanitize text fields to prevent XSS
+    const sanitizedName = validator.escape(name);
+
     const enhancedMapData = {
       ...mapData,
-      displayName: name,
+      displayName: sanitizedName,
       author: mapData.author || req.session.username,
       author_id: req.session.userId,
       created_at: isNewMap ? new Date().toISOString() : (mapData.created_at || new Date().toISOString()),
@@ -197,20 +312,20 @@ app.post('/api/maps', requireAuth, async (req, res) => {
     }
 
     if (isNewMap) {
-      const dbResult = userDb.addMap(name, req.session.userId, filename, targetDirectory);
+      const dbResult = userDb.addMap(sanitizedName, req.session.userId, filename, targetDirectory);
       if (!dbResult.success) {
         mapManager.deleteMap(filename, targetDirectory);
         return res.status(500).json({ error: dbResult.error });
       }
-       res.json({ 
-        success: true, 
+       res.json({
+        success: true,
         mapId: dbResult.mapId,
         filename: filename,
         key: `${targetDirectory}/${filename}`
       });
     } else {
-         res.json({ 
-            success: true, 
+         res.json({
+            success: true,
             filename: filename,
             key: `${targetDirectory}/${filename}`
         });
@@ -304,7 +419,7 @@ app.get('/api/maps/my', requireAuth, async (req, res) => {
 });
 
 // Upload preview image for a map
-app.post('/api/maps/preview', requireAuth, async (req, res) => {
+app.post('/api/maps/preview', mapUploadLimiter, requireAuth, async (req, res) => {
   try {
     const form = new formidable.IncomingForm();
     form.maxFileSize = 5 * 1024 * 1024; // 5MB limit
@@ -321,26 +436,57 @@ app.post('/api/maps/preview', requireAuth, async (req, res) => {
         return sendError(res, 400, 'Map ID is required');
       }
 
+      // Validate mapId is a valid UUID
+      if (!isUUID(mapId)) {
+        return sendError(res, 400, 'Invalid map ID format');
+      }
+
       const previewFile = files.preview;
       if (!previewFile) {
         return sendError(res, 400, 'No preview file provided');
       }
 
       try {
+        const file = Array.isArray(previewFile) ? previewFile[0] : previewFile;
+
+        // Validate actual file type using magic bytes, not just extension
+        const fileType = await fileTypeFromFile(file.filepath);
+
+        if (!fileType || !['image/png', 'image/jpeg', 'image/jpg'].includes(fileType.mime)) {
+          fs.unlinkSync(file.filepath); // Clean up invalid file
+          return sendError(res, 400, 'Invalid file type. Only PNG and JPEG images are allowed');
+        }
+
+        // Additional validation: check file size
+        const stats = fs.statSync(file.filepath);
+        if (stats.size > 5 * 1024 * 1024) {
+          fs.unlinkSync(file.filepath);
+          return sendError(res, 400, 'File too large. Maximum size is 5MB');
+        }
+
         const previewsDir = path.join(__dirname, 'maps', 'previews');
         if (!fs.existsSync(previewsDir)) {
           fs.mkdirSync(previewsDir, { recursive: true });
         }
 
-        const filename = mapId + '.png';
+        // Use proper extension based on actual file type
+        const extension = fileType.ext;
+        const filename = mapId + '.' + extension;
         const targetPath = path.join(previewsDir, filename);
-        const file = Array.isArray(previewFile) ? previewFile[0] : previewFile;
+
+        // Ensure the target path is within the previews directory (prevent path traversal)
+        const resolvedTarget = path.resolve(targetPath);
+        const resolvedPreviewsDir = path.resolve(previewsDir);
+        if (!resolvedTarget.startsWith(resolvedPreviewsDir)) {
+          fs.unlinkSync(file.filepath);
+          return sendError(res, 400, 'Invalid file path');
+        }
 
         fs.copyFileSync(file.filepath, targetPath);
         fs.unlinkSync(file.filepath);
 
-        res.json({ 
-          success: true, 
+        res.json({
+          success: true,
           message: 'Preview image saved successfully',
           previewPath: `/previews/${filename}`,
           mapId: mapId
@@ -348,6 +494,15 @@ app.post('/api/maps/preview', requireAuth, async (req, res) => {
 
       } catch (saveError) {
         console.error('Preview save error:', saveError);
+        // Clean up file on error
+        try {
+          const file = Array.isArray(previewFile) ? previewFile[0] : previewFile;
+          if (file && file.filepath && fs.existsSync(file.filepath)) {
+            fs.unlinkSync(file.filepath);
+          }
+        } catch (cleanupError) {
+          console.error('Cleanup error:', cleanupError);
+        }
         sendError(res, 500, 'Failed to save preview image');
       }
     });
@@ -420,7 +575,7 @@ app.get('/api/rooms', (req, res) => {
   res.json(roomList);
 });
 
-app.post('/api/rooms/create', express.json(), (req, res) => {
+app.post('/api/rooms/create', roomCreationLimiter, express.json(), (req, res) => {
   try {
     const { name, mapKey, maxPlayers, isPrivate } = req.body;
     
@@ -467,51 +622,71 @@ app.post('/api/rooms/create', express.json(), (req, res) => {
   }
 });
 
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', authLimiter, async (req, res) => {
   try {
     const { username, email, password } = req.body;
-    
+
     if (!username || !email || !password) {
       return sendError(res, 400, 'Username, email, and password are required');
     }
-    
+
     if (username.length < 2 || username.length > 20) {
       return sendError(res, 400, 'Username must be between 2 and 20 characters');
     }
-    
-    if (password.length < 6) {
-      return sendError(res, 400, 'Password must be at least 6 characters long');
+
+    // Strengthened password requirements
+    if (password.length < 12) {
+      return sendError(res, 400, 'Password must be at least 12 characters long');
     }
-    
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+
+    // Check for password complexity
+    const hasUpperCase = /[A-Z]/.test(password);
+    const hasLowerCase = /[a-z]/.test(password);
+    const hasNumber = /[0-9]/.test(password);
+    const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+
+    if (!hasUpperCase || !hasLowerCase || !hasNumber || !hasSpecial) {
+      return sendError(res, 400, 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character');
+    }
+
+    // Use validator library for better email validation
+    if (!validator.isEmail(email)) {
       return sendError(res, 400, 'Please enter a valid email address');
     }
-    
+
     const result = await userDb.registerUser(username, email, password);
-    
+
     if (result.success) {
-      // Log in the user immediately after registration
-      req.session.userId = result.userId;
-      req.session.username = username;
-      req.session.isGuest = false;
-      
-      req.session.save((err) => {
+      // Regenerate session to prevent session fixation
+      req.session.regenerate((err) => {
         if (err) {
-          console.error('Session save error after registration:', err);
+          console.error('Session regeneration error after registration:', err);
+          return sendError(res, 500, 'Registration failed');
         }
-        res.json({ 
-          success: true, 
-          user: { 
-            id: result.userId, 
-            username: username, 
-            email: email,
-            isGuest: false
-          } 
+
+        // Log in the user immediately after registration
+        req.session.userId = result.userId;
+        req.session.username = username;
+        req.session.isGuest = false;
+
+        req.session.save((saveErr) => {
+          if (saveErr) {
+            console.error('Session save error after registration:', saveErr);
+          }
+          res.json({
+            success: true,
+            user: {
+              id: result.userId,
+              username: username,
+              email: email,
+              isGuest: false
+            }
+          });
         });
       });
     } else {
-      res.status(400).json({ error: result.error });
+      // Use generic error message to prevent user enumeration
+      res.status(400).json({ error: 'Registration failed. Please check your information and try again.' });
     }
   } catch (error) {
     console.error('Registration error:', error);
@@ -519,24 +694,24 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
-    
+
     if (!email || !password) {
       return sendError(res, 400, 'Email and password are required');
     }
-    
+
     const result = await userDb.loginUser(email, password);
-    
+
     if (result.success) {
       const userId = result.user.id;
       const existingSessions = getUserActiveSessions(userId);
-      
+
       if (existingSessions.size > 0) {
-        
+
         if (currentDuplicateLoginPolicy === DUPLICATE_LOGIN_POLICY.REJECT_NEW) {
-          return res.status(409).json({ 
+          return res.status(409).json({
             error: 'Account is already logged in from another location. Please log out from the other session first.',
             errorCode: 'ALREADY_LOGGED_IN'
           });
@@ -544,28 +719,37 @@ app.post('/api/auth/login', async (req, res) => {
           // We'll kick existing sessions after socket connection is established
         }
       }
-      
-      req.session.userId = result.user.id;
-      req.session.username = result.user.username;
-      req.session.isGuest = false;
-      
-      req.session.save((err) => {
+
+      // Regenerate session to prevent session fixation
+      req.session.regenerate((err) => {
         if (err) {
-          console.error('Session save error after login:', err);
+          console.error('Session regeneration error after login:', err);
+          return sendError(res, 500, 'Login failed');
         }
-        res.json({
-          success: true,
-          user: {
-            id: result.user.id,
-            username: result.user.username,
-            email: result.user.email,
-            isGuest: false,
-            xp: result.user.xp || 0
+
+        req.session.userId = result.user.id;
+        req.session.username = result.user.username;
+        req.session.isGuest = false;
+
+        req.session.save((saveErr) => {
+          if (saveErr) {
+            console.error('Session save error after login:', saveErr);
           }
+          res.json({
+            success: true,
+            user: {
+              id: result.user.id,
+              username: result.user.username,
+              email: result.user.email,
+              isGuest: false,
+              xp: result.user.xp || 0
+            }
+          });
         });
       });
     } else {
-      res.status(400).json({ error: result.error });
+      // Use generic error message to prevent user enumeration
+      res.status(401).json({ error: 'Invalid credentials. Please try again.' });
     }
   } catch (error) {
     console.error('Login error:', error);
@@ -703,17 +887,18 @@ app.get('/api/leaderboard', (req, res) => {
 });
 
 if (DEBUG_MODE) {
-  app.get('/api/debug/sessions', (req, res) => {
+  // Restrict debug endpoint to localhost only for security
+  app.get('/api/debug/sessions', requireLocalhost, (req, res) => {
     const userSessionsInfo = {};
     for (const [userId, sockets] of activeUserSessions.entries()) {
       userSessionsInfo[userId] = Array.from(sockets);
     }
-    
+
     const guestSessionsInfo = {};
     for (const [sessionId, socketId] of activeGuestSessions.entries()) {
       guestSessionsInfo[sessionId] = socketId;
     }
-    
+
     res.json({
       userSessions: userSessionsInfo,
       guestSessions: guestSessionsInfo,
@@ -808,6 +993,17 @@ function sendError(res, statusCode, message) {
 function requireAuth(req, res, next) {
   if (!req.session.userId) {
     return sendError(res, 401, 'Authentication required');
+  }
+  next();
+}
+
+// Middleware to restrict debug endpoints to localhost only
+function requireLocalhost(req, res, next) {
+  const ip = req.ip || req.connection.remoteAddress;
+  const isLocalhost = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+
+  if (!isLocalhost) {
+    return sendError(res, 403, 'Access denied');
   }
   next();
 }
@@ -2894,14 +3090,14 @@ io.on('connection', (socket) => {
   
   socket.on('binaryInput', (buffer) => {
     if (!myCar) return;
-    
+
     if (currentRoom) {
       currentRoom.updateMemberActivity(socket.id);
     }
-    
+
     // Ignore input from crashed cars
     if (myCar.crashedAt) return;
-    
+
     try {
       let arrayBuffer;
       if (buffer instanceof ArrayBuffer) {
@@ -2912,17 +3108,21 @@ io.on('connection', (socket) => {
         console.error('Invalid binary input data type:', typeof buffer, buffer);
         return;
       }
-      
+
       // Decode binary input data
       const data = decodeBinaryInput(arrayBuffer);
-      
+
       if (data.cursor) {
-        myCar.cursor.x = data.cursor.x;
-        myCar.cursor.y = data.cursor.y;
-        myCar.lastInputTime = data.timestamp || Date.now();
-        myCar.inputSequence = data.sequence || 0;
+        // Validate and clamp cursor values to prevent speed exploits
+        const CURSOR_MAX = 100;
+        if (typeof data.cursor.x === 'number' && typeof data.cursor.y === 'number') {
+          myCar.cursor.x = Math.max(-CURSOR_MAX, Math.min(CURSOR_MAX, data.cursor.x));
+          myCar.cursor.y = Math.max(-CURSOR_MAX, Math.min(CURSOR_MAX, data.cursor.y));
+          myCar.lastInputTime = data.timestamp || Date.now();
+          myCar.inputSequence = data.sequence || 0;
+        }
       }
-      
+
       if (typeof data.boostActive === 'boolean') {
         myCar.boostActive = data.boostActive && myCar.currentBoost > 0;
       }
@@ -2933,78 +3133,103 @@ io.on('connection', (socket) => {
   
   socket.on('input', (data) => {
     if (!myCar) return;
-    
+
     if (currentRoom) {
       currentRoom.updateMemberActivity(socket.id);
     }
-    
+
     // Ignore input from crashed cars
     if (myCar.crashedAt) return;
-    
+
     if (data.cursor) {
-      myCar.cursor.x = data.cursor.x;
-      myCar.cursor.y = data.cursor.y;
-      myCar.lastInputTime = data.timestamp || Date.now();
-      myCar.inputSequence = data.sequence || 0;
+      // Validate and clamp cursor values to prevent speed exploits
+      const CURSOR_MAX = 100;
+      if (typeof data.cursor.x === 'number' && typeof data.cursor.y === 'number') {
+        myCar.cursor.x = Math.max(-CURSOR_MAX, Math.min(CURSOR_MAX, data.cursor.x));
+        myCar.cursor.y = Math.max(-CURSOR_MAX, Math.min(CURSOR_MAX, data.cursor.y));
+        myCar.lastInputTime = data.timestamp || Date.now();
+        myCar.inputSequence = data.sequence || 0;
+      }
     }
-    
+
     if (typeof data.boostActive === 'boolean') {
       myCar.boostActive = data.boostActive && myCar.currentBoost > 0;
     }
   });
   socket.on('upgrade', (data) => {
     if (!myCar || !data || typeof data.stat !== 'string') return;
+
+    // Prevent concurrent upgrade processing (race condition protection)
+    if (myCar._upgradeInProgress) {
+      return;
+    }
+
     const stat = data.stat;
     const validStats = ['maxHealth', 'acceleration', 'regen', 'size', 'abilityCooldown', 'projectileSpeed', 'projectileDensity'];
     if (!validStats.includes(stat)) return;
-    if (myCar.upgradePoints > 0) {
+
+    // Atomic check-and-decrement to prevent race condition
+    if (myCar.upgradePoints <= 0) {
+      return;
+    }
+
+    // Set lock flag
+    myCar._upgradeInProgress = true;
+
+    try {
       const carType = CAR_TYPES[myCar.type];
       const upgradeConfig = carType.upgrades[stat];
-      
-      if (upgradeConfig) {
-        const currentUsage = myCar.upgradeUsage[stat] || 0;
-        if (currentUsage >= upgradeConfig.maxUpgrades) {
-          return;
-        }
-        
-        const amount = upgradeConfig.amount;
-        
-        switch (stat) {
-          case 'maxHealth':
-            myCar.stats.maxHealth += amount;
-            myCar.currentHealth += amount;
-            break;
-          case 'acceleration':
-            myCar.stats.acceleration += amount;
-            break;
-          case 'regen':
-            myCar.stats.regen += amount;
-            break;
-          case 'size': {
-            const scaleFactor = 1 + amount;
-            myCar.stats.acceleration += (amount / 10);
-            Matter.Body.scale(myCar.body, scaleFactor, scaleFactor);
-            Matter.Body.setDensity(myCar.body, myCar.body.density + amount);
 
-            break;
-          }
-          case 'abilityCooldown':
-            if (!myCar.abilityCooldownReduction) myCar.abilityCooldownReduction = 0;
-            myCar.abilityCooldownReduction += Math.abs(amount);
-            break;
-          case 'projectileSpeed':
-            if (!myCar.projectileSpeed) myCar.projectileSpeed = 0;
-            myCar.projectileSpeed += amount;
-            break;
-          case 'projectileDensity':
-            if (!myCar.projectileDensity) myCar.projectileDensity = 0;
-            myCar.projectileDensity += amount;
-            break;
-        }
-
-        myCar.upgradeUsage[stat] = currentUsage + 1;
-        myCar.upgradePoints -= 1;
+      if (!upgradeConfig) {
+        return;
       }
+
+      const currentUsage = myCar.upgradeUsage[stat] || 0;
+      if (currentUsage >= upgradeConfig.maxUpgrades) {
+        return;
+      }
+
+      // Decrement points BEFORE applying upgrade
+      myCar.upgradePoints -= 1;
+
+      const amount = upgradeConfig.amount;
+
+      switch (stat) {
+        case 'maxHealth':
+          myCar.stats.maxHealth += amount;
+          myCar.currentHealth += amount;
+          break;
+        case 'acceleration':
+          myCar.stats.acceleration += amount;
+          break;
+        case 'regen':
+          myCar.stats.regen += amount;
+          break;
+        case 'size': {
+          const scaleFactor = 1 + amount;
+          myCar.stats.acceleration += (amount / 10);
+          Matter.Body.scale(myCar.body, scaleFactor, scaleFactor);
+          Matter.Body.setDensity(myCar.body, myCar.body.density + amount);
+          break;
+        }
+        case 'abilityCooldown':
+          if (!myCar.abilityCooldownReduction) myCar.abilityCooldownReduction = 0;
+          myCar.abilityCooldownReduction += Math.abs(amount);
+          break;
+        case 'projectileSpeed':
+          if (!myCar.projectileSpeed) myCar.projectileSpeed = 0;
+          myCar.projectileSpeed += amount;
+          break;
+        case 'projectileDensity':
+          if (!myCar.projectileDensity) myCar.projectileDensity = 0;
+          myCar.projectileDensity += amount;
+          break;
+      }
+
+      myCar.upgradeUsage[stat] = currentUsage + 1;
+    } finally {
+      // Always release lock
+      myCar._upgradeInProgress = false;
     }
   });
   
@@ -3128,34 +3353,36 @@ io.on('connection', (socket) => {
   
   socket.on('chatMessage', (data) => {
     if (!currentRoom || !myCar) return;
-    
+
     currentRoom.updateMemberActivity(socket.id);
-    
+
     if (!data.message || typeof data.message !== 'string') return;
     const message = data.message.trim();
     if (!message || message.length > 200) return;
-    
+
     // Validate player has a name
     const playerName = myCar.name || 'Anonymous';
     if (!playerName || playerName === 'Anonymous') {
       socket.emit('chatError', { error: 'Must have a valid name to chat' });
       return;
     }
-    
-    const sanitizedMessage = message.replace(/[<>]/g, '');
-    
-    
+
+    // Properly sanitize message to prevent XSS using validator library
+    const sanitizedMessage = validator.escape(message);
+    const sanitizedPlayerName = validator.escape(playerName);
+
+
     // Broadcast to all room members (players and spectators)
     const roomMembers = [
       ...Array.from(currentRoom.players.keys()),
       ...Array.from(currentRoom.spectators.keys())
     ];
-    
+
     for (const socketId of roomMembers) {
       const targetSocket = io.sockets.sockets.get(socketId);
       if (targetSocket) {
         targetSocket.emit('chatMessageReceived', {
-          playerName: playerName,
+          playerName: sanitizedPlayerName,
           message: sanitizedMessage,
           timestamp: Date.now()
         });
