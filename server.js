@@ -662,6 +662,46 @@ app.get('/api/auth/session', (req, res) => {
   }
 });
 
+app.get('/api/leaderboard', (req, res) => {
+  try {
+    const topPlayers = userDb.getLeaderboard(100);
+
+    const leaderboardData = topPlayers.map(player => ({
+      username: player.username,
+      level: calculateLevel(player.xp),
+      xp: player.xp,
+      kills: player.total_kills,
+      deaths: player.total_deaths,
+      wins: player.total_wins
+    }));
+
+    let currentUserData = null;
+    if (req.session?.userId && !req.session.isGuest) {
+      const userData = userDb.getUserById(req.session.userId);
+      if (userData) {
+        const rank = userDb.getUserRank(req.session.userId);
+        currentUserData = {
+          username: userData.username,
+          level: calculateLevel(userData.xp),
+          xp: userData.xp,
+          kills: userData.total_kills,
+          deaths: userData.total_deaths,
+          wins: userData.total_wins,
+          rank: rank
+        };
+      }
+    }
+
+    res.json({
+      leaderboard: leaderboardData,
+      currentUser: currentUserData
+    });
+  } catch (error) {
+    console.error('Leaderboard error:', error);
+    res.status(500).json({ error: 'Failed to load leaderboard' });
+  }
+});
+
 if (DEBUG_MODE) {
   app.get('/api/debug/sessions', (req, res) => {
     const userSessionsInfo = {};
@@ -1761,6 +1801,12 @@ class Room {
           if (xpAwarded) {
             killerSocket.emit('xpGained', { amount: KILL_XP_REWARD, reason: 'Kill' });
           }
+          userDb.addKill(userId);
+        }
+
+        const victimSocket = io.sockets.sockets.get(carA.socketId);
+        if (victimSocket?.request?.session?.userId && !victimSocket.request.session.isGuest) {
+          userDb.addDeath(victimSocket.request.session.userId);
         }
       }
 
@@ -1782,6 +1828,12 @@ class Room {
           if (xpAwarded) {
             killerSocket.emit('xpGained', { amount: KILL_XP_REWARD, reason: 'Kill' });
           }
+          userDb.addKill(userId);
+        }
+
+        const victimSocket = io.sockets.sockets.get(carB.socketId);
+        if (victimSocket?.request?.session?.userId && !victimSocket.request.session.isGuest) {
+          userDb.addDeath(victimSocket.request.session.userId);
         }
       }
 
@@ -1793,6 +1845,19 @@ class Room {
       carB.deaths += 1;
       carA.saveStatsToRoom();
       carB.saveStatsToRoom();
+
+      if (this.isOfficial) {
+        const socketA = io.sockets.sockets.get(carA.socketId);
+        if (socketA?.request?.session?.userId && !socketA.request.session.isGuest) {
+          userDb.addDeath(socketA.request.session.userId);
+        }
+
+        const socketB = io.sockets.sockets.get(carB.socketId);
+        if (socketB?.request?.session?.userId && !socketB.request.session.isGuest) {
+          userDb.addDeath(socketB.request.session.userId);
+        }
+      }
+
       this.broadcastKillFeedMessage(`${carA.name} and ${carB.name} crashed!`, 'crash');
     } else {
       // Both cars survived - add damage tags for potential delayed kill credit
@@ -3139,12 +3204,15 @@ function gameLoop() {
       if (roundWinner && !room.winMessageSent) {
         const winnerName = roundWinner.name;
 
-        const winnerSocket = io.sockets.sockets.get(roundWinner.socketId);
-        if (winnerSocket && winnerSocket.request.session && winnerSocket.request.session.userId && !winnerSocket.request.session.isGuest) {
-          const userId = winnerSocket.request.session.userId;
-          const xpAwarded = userDb.addXP(userId, 10);
-          if (xpAwarded) {
-            winnerSocket.emit('xpGained', { amount: 10, reason: 'Race Win' });
+        if (room.isOfficial) {
+          const winnerSocket = io.sockets.sockets.get(roundWinner.socketId);
+          if (winnerSocket && winnerSocket.request.session && winnerSocket.request.session.userId && !winnerSocket.request.session.isGuest) {
+            const userId = winnerSocket.request.session.userId;
+            const xpAwarded = userDb.addXP(userId, 10);
+            if (xpAwarded) {
+              winnerSocket.emit('xpGained', { amount: 10, reason: 'Race Win' });
+            }
+            userDb.addWin(userId);
           }
         }
 
@@ -3210,6 +3278,12 @@ function gameLoop() {
                       if (xpAwarded) {
                         killerSocket.emit('xpGained', { amount: KILL_XP_REWARD, reason: 'Kill' });
                       }
+                      userDb.addKill(userId);
+                    }
+
+                    const victimSocket = io.sockets.sockets.get(sid);
+                    if (victimSocket?.request?.session?.userId && !victimSocket.request.session.isGuest) {
+                      userDb.addDeath(victimSocket.request.session.userId);
                     }
                   }
 
@@ -3229,6 +3303,13 @@ function gameLoop() {
               if (!car.crashedByPlayer && !car.killFeedSent) {
                 car.deaths += 1;
                 car.saveStatsToRoom();
+
+                if (room.isOfficial) {
+                  const crashedSocket = io.sockets.sockets.get(sid);
+                  if (crashedSocket?.request?.session?.userId && !crashedSocket.request.session.isGuest) {
+                    userDb.addDeath(crashedSocket.request.session.userId);
+                  }
+                }
 
                 // Broadcast solo crash message to kill feed (send once to each player)
                 for (const [socketId] of room.players.entries()) {

@@ -39,10 +39,24 @@ class UserDatabase {
     
     createUsersTable.run();
     createMapsTable.run();
-    
-    // Migration: Add new columns to existing users table if they don't exist
-    //this.migrateUsersTable();
-    
+
+    const columns = this.db.prepare(`PRAGMA table_info(users)`).all();
+
+    if (!columns.some(col => col.name === 'total_kills')) {
+      this.db.exec('ALTER TABLE users ADD COLUMN total_kills INTEGER DEFAULT 0');
+      console.log('Added total_kills column to users table');
+    }
+
+    if (!columns.some(col => col.name === 'total_deaths')) {
+      this.db.exec('ALTER TABLE users ADD COLUMN total_deaths INTEGER DEFAULT 0');
+      console.log('Added total_deaths column to users table');
+    }
+
+    if (!columns.some(col => col.name === 'total_wins')) {
+      this.db.exec('ALTER TABLE users ADD COLUMN total_wins INTEGER DEFAULT 0');
+      console.log('Added total_wins column to users table');
+    }
+
     console.log('Database initialized');
   }
 
@@ -170,12 +184,81 @@ class UserDatabase {
       const addXpToUser = this.db.prepare(`
         UPDATE users SET xp = xp + ? WHERE id = ?
       `);
-      
+
       const result = addXpToUser.run(amount, userId);
       return result.changes > 0;
     } catch (error) {
       console.error('Add XP error:', error);
       return false;
+    }
+  }
+
+  addKill(userId) {
+    try {
+      const stmt = this.db.prepare('UPDATE users SET total_kills = total_kills + 1 WHERE id = ?');
+      const result = stmt.run(userId);
+      return result.changes > 0;
+    } catch (error) {
+      console.error('Add kill error:', error);
+      return false;
+    }
+  }
+
+  addDeath(userId) {
+    try {
+      const stmt = this.db.prepare('UPDATE users SET total_deaths = total_deaths + 1 WHERE id = ?');
+      const result = stmt.run(userId);
+      return result.changes > 0;
+    } catch (error) {
+      console.error('Add death error:', error);
+      return false;
+    }
+  }
+
+  addWin(userId) {
+    try {
+      const stmt = this.db.prepare('UPDATE users SET total_wins = total_wins + 1 WHERE id = ?');
+      const result = stmt.run(userId);
+      return result.changes > 0;
+    } catch (error) {
+      console.error('Add win error:', error);
+      return false;
+    }
+  }
+
+  getLeaderboard(limit = 100) {
+    try {
+      const stmt = this.db.prepare(`
+        SELECT
+          id,
+          username,
+          xp,
+          total_kills,
+          total_deaths,
+          total_wins
+        FROM users
+        ORDER BY xp DESC
+        LIMIT ?
+      `);
+      return stmt.all(limit);
+    } catch (error) {
+      console.error('Get leaderboard error:', error);
+      return [];
+    }
+  }
+
+  getUserRank(userId) {
+    try {
+      const stmt = this.db.prepare(`
+        SELECT COUNT(*) + 1 as rank
+        FROM users
+        WHERE xp > (SELECT xp FROM users WHERE id = ?)
+      `);
+      const result = stmt.get(userId);
+      return result ? result.rank : null;
+    } catch (error) {
+      console.error('Get user rank error:', error);
+      return null;
     }
   }
 

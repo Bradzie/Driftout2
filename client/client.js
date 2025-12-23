@@ -191,6 +191,13 @@
   const maxPlayersValue = document.getElementById('maxPlayersValue');
   const createRoomPrivate = document.getElementById('createRoomPrivate');
   const createRoomButton = document.getElementById('createRoomButton');
+
+  const globalLeaderboardButton = document.getElementById('globalLeaderboardButton');
+  const globalLeaderboardModal = document.getElementById('globalLeaderboardModal');
+  const closeGlobalLeaderboard = document.getElementById('closeGlobalLeaderboard');
+  const globalLeaderboardTableBody = document.getElementById('globalLeaderboardTableBody');
+  const currentUserRow = document.getElementById('currentUserRow');
+  const currentUserLeaderboardBody = document.getElementById('currentUserLeaderboardBody');
   
   const carRadioInput = document.querySelector('input[name="car"]');
   const carName = document.getElementById('carName');
@@ -685,7 +692,10 @@
       initMapEditor();
     }
   });
-  
+
+  globalLeaderboardButton.addEventListener('click', openGlobalLeaderboard);
+  closeGlobalLeaderboard.addEventListener('click', closeGlobalLeaderboardModal);
+
   // close room browser when clicking outside
   roomBrowserModal.addEventListener('click', (e) => {
     if (e.target === roomBrowserModal) {
@@ -699,7 +709,14 @@
       closeCreateRoomModal();
     }
   });
-  
+
+  // close global leaderboard when clicking outside
+  globalLeaderboardModal.addEventListener('click', (e) => {
+    if (e.target === globalLeaderboardModal) {
+      closeGlobalLeaderboardModal();
+    }
+  });
+
   // close browse map dialog when clicking outside or ESC
   const browseMapModal = document.getElementById('browseMapModal');
   const closeBrowseModalBtn = document.getElementById('closeBrowseModal');
@@ -1296,7 +1313,59 @@
   function closeCreateRoomModal() {
     hide(createRoomModal);
   }
-  
+
+  function openGlobalLeaderboard() {
+    show(globalLeaderboardModal);
+    loadGlobalLeaderboard();
+  }
+
+  function closeGlobalLeaderboardModal() {
+    hide(globalLeaderboardModal);
+  }
+
+  function loadGlobalLeaderboard() {
+    fetch('/api/leaderboard')
+      .then(res => res.json())
+      .then(data => {
+        // Display top 100 players
+        globalLeaderboardTableBody.innerHTML = '';
+        data.leaderboard.forEach((player, index) => {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${index + 1}</td>
+            <td>${player.username}</td>
+            <td>${player.level}</td>
+            <td>${player.kills || 0}</td>
+            <td>${player.deaths || 0}</td>
+            <td>${player.wins || 0}</td>
+          `;
+          globalLeaderboardTableBody.appendChild(row);
+        });
+
+        // Display current user row if they're a registered user
+        if (data.currentUser) {
+          currentUserLeaderboardBody.innerHTML = '';
+          const userRow = document.createElement('tr');
+          userRow.innerHTML = `
+            <td>${data.currentUser.rank}</td>
+            <td>${data.currentUser.username}</td>
+            <td>${data.currentUser.level}</td>
+            <td>${data.currentUser.kills || 0}</td>
+            <td>${data.currentUser.deaths || 0}</td>
+            <td>${data.currentUser.wins || 0}</td>
+          `;
+          currentUserLeaderboardBody.appendChild(userRow);
+          currentUserRow.classList.remove('hidden');
+        } else {
+          currentUserRow.classList.add('hidden');
+        }
+      })
+      .catch(error => {
+        console.error('Failed to load leaderboard:', error);
+        globalLeaderboardTableBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">Failed to load leaderboard</td></tr>';
+      });
+  }
+
   let allMapsData = [];
 
   function openMapBrowserForRoom() {
