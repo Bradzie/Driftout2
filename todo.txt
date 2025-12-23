@@ -40,3 +40,6 @@ X (client) remove 'rank' column on the leaderboard
 - (client/server) leaderboard for registered accounts / shows top levels and their career stats (will require tracking of kills/deaths/wins in official servers) would be really cool to track their main cartype too
 - (map editor) force users to include at least one checkpoint (maybe not if we introduce gamemodes??)
 - (map editor) shapes can be have collisions enabled/disabled on shape and border
+- (map editor) don't allow editing of author name when saving
+- (map editor) get rid of the area effect emojis
+- (map editor) fix 'back' button and give it styling
