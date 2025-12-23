@@ -38,3 +38,5 @@ X (client) remove 'rank' column on the leaderboard
 - (client/server) change the colour of the default shape borders, the red is a bit strong, go lighter
 - (map editor) allow shape layer editing for proper overlapping of shapes
 - (client/server) leaderboard for registered accounts / shows top levels and their career stats (will require tracking of kills/deaths/wins in official servers) would be really cool to track their main cartype too
+- (map editor) force users to include at least one checkpoint (maybe not if we introduce gamemodes??)
+- (map editor) shapes can be have collisions enabled/disabled on shape and border
