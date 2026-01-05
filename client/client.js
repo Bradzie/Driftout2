@@ -908,6 +908,8 @@
   let CAR_TYPES = {};
   let myAbility = null;
   let lastAbilityUse = 0;
+  let cannonCharge = 100;
+  let cannonCharging = false;
   let currentLapStartTime = 0;
   let bestLapTime = null;
   let previousLapCount = 0;
@@ -1966,6 +1968,9 @@
       const carDef = CAR_TYPES[me.type];
       const baseCooldown = carDef.abilityCooldown || 0;
       myAbility.cooldown = Math.max(0, baseCooldown - (me.abilityCooldownReduction || 0));
+      // Update charge state
+      cannonCharge = me.cannonCharge !== undefined ? me.cannonCharge : 100;
+      cannonCharging = me.cannonCharging || false;
     }
 
     hasReceivedFirstState = true;
@@ -2025,6 +2030,9 @@
         const carDef = CAR_TYPES[me.type];
         const baseCooldown = carDef.abilityCooldown || 0;
         myAbility.cooldown = Math.max(0, baseCooldown - (me.abilityCooldownReduction || 0));
+        // Update charge state
+        cannonCharge = me.cannonCharge !== undefined ? me.cannonCharge : 100;
+        cannonCharging = me.cannonCharging || false;
       }
 
       hasReceivedFirstState = true;
@@ -2083,6 +2091,9 @@
       const carDef = CAR_TYPES[me.type];
       const baseCooldown = carDef.abilityCooldown || 0;
       myAbility.cooldown = Math.max(0, baseCooldown - (me.abilityCooldownReduction || 0));
+      // Update charge state
+      cannonCharge = me.cannonCharge !== undefined ? me.cannonCharge : 100;
+      cannonCharging = me.cannonCharging || false;
     }
 
     hasReceivedFirstState = true;
@@ -2297,34 +2308,30 @@
       if (typeof sendInput === 'function') sendInput();
     }, { passive: false });
 
-    // Mobile Ability Button
+    // Mobile Ability Button (charge-based)
     const abilityButton = document.getElementById('mobileAbilityButton');
     abilityButton.addEventListener('touchstart', (e) => {
       e.preventDefault();
+      // Visual feedback
+      abilityButton.style.transform = 'scale(0.9)';
+      // Emit ability start for charge-based abilities
+      socket.emit('abilityStart');
+    }, { passive: false });
 
-      if (myAbility) {
-        const now = getServerTime();
-        const remaining = Math.max(0, myAbility.cooldown - (now - lastAbilityUse));
+    abilityButton.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      // Reset visual
+      abilityButton.style.transform = '';
+      // Emit ability release for charge-based abilities
+      socket.emit('abilityRelease');
+    }, { passive: false });
 
-        if (remaining === 0) {
-          // Visual feedback (same as keyboard spacebar)
-          abilityButton.style.transform = 'scale(0.9)';
-          setTimeout(() => {
-            abilityButton.style.transform = '';
-          }, 100);
-
-          socket.emit('useAbility');
-        } else {
-          // Show disabled state briefly if on cooldown
-          abilityButton.classList.add('disabled');
-          setTimeout(() => {
-            abilityButton.classList.remove('disabled');
-          }, 200);
-        }
-      } else {
-        // No ability available
-        socket.emit('useAbility');
-      }
+    abilityButton.addEventListener('touchcancel', (e) => {
+      e.preventDefault();
+      // Reset visual
+      abilityButton.style.transform = '';
+      // Emit ability release for charge-based abilities
+      socket.emit('abilityRelease');
     }, { passive: false });
   }
 
@@ -2468,33 +2475,15 @@
       return;
     }
     
-    // listen for ability
+    // listen for ability (charge-based)
     if (e.code === 'Space' && !e.repeat) {
       e.preventDefault();
-      if (myAbility) {
-        const now = getServerTime();
-        const remaining = Math.max(0, myAbility.cooldown - (now - lastAbilityUse));
 
-        if (remaining === 0) {
-          updateAbilityHUD();
+      // gives a 'press' effect
+      abilityHud.style.transform = 'scale(0.95)';
 
-          // gives a 'press' effect
-          abilityHud.style.transform = 'scale(0.95)';
-          setTimeout(() => {
-            abilityHud.style.transform = 'scale(1)';
-          }, 100);
-
-          // client-side prediction for Dash ability TODO: don't think this is need and/or even works
-          // if (myAbility.name === 'Dash') {
-          //   const originalLastAbilityUse = lastAbilityUse; // Store original value
-          //   lastAbilityUse = now; // Update client-side for immediate HUD feedback
-          //   updateAbilityHUD(); // Re-render HUD with new cooldown
-          //   myAbility._originalLastAbilityUse = originalLastAbilityUse;
-          // }
-        }
-      }
-      
-      socket.emit('useAbility');
+      // Emit ability start for charge-based abilities
+      socket.emit('abilityStart');
     }
     
     // listen for upgrade numbers
@@ -2525,6 +2514,15 @@
       hideDetailedLeaderboard();
       return;
     }
+
+    // Release ability (charge-based)
+    if (e.code === 'Space') {
+      // Reset visual effect
+      abilityHud.style.transform = 'scale(1)';
+
+      // Emit ability release for charge-based abilities
+      socket.emit('abilityRelease');
+    }
   });
 
   socket.on('abilityResult', (result) => {
@@ -2543,11 +2541,6 @@
       return;
     }
 
-    const now = getServerTime();
-    const timeSinceUse = now - lastAbilityUse;
-    const remaining = Math.max(0, myAbility.cooldown - timeSinceUse);
-    const isReady = remaining === 0;
-
     abilityName.textContent = myAbility.name;
     show(abilityHud);
 
@@ -2556,14 +2549,26 @@
       return;
     }
 
-    // style ability based on status
-    if (isReady) {
+    // Display charge bar (0-100%)
+    const chargePercent = cannonCharge / 100;
+    const hasCharge = cannonCharge >= 30; // Minimum charge for tap
+
+    // style ability based on charge status
+    if (hasCharge) {
       progressBg.classList.remove('on-cooldown');
-      progressBg.style.transform = 'scaleX(1)';
+      progressBg.style.transform = `scaleX(${chargePercent})`;
     } else {
       progressBg.classList.add('on-cooldown');
-      const progress = remaining / myAbility.cooldown;
-      progressBg.style.transform = `scaleX(${progress})`;
+      progressBg.style.transform = `scaleX(${chargePercent})`;
+    }
+
+    // Add visual indicator when charging (holding key)
+    if (cannonCharging) {
+      abilityHud.style.opacity = '0.8';
+      abilityHud.style.boxShadow = '0 0 10px rgba(255, 95, 95, 0.5)';
+    } else {
+      abilityHud.style.opacity = '1';
+      abilityHud.style.boxShadow = '';
     }
   }
 
