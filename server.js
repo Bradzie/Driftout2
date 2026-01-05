@@ -2159,11 +2159,38 @@ class Room {
         // Create fill collision body if fillCollision is enabled
         if (shape.fillCollision === true) {
           const fillBodyOptions = HELPERS.getBodyOptionsFromShape(shape)
-          const fillBody = Matter.Bodies.fromVertices(0, 0, [verts], fillBodyOptions, true)
 
-          if (fillBody) {
-            fillBody.label = 'shape-fill'
-            this.currentTrackBodies.push(fillBody)
+          // Calculate the PROPER centroid using signed area method (not just vertex average!)
+          // This is critical for irregular and concave polygons
+          let area = 0;
+          let cx = 0, cy = 0;
+
+          for (let i = 0; i < verts.length; i++) {
+            const v1 = verts[i];
+            const v2 = verts[(i + 1) % verts.length];
+            const cross = v1.x * v2.y - v2.x * v1.y;
+            area += cross;
+            cx += (v1.x + v2.x) * cross;
+            cy += (v1.y + v2.y) * cross;
+          }
+
+          area *= 0.5;
+          cx /= (6 * area);
+          cy /= (6 * area);
+
+          // translate vertices relative to proper centroid
+          const translatedVerts = verts.map(v => ({ x: v.x - cx, y: v.y - cy }));
+
+          try {
+            const fillBody = Matter.Bodies.fromVertices(cx, cy, [translatedVerts], fillBodyOptions, true);
+            if (fillBody && fillBody.vertices && fillBody.vertices.length > 0) {
+              fillBody.label = 'shape-fill';
+              this.currentTrackBodies.push(fillBody);
+            } else {
+              console.warn('Failed to create fill collision body - decomposition may have failed for concave polygon');
+            }
+          } catch (error) {
+            console.error('Error creating fill collision body:', error);
           }
         }
 

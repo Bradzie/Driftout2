@@ -98,49 +98,7 @@
         "#ff4d4d",
         "#ffffff"
       ],
-      "borderWidth": 20,
-      "isStatic": true,
-      "fillCollision": false,
-      "borderCollision": true
-    },
-    {
-      "type": "polygon",
-      "vertices": [
-        {
-          "x": -1850,
-          "y": 425
-        },
-        {
-          "x": -1425,
-          "y": 425
-        },
-        {
-          "x": -1425,
-          "y": 975
-        },
-        {
-          "x": -1125,
-          "y": 975
-        },
-        {
-          "x": -1125,
-          "y": 1125
-        },
-        {
-          "x": -1850,
-          "y": 1125
-        }
-      ],
-      "fillColor": [
-        75,
-        75,
-        75
-      ],
-      "borderColors": [
-        "#ff4d4d",
-        "#ffffff"
-      ],
-      "borderWidth": 20,
+      "borderWidth": 0,
       "isStatic": true,
       "fillCollision": true,
       "borderCollision": true
@@ -149,27 +107,69 @@
       "type": "polygon",
       "vertices": [
         {
-          "x": -2475,
-          "y": -225
+          "x": -1850,
+          "y": 425
+        },
+        {
+          "x": -1425,
+          "y": 425
+        },
+        {
+          "x": -1425,
+          "y": 975
         },
         {
           "x": -1125,
-          "y": -225
+          "y": 975
         },
         {
           "x": -1125,
+          "y": 1125
+        },
+        {
+          "x": -1850,
+          "y": 1125
+        }
+      ],
+      "fillColor": [
+        75,
+        75,
+        75
+      ],
+      "borderColors": [
+        "#ff4d4d",
+        "#ffffff"
+      ],
+      "borderWidth": 0,
+      "isStatic": true,
+      "fillCollision": true,
+      "borderCollision": true
+    },
+    {
+      "type": "polygon",
+      "vertices": [
+        {
+          "x": -2469.945529715007,
+          "y": -225
+        },
+        {
+          "x": -1119.945529715007,
+          "y": -225
+        },
+        {
+          "x": -1119.945529715007,
           "y": -50
         },
         {
-          "x": -850,
+          "x": -844.9455297150071,
           "y": -50
         },
         {
-          "x": -850,
+          "x": -844.9455297150071,
           "y": 100
         },
         {
-          "x": -2475,
+          "x": -2469.945529715007,
           "y": 100
         }
       ],
@@ -182,9 +182,9 @@
         "#ff4d4d",
         "#ffffff"
       ],
-      "borderWidth": 20,
+      "borderWidth": 0,
       "isStatic": true,
-      "fillCollision": false,
+      "fillCollision": true,
       "borderCollision": true
     },
     {
@@ -224,9 +224,9 @@
         "#ff4d4d",
         "#ffffff"
       ],
-      "borderWidth": 20,
+      "borderWidth": 0,
       "isStatic": true,
-      "fillCollision": false,
+      "fillCollision": true,
       "borderCollision": true
     },
     {
@@ -306,7 +306,7 @@
         "#ff4d4d",
         "#ffffff"
       ],
-      "borderWidth": 20,
+      "borderWidth": 0,
       "isStatic": true,
       "fillCollision": true,
       "borderCollision": true
@@ -388,7 +388,7 @@
         "#ff4d4d",
         "#ffffff"
       ],
-      "borderWidth": 20,
+      "borderWidth": 0,
       "isStatic": true,
       "fillCollision": true,
       "borderCollision": true
@@ -430,7 +430,7 @@
         "#ff4d4d",
         "#ffffff"
       ],
-      "borderWidth": 20,
+      "borderWidth": 0,
       "isStatic": true,
       "fillCollision": true,
       "borderCollision": true
@@ -529,7 +529,7 @@
   "dynamicObjects": [],
   "author": "Bradzie",
   "created_at": "2025-12-23T15:29:11.292Z",
-  "updated_at": "2025-12-23T15:34:05.740Z",
+  "updated_at": "2026-01-05T16:40:24.150Z",
   "author_id": 1,
   "category": "official"
 }
