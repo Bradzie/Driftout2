@@ -12,7 +12,7 @@ const { v4: uuidv4, validate: isUUID } = require('uuid');
 const session = require('express-session');
 const rateLimit = require('express-rate-limit');
 const validator = require('validator');
-const { fileTypeFromFile } = require('file-type');
+const FileType = require('file-type');
 const UserDatabase = require('./database');
 
 const app = express();
@@ -22,7 +22,7 @@ const io = new Server(server, {
   perMessageDeflate: false,   // disables compression to hopefully reduce latency
   pingInterval: 10000,
   pingTimeout: 5000,
-  maxHttpBufferSize: 1e6,
+  maxHttpBufferSize: 1e6, // hex, 486
 });
 
 const DEBUG_MODE = false;
@@ -33,43 +33,38 @@ function isValidFilename(filename) {
   if (!filename || typeof filename !== 'string') return false;
   if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) return false;
   if (path.isAbsolute(filename)) return false;
-  // Additional check: must be a valid UUID
   if (!isUUID(filename)) return false;
   return true;
 }
 
-// Validate map data structure to prevent injection attacks
+// double check map data structure
 function validateMapData(mapData) {
   if (!mapData || typeof mapData !== 'object') {
-    return { valid: false, error: 'Map data must be an object' };
+    return { valid: false, error: 'Map data is invalid or missing. CODE: 1' };
   }
-
-  // Check required fields
+  // ensure mapid
   if (!mapData.id || typeof mapData.id !== 'string') {
-    return { valid: false, error: 'Map must have a valid id' };
+    return { valid: false, error: 'Map data is invalid or missing. CODE: 2' };
   }
-
+  // ensure uuid
   if (!isUUID(mapData.id)) {
-    return { valid: false, error: 'Map id must be a valid UUID' };
+    return { valid: false, error: 'Map data is invalid or missing. CODE: 3' };
   }
 
-  // Validate shapes array
+  // other checks
   if (mapData.shapes && !Array.isArray(mapData.shapes)) {
-    return { valid: false, error: 'Shapes must be an array' };
+    return { valid: false, error: 'Map data is invalid or missing. CODE: 4' };
   }
-
   if (mapData.shapes && mapData.shapes.length > 1000) {
     return { valid: false, error: 'Too many shapes (max 1000)' };
   }
-
-  // Validate each shape
   if (mapData.shapes) {
     for (const shape of mapData.shapes) {
       if (!shape || typeof shape !== 'object') {
-        return { valid: false, error: 'Each shape must be an object' };
+        return { valid: false, error: 'Map data is invalid or missing. CODE: 5' };
       }
       if (shape.vertices && !Array.isArray(shape.vertices)) {
-        return { valid: false, error: 'Shape vertices must be an array' };
+        return { valid: false, error: 'Map data is invalid or missing. CODE: 6' };
       }
       if (shape.vertices && shape.vertices.length > 100) {
         return { valid: false, error: 'Shape has too many vertices (max 100 per shape)' };
@@ -77,20 +72,19 @@ function validateMapData(mapData) {
     }
   }
 
-  // Validate strings to prevent XSS
+  // validate name/description
   if (mapData.displayName && typeof mapData.displayName === 'string') {
     if (mapData.displayName.length > 100) {
       return { valid: false, error: 'Display name too long (max 100 characters)' };
     }
   }
-
   if (mapData.description && typeof mapData.description === 'string') {
     if (mapData.description.length > 500) {
       return { valid: false, error: 'Description too long (max 500 characters)' };
     }
   }
 
-  // Limit total JSON size to prevent memory exhaustion
+  // map can be too big, prevent spam maps
   const jsonSize = JSON.stringify(mapData).length;
   if (jsonSize > 1024 * 1024) { // 1MB limit
     return { valid: false, error: 'Map data too large (max 1MB)' };
@@ -103,16 +97,13 @@ const activeUserSessions = new Map();
 const activeGuestSessions = new Map();
 const sessionRegistrationLocks = new Set();
 
-// Configuration for duplicate login handling
 const DUPLICATE_LOGIN_POLICY = {
-  KICK_EXISTING: 'kick_existing',    // Disconnect existing sessions and allow new login
-  REJECT_NEW: 'reject_new'           // Reject new login attempt
+  KICK_EXISTING: 'kick_existing',
+  REJECT_NEW: 'reject_new'
 };
-
-// Current policy - can be changed as needed
 const currentDuplicateLoginPolicy = DUPLICATE_LOGIN_POLICY.KICK_EXISTING;
 
-// XP and Level calculation (matches client-side logic)
+// code needs to match client-side for level calculations
 const BASE_XP_LEVEL_1 = 10;
 const XP_SCALE_PER_LEVEL = 1.2;
 const KILL_XP_REWARD = 1;
@@ -142,7 +133,7 @@ function calculateLevel(totalXP) {
 
 if (!process.env.SESSION_SECRET) {
   const randomSecret = crypto.randomBytes(32).toString('hex');
-  console.warn('WARNING: No SESSION_SECRET environment variable set. Using random secret. Sessions will not persist across restarts.');
+  console.warn('random secret being used, fix me!');
   process.env.SESSION_SECRET = randomSecret;
 }
 
@@ -158,11 +149,11 @@ const sessionMiddleware = session({
   }
 });
 
-// Rate limiting configurations
+// auth rate limits
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 attempts per window
-  message: 'Too many authentication attempts, please try again later',
+  max: 15, // 15 attempts per window
+  message: 'Too many auth attempts, try again soon.',
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -170,7 +161,7 @@ const authLimiter = rateLimit({
 const mapUploadLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 10, // 10 map uploads per hour
-  message: 'Too many map uploads, please try again later',
+  message: 'Too many map uploads, try again soon',
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -178,7 +169,7 @@ const mapUploadLimiter = rateLimit({
 const roomCreationLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5, // 5 room creations per 15 minutes
-  message: 'Too many room creation attempts, please try again later',
+  message: 'Too many room creations, try again soon',
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -193,13 +184,17 @@ const generalApiLimiter = rateLimit({
 
 app.use(express.json());
 app.use(sessionMiddleware);
-app.use('/api/', generalApiLimiter); // Apply general rate limiting to all API routes
+app.use('/api/', generalApiLimiter);
 app.use(express.static('client'));
-app.use('/previews', express.static('maps/previews')); // Serve preview images
+app.use('/previews', express.static('maps/previews'));
 
-// Share session with socket.io
+// wrap session middleware for socket.io
 const wrap = (middleware) => (socket, next) => middleware(socket.request, {}, next);
 io.use(wrap(sessionMiddleware));
+
+
+// app api endpoints
+
 
 app.get('/api/carTypes', (req, res) => {
   res.json(CAR_TYPES);
@@ -238,9 +233,6 @@ app.get('/api/maps/:category/:key', (req, res) => {
   }
 });
 
-// New map management endpoints
-
-// Upload a new community map or overwrite an existing one (authenticated users only)
 app.post('/api/maps', mapUploadLimiter, requireAuth, async (req, res) => {
   try {
     const { name, mapData, directory, key } = req.body;
@@ -249,12 +241,10 @@ app.post('/api/maps', mapUploadLimiter, requireAuth, async (req, res) => {
       return sendError(res, 400, 'Name and map data are required');
     }
 
-    // Validate name length
     if (typeof name !== 'string' || name.length < 1 || name.length > 100) {
       return sendError(res, 400, 'Map name must be between 1 and 100 characters');
     }
 
-    // Validate map data structure
     const validation = validateMapData(mapData);
     if (!validation.valid) {
       return sendError(res, 400, validation.error);
@@ -265,7 +255,7 @@ app.post('/api/maps', mapUploadLimiter, requireAuth, async (req, res) => {
     let isNewMap = true;
 
     if (key) {
-      // Overwriting an existing map
+      // overwrite
       const keyParts = key.split('/');
       targetDirectory = keyParts[0];
       filename = keyParts.slice(1).join('/');
@@ -276,13 +266,10 @@ app.post('/api/maps', mapUploadLimiter, requireAuth, async (req, res) => {
       }
 
     } else {
-      // Creating a new map
       targetDirectory = directory || 'community';
       if (!['official', 'community'].includes(targetDirectory)) {
         return res.status(400).json({ error: 'Invalid directory. Must be "official" or "community"' });
       }
-
-      // Use UUID as filename for new maps (both official and community)
       if (!mapData.id) {
         return sendError(res, 400, 'Map data must include a UUID (id field)');
       }
@@ -292,8 +279,6 @@ app.post('/api/maps', mapUploadLimiter, requireAuth, async (req, res) => {
     if (!isValidFilename(filename)) {
       return sendError(res, 400, 'Invalid filename: must be a valid UUID');
     }
-
-    // Sanitize text fields to prevent XSS
     const sanitizedName = validator.escape(name);
 
     const enhancedMapData = {
@@ -360,7 +345,6 @@ app.put('/api/maps/:key', requireAuth, async (req, res) => {
       category: 'community'
     };
 
-    // Save updated map file
     const saved = mapManager.saveMap(key, 'community', enhancedMapData);
     if (!saved) {
       return sendError(res, 500, 'Failed to update map');
@@ -418,7 +402,6 @@ app.get('/api/maps/my', requireAuth, async (req, res) => {
   }
 });
 
-// Upload preview image for a map
 app.post('/api/maps/preview', mapUploadLimiter, requireAuth, async (req, res) => {
   try {
     const form = new formidable.IncomingForm();
@@ -430,17 +413,13 @@ app.post('/api/maps/preview', mapUploadLimiter, requireAuth, async (req, res) =>
         console.error('Preview upload parse error:', err);
         return sendError(res, 400, 'Failed to parse upload');
       }
-
       const mapId = Array.isArray(fields.mapId) ? fields.mapId[0] : fields.mapId;
       if (!mapId) {
         return sendError(res, 400, 'Map ID is required');
       }
-
-      // Validate mapId is a valid UUID
       if (!isUUID(mapId)) {
         return sendError(res, 400, 'Invalid map ID format');
       }
-
       const previewFile = files.preview;
       if (!previewFile) {
         return sendError(res, 400, 'No preview file provided');
@@ -448,16 +427,12 @@ app.post('/api/maps/preview', mapUploadLimiter, requireAuth, async (req, res) =>
 
       try {
         const file = Array.isArray(previewFile) ? previewFile[0] : previewFile;
-
-        // Validate actual file type using magic bytes, not just extension
-        const fileType = await fileTypeFromFile(file.filepath);
+        const fileType = await FileType.fromFile(file.filepath);
 
         if (!fileType || !['image/png', 'image/jpeg', 'image/jpg'].includes(fileType.mime)) {
-          fs.unlinkSync(file.filepath); // Clean up invalid file
+          fs.unlinkSync(file.filepath);
           return sendError(res, 400, 'Invalid file type. Only PNG and JPEG images are allowed');
         }
-
-        // Additional validation: check file size
         const stats = fs.statSync(file.filepath);
         if (stats.size > 5 * 1024 * 1024) {
           fs.unlinkSync(file.filepath);
@@ -469,7 +444,6 @@ app.post('/api/maps/preview', mapUploadLimiter, requireAuth, async (req, res) =>
           fs.mkdirSync(previewsDir, { recursive: true });
         }
 
-        // Use proper extension based on actual file type
         const extension = fileType.ext;
         const filename = mapId + '.' + extension;
         const targetPath = path.join(previewsDir, filename);

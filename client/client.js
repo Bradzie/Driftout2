@@ -249,9 +249,9 @@
     
     // Hide map editor button for guest users
     if (currentUser && currentUser.isGuest) {
-      mapEditorButton.style.display = 'none';
+      mapEditorButton.disabled = true;
     } else {
-      mapEditorButton.style.display = 'block';
+      mapEditorButton.disabled = false;
     }
     
     loadSettings();
