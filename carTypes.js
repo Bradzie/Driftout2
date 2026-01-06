@@ -62,9 +62,12 @@ const CAR_TYPES = {
     displayHealth: 25,
     displayHandling: 40,
     maxHealth: 6,
-    acceleration: 0.048,
+    acceleration: 0.012,
     boost: 60,
     regen: 0.05,
+    ability: 'focus',
+    abilityName: 'Focus',
+    abilityCooldown: 0,
     color: { fill: [47, 152, 206], stroke: [28, 89, 121], strokeWidth: 4 },
     shapes: [
       {
@@ -81,7 +84,7 @@ const CAR_TYPES = {
       }
     ],
     bodyOptions: {
-      frictionAir: 0.1
+      frictionAir: 0.0001
     },
     upgrades: {
       maxHealth: {
@@ -101,6 +104,12 @@ const CAR_TYPES = {
         amount: 0.05,
         maxUpgrades: 6,
         color: '#10b981' // green
+      },
+      abilityRegenRate: {
+        name: 'Charge Regen',
+        amount: 1.5,
+        maxUpgrades: 4,
+        color: '#f59e0b' // orange
       }
     }
   },

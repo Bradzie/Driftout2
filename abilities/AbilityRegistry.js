@@ -19,6 +19,7 @@ class AbilityRegistry {
     const CannonAbility = require('./Cannon');
     const RepairAbility = require('./Repair');
     const AnchorAbility = require('./Anchor');
+    const FocusAbility = require('./Focus');
 
     this.register(DashAbility);
     this.register(SpikeTrapAbility);
@@ -26,6 +27,7 @@ class AbilityRegistry {
     this.register(CannonAbility);
     this.register(RepairAbility);
     this.register(AnchorAbility);
+    this.register(FocusAbility);
   }
 
   /**

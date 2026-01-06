@@ -1317,6 +1317,13 @@ class Car {
     this.isAnchored = false;
     this.anchorStartTime = 0;
     this.anchorResistance = 0;
+
+    // Focus ability state
+    this.isFocused = false;
+    this.focusStartTime = 0;
+    this.originalFrictionAir = null;
+    this.originalAcceleration = null;
+
     const roomMapKey = this.room ? this.room.currentMapKey : 'square';
     
     const { category: mapCategory, key: mapKey } = HELPERS.parseMapKey(roomMapKey);
@@ -2505,6 +2512,7 @@ class Room {
         chargeState: car.chargeState || null,
         isAnchored: car.isAnchored || false,
         anchorResistance: car.anchorResistance || 0,
+        isFocused: car.isFocused || false,
         crashed: car.justCrashed || false,
         crashedAt: car.crashedAt || null,
         currentBoost: car.currentBoost,
@@ -3279,7 +3287,8 @@ io.on('connection', (socket) => {
       myCar.chargeState.isCharging = true;
       myCar.chargeState.chargeStartTime = Date.now();
 
-      if (myCar.ability.id === 'anchor') {
+      // For hold-to-consume abilities (Anchor, Focus), activate immediately
+      if (myCar.ability.id === 'anchor' || myCar.ability.id === 'focus') {
         const result = myCar.useAbility(currentRoom.gameState);
         socket.emit('abilityResult', result);
       }
