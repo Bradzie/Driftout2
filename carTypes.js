@@ -185,9 +185,9 @@ const CAR_TYPES = {
         maxUpgrades: 2,
         color: '#10b981' // green
       },
-      abilityCooldown: {
-        name: 'Dash',
-        amount: -500,
+      abilityRegenRate: {
+        name: 'Charge Regen',
+        amount: 1.5,
         maxUpgrades: 3,
         color: '#f59e0b' // orange
       }

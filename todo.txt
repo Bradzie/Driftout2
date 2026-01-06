@@ -46,3 +46,5 @@ X (client) remove 'rank' column on the leaderboard
 - (server/map editor) we have server.js code preventing users from editing other users maps. Either we keep this or introduce a 'copy' feature where users can copy other users creations
 - (client/server) we still have a weird glitch where when the angle is 0 or 360 on the players car and ticks over to either 360 or 0, the car will do a fast spin, which can be annoying
 - (client/server) custom border widths are not rendering correctly
+- (client/server) trap size / damage upgrades
+- (client/server) dash power upgrades
