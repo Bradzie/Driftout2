@@ -1299,12 +1299,11 @@ class Car {
     const carDef = CAR_TYPES[type];
     this.ability = carDef.ability ? abilityRegistry.create(carDef.ability) : null;
 
-    // Charge-based ability state (for cannon)
-    this.cannonCharge = 100; // Current charge (0-100)
-    this.cannonCharging = false; // Currently holding ability key
-    this.cannonChargeStartTime = 0; // When hold began
-    this.cannonMaxCharge = 100;
-    this.cannonRegenRate = 6; // Charge per second (affected by upgrades)
+    if (this.ability && this.ability.usesChargeSystem) {
+      this.ability.initializeChargeState(this);
+    } else {
+      this.chargeState = null;
+    }
 
     // Ability upgrade stats
     this.abilityCooldownReduction = 0;
@@ -2494,8 +2493,7 @@ class Room {
           }))
         } : {}),
         abilityCooldownReduction: car.abilityCooldownReduction || 0,
-        cannonCharge: car.cannonCharge || 0,
-        cannonCharging: car.cannonCharging || false,
+        chargeState: car.chargeState || null,
         crashed: car.justCrashed || false,
         crashedAt: car.crashedAt || null,
         currentBoost: car.currentBoost,
@@ -2681,8 +2679,7 @@ function clonePlayerState(player) {
     level: player.level,
     checkpointsVisited: [...player.checkpointsVisited],
     abilityCooldownReduction: player.abilityCooldownReduction,
-    cannonCharge: player.cannonCharge,
-    cannonCharging: player.cannonCharging,
+    chargeState: player.chargeState ? { ...player.chargeState } : null,
     crashed: player.crashed
   };
   if (player.vertices) {
@@ -3183,7 +3180,7 @@ io.on('connection', (socket) => {
     }
 
     const stat = data.stat;
-    const validStats = ['maxHealth', 'acceleration', 'regen', 'size', 'abilityCooldown', 'projectileSpeed', 'projectileDensity', 'cannonRegen'];
+    const validStats = ['maxHealth', 'acceleration', 'regen', 'size', 'abilityCooldown', 'projectileSpeed', 'projectileDensity', 'abilityRegenRate'];
     if (!validStats.includes(stat)) return;
 
     // Atomic check-and-decrement to prevent race condition
@@ -3242,9 +3239,10 @@ io.on('connection', (socket) => {
           if (!myCar.projectileDensity) myCar.projectileDensity = 0;
           myCar.projectileDensity += amount;
           break;
-        case 'cannonRegen':
-          if (!myCar.cannonRegenRate) myCar.cannonRegenRate = 10;
-          myCar.cannonRegenRate += amount;
+        case 'abilityRegenRate':
+          if (myCar.chargeState) {
+            myCar.chargeState.regenRate += amount;
+          }
           break;
       }
 
@@ -3261,19 +3259,25 @@ io.on('connection', (socket) => {
     socket.emit('abilityResult', result);
   });
 
-  // Charge-based ability handlers
+  // Charge-based ability handlers (generic for all charge abilities)
   socket.on('abilityStart', () => {
-    if (!myCar || !currentRoom) return;
-    myCar.cannonCharging = true;
-    myCar.cannonChargeStartTime = Date.now();
+    if (!myCar || !currentRoom || !myCar.ability) return;
+
+    // Only handle if ability uses charge system
+    if (myCar.ability.usesChargeSystem && myCar.chargeState) {
+      myCar.chargeState.isCharging = true;
+      myCar.chargeState.chargeStartTime = Date.now();
+    }
   });
 
   socket.on('abilityRelease', () => {
-    if (!myCar || !currentRoom) return;
-    if (myCar.cannonCharging) {
+    if (!myCar || !currentRoom || !myCar.ability) return;
+
+    // Only activate if ability uses charge system and is currently charging
+    if (myCar.ability.usesChargeSystem && myCar.chargeState && myCar.chargeState.isCharging) {
       const result = myCar.useAbility(currentRoom.gameState);
       socket.emit('abilityResult', result);
-      myCar.cannonCharging = false;
+      myCar.chargeState.isCharging = false;
     }
   });
 
@@ -3375,11 +3379,12 @@ io.on('connection', (socket) => {
       myCar.abilityCooldownReduction = 0;
       myCar.projectileSpeed = 0;
       myCar.projectileDensity = 0;
-      // Reset charge state
-      myCar.cannonCharge = 100;
-      myCar.cannonCharging = false;
-      myCar.cannonChargeStartTime = 0;
-      myCar.cannonRegenRate = 10;
+      // Reset charge state if ability uses charge system
+      if (myCar.ability && myCar.ability.usesChargeSystem) {
+        myCar.ability.initializeChargeState(myCar);
+      } else {
+        myCar.chargeState = null;
+      }
       // Reset body density if it was modified
       Matter.Body.setDensity(myCar.body, baseCar.bodyOptions.density || 0.3);
     });

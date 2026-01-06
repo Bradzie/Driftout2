@@ -908,8 +908,7 @@
   let CAR_TYPES = {};
   let myAbility = null;
   let lastAbilityUse = 0;
-  let cannonCharge = 100;
-  let cannonCharging = false;
+  let abilityChargeState = null;
   let currentLapStartTime = 0;
   let bestLapTime = null;
   let previousLapCount = 0;
@@ -1968,9 +1967,7 @@
       const carDef = CAR_TYPES[me.type];
       const baseCooldown = carDef.abilityCooldown || 0;
       myAbility.cooldown = Math.max(0, baseCooldown - (me.abilityCooldownReduction || 0));
-      // Update charge state
-      cannonCharge = me.cannonCharge !== undefined ? me.cannonCharge : 100;
-      cannonCharging = me.cannonCharging || false;
+      abilityChargeState = me.chargeState || null;
     }
 
     hasReceivedFirstState = true;
@@ -2091,9 +2088,7 @@
       const carDef = CAR_TYPES[me.type];
       const baseCooldown = carDef.abilityCooldown || 0;
       myAbility.cooldown = Math.max(0, baseCooldown - (me.abilityCooldownReduction || 0));
-      // Update charge state
-      cannonCharge = me.cannonCharge !== undefined ? me.cannonCharge : 100;
-      cannonCharging = me.cannonCharging || false;
+      abilityChargeState = me.chargeState || null;
     }
 
     hasReceivedFirstState = true;
@@ -2549,24 +2544,40 @@
       return;
     }
 
-    // Display charge bar (0-100%)
-    const chargePercent = cannonCharge / 100;
-    const hasCharge = cannonCharge >= 30; // Minimum charge for tap
+    if (abilityChargeState) {
+      const chargePercent = abilityChargeState.current / abilityChargeState.max;
+      const hasCharge = abilityChargeState.current >= 30;
+      if (hasCharge) {
+        progressBg.classList.remove('on-cooldown');
+        progressBg.style.transform = `scaleX(${chargePercent})`;
+      } else {
+        progressBg.classList.add('on-cooldown');
+        progressBg.style.transform = `scaleX(${chargePercent})`;
+      }
 
-    // style ability based on charge status
-    if (hasCharge) {
-      progressBg.classList.remove('on-cooldown');
-      progressBg.style.transform = `scaleX(${chargePercent})`;
+      if (abilityChargeState.isCharging) {
+        abilityHud.style.opacity = '0.8';
+        abilityHud.style.boxShadow = '0 0 10px rgba(255, 95, 95, 0.5)';
+      } else {
+        abilityHud.style.opacity = '1';
+        abilityHud.style.boxShadow = '';
+      }
     } else {
-      progressBg.classList.add('on-cooldown');
-      progressBg.style.transform = `scaleX(${chargePercent})`;
-    }
+      const now = getServerTime();
+      const timeSinceUse = now - lastAbilityUse;
+      const remaining = Math.max(0, myAbility.cooldown - timeSinceUse);
+      const isReady = remaining === 0;
 
-    // Add visual indicator when charging (holding key)
-    if (cannonCharging) {
-      abilityHud.style.opacity = '0.8';
-      abilityHud.style.boxShadow = '0 0 10px rgba(255, 95, 95, 0.5)';
-    } else {
+      if (isReady) {
+        progressBg.classList.remove('on-cooldown');
+        progressBg.style.transform = 'scaleX(1)';
+      } else {
+        progressBg.classList.add('on-cooldown');
+        const progress = remaining / myAbility.cooldown;
+        progressBg.style.transform = `scaleX(${progress})`;
+      }
+
+      // Reset charge-specific styling
       abilityHud.style.opacity = '1';
       abilityHud.style.boxShadow = '';
     }

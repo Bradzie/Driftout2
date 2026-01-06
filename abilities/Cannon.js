@@ -8,7 +8,13 @@ class CannonAbility extends Ability {
       id: 'cannon',
       name: 'Cannon',
       cooldown: 5000, // 5 seconds base cooldown
-      duration: 4000  // 4 seconds projectile lifetime
+      duration: 4000,  // 4 seconds projectile lifetime
+      usesChargeSystem: true,
+      maxCharge: 100,
+      baseRegenRate: 6,
+      minChargeToUse: 30,
+      maxChargeToUse: 80,
+      chargeTime: 1500 
     });
 
     this.baseDamage = 4;
@@ -21,25 +27,18 @@ class CannonAbility extends Ability {
   activate(car, world, gameState) {
     const currentTime = Date.now();
 
-    // max hold time
-    const holdDuration = Math.min(currentTime - (car.cannonChargeStartTime || currentTime), 2000);
-
-    // anything less than 200ms is a 'tap fire'
-    const isTap = holdDuration < 200;
-
-    const chargeUsed = isTap ? 30 : Math.min(30 + (holdDuration / 1500) * 45, 80);
-
-    if ((car.cannonCharge || 0) < chargeUsed) {
+    const chargeUsed = this.calculateChargeUsage(car, currentTime);
+    if (!car.chargeState || car.chargeState.current < chargeUsed) {
       return {
         success: false,
         reason: 'low_charge',
-        currentCharge: car.cannonCharge || 0,
+        currentCharge: car.chargeState ? car.chargeState.current : 0,
         requiredCharge: chargeUsed
       };
     }
 
-    car.cannonCharge -= chargeUsed;
-    const chargeScale = chargeUsed / 75;
+    car.chargeState.current -= chargeUsed;
+    const chargeScale = this.getChargeScale(chargeUsed);
 
     const baseProjectileSpeed = this.baseProjectileForce + (car.projectileSpeed || 0) + (car.projectileDensity * 10 || 0);
     const baseProjectileDensity = this.baseProjectileDensity + (car.projectileDensity * 3 || 0);
@@ -100,18 +99,11 @@ class CannonAbility extends Ability {
       duration: this.duration,
       serverTime: currentTime,
       chargeUsed: chargeUsed,
-      isTap: isTap
     };
   }
 
   update(car, world, gameState, dt) {
-    // Regenerate charge over time (dt is in seconds)
-    if (car.cannonCharge < car.cannonMaxCharge) {
-      car.cannonCharge = Math.min(
-        car.cannonMaxCharge,
-        car.cannonCharge + (car.cannonRegenRate * dt)
-      );
-    }
+    super.update(car, world, gameState, dt);
   }
 
   createCannonball(position, world, ownerId, density, projectileSize) {

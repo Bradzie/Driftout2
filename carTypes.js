@@ -361,7 +361,7 @@ const CAR_TYPES = {
         maxUpgrades: 5,
         color: '#0e3c85ff'
       },
-      cannonRegen: {
+      abilityRegenRate: {
         name: 'Charge Regen',
         amount: 1.25,
         maxUpgrades: 4,
