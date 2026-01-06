@@ -17,11 +17,13 @@ class AbilityRegistry {
     const SpikeTrapAbility = require('./Trap');
     const GhostModeAbility = require('./Ghost');
     const CannonAbility = require('./Cannon');
+    const RepairAbility = require('./Repair');
 
     this.register(DashAbility);
     this.register(SpikeTrapAbility);
     this.register(GhostModeAbility);
     this.register(CannonAbility);
+    this.register(RepairAbility);
   }
 
   /**

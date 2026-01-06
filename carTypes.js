@@ -8,6 +8,9 @@ const CAR_TYPES = {
     acceleration: 0.012,
     boost: 50,
     regen: 0.05,
+    ability: 'repair',
+    abilityName: 'Repair',
+    abilityCooldown: 8000,
     color: { fill: [255, 95, 95], stroke: [153, 57, 57], strokeWidth: 4 },
     shapes: [
       {
@@ -44,6 +47,12 @@ const CAR_TYPES = {
         amount: 0.06,
         maxUpgrades: 6,
         color: '#10b981' // green
+      },
+      abilityRegenRate: {
+        name: 'Charge Regen',
+        amount: 1.5,
+        maxUpgrades: 4,
+        color: '#f59e0b' // orange
       }
     }
   },
@@ -53,7 +62,7 @@ const CAR_TYPES = {
     displayHealth: 25,
     displayHandling: 40,
     maxHealth: 6,
-    acceleration: 0.012,
+    acceleration: 0.048,
     boost: 60,
     regen: 0.05,
     color: { fill: [47, 152, 206], stroke: [28, 89, 121], strokeWidth: 4 },
@@ -72,7 +81,7 @@ const CAR_TYPES = {
       }
     ],
     bodyOptions: {
-      frictionAir: 0.0001
+      frictionAir: 0.1
     },
     upgrades: {
       maxHealth: {

@@ -2732,6 +2732,7 @@ input[type="number"]:focus {
   font-weight: 500;
 }
 
+.toolbar-back-btn,
 .toolbar-logout-btn,
 .toolbar-settings-btn {
   background: #ffffff;
@@ -2747,14 +2748,15 @@ input[type="number"]:focus {
   height: 36px;
 }
 
+.toolbar-back-btn:hover,
 .toolbar-logout-btn:hover,
 .toolbar-settings-btn:hover {
   background: #ff5f5f;
   color: #ffffff;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(37, 150, 190, 0.3);
 }
 
+.toolbar-back-btn svg,
 .toolbar-logout-btn svg,
 .toolbar-settings-btn svg {
   transition: transform 0.2s ease;
@@ -2765,7 +2767,11 @@ input[type="number"]:focus {
 }
 
 .toolbar-logout-btn:hover svg {
-  transform: translateX(1px);
+  transform: rotate(180deg);
+}
+
+.toolbar-back-btn:hover svg {
+  transform: rotate(180deg);
 }
 
 /* Remove old settings button styles */
