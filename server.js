@@ -1312,7 +1312,12 @@ class Car {
 
     this.isGhost = false;
     this.trapDamageHistory = new Map();
-    const roomMapKey = this.room ? this.room.currentMapKey : 'square'; // fallback
+
+    // anchor ability
+    this.isAnchored = false;
+    this.anchorStartTime = 0;
+    this.anchorResistance = 0;
+    const roomMapKey = this.room ? this.room.currentMapKey : 'square';
     
     const { category: mapCategory, key: mapKey } = HELPERS.parseMapKey(roomMapKey);
     
@@ -1657,7 +1662,11 @@ class Car {
       damage = (relativeSpeed * 1.5) * BASE_VELOCITY_DAMAGE_SCALE * damageMultiplier * damageScale * angleMultiplier;
     }
 
-    
+    // add anchor damage res
+    if (this.anchorResistance && this.anchorResistance > 0) {
+      damage *= (1 - this.anchorResistance);
+    }
+
     this.currentHealth -= damage;
 
     if (this.currentHealth <= 0) {
@@ -2494,6 +2503,8 @@ class Room {
         } : {}),
         abilityCooldownReduction: car.abilityCooldownReduction || 0,
         chargeState: car.chargeState || null,
+        isAnchored: car.isAnchored || false,
+        anchorResistance: car.anchorResistance || 0,
         crashed: car.justCrashed || false,
         crashedAt: car.crashedAt || null,
         currentBoost: car.currentBoost,
@@ -3267,6 +3278,11 @@ io.on('connection', (socket) => {
     if (myCar.ability.usesChargeSystem && myCar.chargeState) {
       myCar.chargeState.isCharging = true;
       myCar.chargeState.chargeStartTime = Date.now();
+
+      if (myCar.ability.id === 'anchor') {
+        const result = myCar.useAbility(currentRoom.gameState);
+        socket.emit('abilityResult', result);
+      }
     }
   });
 

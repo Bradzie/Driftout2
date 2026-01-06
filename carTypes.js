@@ -113,6 +113,9 @@ const CAR_TYPES = {
     acceleration: 0.025,
     boost: 40,
     regen: 0.05,
+    ability: 'anchor',
+    abilityName: 'Anchor',
+    abilityCooldown: 0,
     color: { fill: [157, 230, 160], stroke: [99, 145, 101], strokeWidth: 4 },
     shapes: [
       {
@@ -145,6 +148,12 @@ const CAR_TYPES = {
         amount: 0.1,
         maxUpgrades: 4,
         color: '#10b981' // green
+      },
+      abilityRegenRate: {
+        name: 'Charge Regen',
+        amount: 1,
+        maxUpgrades: 4,
+        color: '#f59e0b' // orange
       }
     }
   },
