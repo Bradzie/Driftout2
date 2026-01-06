@@ -361,9 +361,9 @@ const CAR_TYPES = {
         maxUpgrades: 5,
         color: '#0e3c85ff'
       },
-      abilityCooldown: {
-        name: 'Fire Rate',
-        amount: -400,
+      cannonRegen: {
+        name: 'Charge Regen',
+        amount: 2,
         maxUpgrades: 4,
         color: '#f59e0b'
       },

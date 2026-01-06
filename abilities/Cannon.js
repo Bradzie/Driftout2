@@ -21,20 +21,44 @@ class CannonAbility extends Ability {
   activate(car, world, gameState) {
     const currentTime = Date.now();
 
-    if (!this.canUse(car, currentTime)) {
+    // Calculate hold duration (capped at 2 seconds)
+    const holdDuration = Math.min(currentTime - (car.cannonChargeStartTime || currentTime), 2000);
+
+    // Determine if tap or hold (tap threshold: 200ms)
+    const isTap = holdDuration < 200;
+
+    // Calculate charge needed (tap: 30%, hold: 30-75% based on duration)
+    const chargeUsed = isTap ? 30 : Math.min(30 + (holdDuration / 2000) * 45, 75);
+
+    // Check if enough charge available
+    if ((car.cannonCharge || 0) < chargeUsed) {
       return {
         success: false,
-        reason: 'cooldown',
-        remainingCooldown: this.getRemainingCooldown(currentTime)
+        reason: 'insufficient_charge',
+        currentCharge: car.cannonCharge || 0,
+        requiredCharge: chargeUsed
       };
     }
 
-    // vals with upgrades
-    const projectileSpeed = this.baseProjectileForce + (car.projectileSpeed || 0) + (car.projectileDensity * 10 || 0);
-    const projectileDensity = this.baseProjectileDensity + (car.projectileDensity * 3 || 0);
-    const projectileSize = this.projectileRadius + (car.projectileDensity * 20 || 0);
-    const projectileDamage = this.baseDamage + ((car.projectileDensity * 10 || 0) + (car.projectileSpeed * 2 || 0));
-    const recoilForce = this.baseRecoilForce + (((car.projectileSpeed || 0) + (car.projectileDensity * 5 || 0)) * 0.5);
+    // Deduct charge
+    car.cannonCharge -= chargeUsed;
+
+    // Calculate charge scale (0.4 for tap to 1.0 for full hold)
+    const chargeScale = chargeUsed / 75;
+
+    // Base vals with upgrades
+    const baseProjectileSpeed = this.baseProjectileForce + (car.projectileSpeed || 0) + (car.projectileDensity * 10 || 0);
+    const baseProjectileDensity = this.baseProjectileDensity + (car.projectileDensity * 3 || 0);
+    const baseProjectileSize = this.projectileRadius + (car.projectileDensity * 20 || 0);
+    const baseProjectileDamage = this.baseDamage + ((car.projectileDensity * 10 || 0) + (car.projectileSpeed * 2 || 0));
+    const baseRecoilForce = this.baseRecoilForce + (((car.projectileSpeed || 0) + (car.projectileDensity * 5 || 0)) * 0.5);
+
+    // Scale by charge (tap: 50-100%, hold: 100%)
+    const projectileSpeed = baseProjectileSpeed * (0.5 + chargeScale * 0.5);
+    const projectileDensity = baseProjectileDensity * (0.7 + chargeScale * 0.3);
+    const projectileSize = baseProjectileSize * (0.6 + chargeScale * 0.4);
+    const projectileDamage = baseProjectileDamage * (0.5 + chargeScale * 0.5);
+    const recoilForce = baseRecoilForce * (0.5 + chargeScale * 0.5);
 
     const forwardOffset = 20 + projectileSize;
     const position = {
@@ -81,8 +105,20 @@ class CannonAbility extends Ability {
       position: position,
       projectileId: cannonballObject.id,
       duration: this.duration,
-      serverTime: currentTime
+      serverTime: currentTime,
+      chargeUsed: chargeUsed,
+      isTap: isTap
     };
+  }
+
+  update(car, world, gameState, dt) {
+    // Regenerate charge over time (dt is in seconds)
+    if (car.cannonCharge < car.cannonMaxCharge) {
+      car.cannonCharge = Math.min(
+        car.cannonMaxCharge,
+        car.cannonCharge + (car.cannonRegenRate * dt)
+      );
+    }
   }
 
   createCannonball(position, world, ownerId, density, projectileSize) {

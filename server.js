@@ -1298,6 +1298,19 @@ class Car {
 
     const carDef = CAR_TYPES[type];
     this.ability = carDef.ability ? abilityRegistry.create(carDef.ability) : null;
+
+    // Charge-based ability state (for cannon)
+    this.cannonCharge = 100; // Current charge (0-100)
+    this.cannonCharging = false; // Currently holding ability key
+    this.cannonChargeStartTime = 0; // When hold began
+    this.cannonMaxCharge = 100;
+    this.cannonRegenRate = 10; // Charge per second (affected by upgrades)
+
+    // Ability upgrade stats
+    this.abilityCooldownReduction = 0;
+    this.projectileSpeed = 0;
+    this.projectileDensity = 0;
+
     this.isGhost = false;
     this.trapDamageHistory = new Map();
     const roomMapKey = this.room ? this.room.currentMapKey : 'square'; // fallback
@@ -2481,6 +2494,8 @@ class Room {
           }))
         } : {}),
         abilityCooldownReduction: car.abilityCooldownReduction || 0,
+        cannonCharge: car.cannonCharge || 0,
+        cannonCharging: car.cannonCharging || false,
         crashed: car.justCrashed || false,
         crashedAt: car.crashedAt || null,
         currentBoost: car.currentBoost,
@@ -2666,6 +2681,8 @@ function clonePlayerState(player) {
     level: player.level,
     checkpointsVisited: [...player.checkpointsVisited],
     abilityCooldownReduction: player.abilityCooldownReduction,
+    cannonCharge: player.cannonCharge,
+    cannonCharging: player.cannonCharging,
     crashed: player.crashed
   };
   if (player.vertices) {
@@ -3166,7 +3183,7 @@ io.on('connection', (socket) => {
     }
 
     const stat = data.stat;
-    const validStats = ['maxHealth', 'acceleration', 'regen', 'size', 'abilityCooldown', 'projectileSpeed', 'projectileDensity'];
+    const validStats = ['maxHealth', 'acceleration', 'regen', 'size', 'abilityCooldown', 'projectileSpeed', 'projectileDensity', 'cannonRegen'];
     if (!validStats.includes(stat)) return;
 
     // Atomic check-and-decrement to prevent race condition
@@ -3225,6 +3242,10 @@ io.on('connection', (socket) => {
           if (!myCar.projectileDensity) myCar.projectileDensity = 0;
           myCar.projectileDensity += amount;
           break;
+        case 'cannonRegen':
+          if (!myCar.cannonRegenRate) myCar.cannonRegenRate = 10;
+          myCar.cannonRegenRate += amount;
+          break;
       }
 
       myCar.upgradeUsage[stat] = currentUsage + 1;
@@ -3239,7 +3260,23 @@ io.on('connection', (socket) => {
     const result = myCar.useAbility(currentRoom.gameState);
     socket.emit('abilityResult', result);
   });
-  
+
+  // Charge-based ability handlers
+  socket.on('abilityStart', () => {
+    if (!myCar || !currentRoom) return;
+    myCar.cannonCharging = true;
+    myCar.cannonChargeStartTime = Date.now();
+  });
+
+  socket.on('abilityRelease', () => {
+    if (!myCar || !currentRoom) return;
+    if (myCar.cannonCharging) {
+      const result = myCar.useAbility(currentRoom.gameState);
+      socket.emit('abilityResult', result);
+      myCar.cannonCharging = false;
+    }
+  });
+
   // Ping handler for latency measurement
   socket.on('ping', (timestamp, callback) => {
     if (callback) callback(Date.now());
@@ -3336,6 +3373,13 @@ io.on('connection', (socket) => {
       };
       myCar.currentHealth = myCar.stats.maxHealth;
       myCar.abilityCooldownReduction = 0;
+      myCar.projectileSpeed = 0;
+      myCar.projectileDensity = 0;
+      // Reset charge state
+      myCar.cannonCharge = 100;
+      myCar.cannonCharging = false;
+      myCar.cannonChargeStartTime = 0;
+      myCar.cannonRegenRate = 10;
       // Reset body density if it was modified
       Matter.Body.setDensity(myCar.body, baseCar.bodyOptions.density || 0.3);
     });
