@@ -21,44 +21,37 @@ class CannonAbility extends Ability {
   activate(car, world, gameState) {
     const currentTime = Date.now();
 
-    // Calculate hold duration (capped at 2 seconds)
+    // max hold time
     const holdDuration = Math.min(currentTime - (car.cannonChargeStartTime || currentTime), 2000);
 
-    // Determine if tap or hold (tap threshold: 200ms)
+    // anything less than 200ms is a 'tap fire'
     const isTap = holdDuration < 200;
 
-    // Calculate charge needed (tap: 30%, hold: 30-75% based on duration)
-    const chargeUsed = isTap ? 30 : Math.min(30 + (holdDuration / 2000) * 45, 75);
+    const chargeUsed = isTap ? 30 : Math.min(30 + (holdDuration / 1500) * 45, 80);
 
-    // Check if enough charge available
     if ((car.cannonCharge || 0) < chargeUsed) {
       return {
         success: false,
-        reason: 'insufficient_charge',
+        reason: 'low_charge',
         currentCharge: car.cannonCharge || 0,
         requiredCharge: chargeUsed
       };
     }
 
-    // Deduct charge
     car.cannonCharge -= chargeUsed;
-
-    // Calculate charge scale (0.4 for tap to 1.0 for full hold)
     const chargeScale = chargeUsed / 75;
 
-    // Base vals with upgrades
     const baseProjectileSpeed = this.baseProjectileForce + (car.projectileSpeed || 0) + (car.projectileDensity * 10 || 0);
     const baseProjectileDensity = this.baseProjectileDensity + (car.projectileDensity * 3 || 0);
     const baseProjectileSize = this.projectileRadius + (car.projectileDensity * 20 || 0);
     const baseProjectileDamage = this.baseDamage + ((car.projectileDensity * 10 || 0) + (car.projectileSpeed * 2 || 0));
     const baseRecoilForce = this.baseRecoilForce + (((car.projectileSpeed || 0) + (car.projectileDensity * 5 || 0)) * 0.5);
 
-    // Scale by charge (tap: 50-100%, hold: 100%)
-    const projectileSpeed = baseProjectileSpeed * (0.5 + chargeScale * 0.5);
-    const projectileDensity = baseProjectileDensity * (0.7 + chargeScale * 0.3);
-    const projectileSize = baseProjectileSize * (0.6 + chargeScale * 0.4);
-    const projectileDamage = baseProjectileDamage * (0.5 + chargeScale * 0.5);
-    const recoilForce = baseRecoilForce * (0.5 + chargeScale * 0.5);
+    const projectileSpeed = baseProjectileSpeed * (0.5 + ((chargeScale * 0.6) * 1.2));
+    const projectileDensity = baseProjectileDensity * (0.7 + (chargeScale * 0.3));
+    const projectileSize = baseProjectileSize * (0.6 + ((chargeScale * 0.3) * 2));
+    const projectileDamage = baseProjectileDamage * (0.5 + ((chargeScale * 0.3) * 2));
+    const recoilForce = baseRecoilForce * (0.5 + ((chargeScale * 0.3) * 5));
 
     const forwardOffset = 20 + projectileSize;
     const position = {

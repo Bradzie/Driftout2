@@ -363,7 +363,7 @@ const CAR_TYPES = {
       },
       cannonRegen: {
         name: 'Charge Regen',
-        amount: 2,
+        amount: 1.25,
         maxUpgrades: 4,
         color: '#f59e0b'
       },

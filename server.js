@@ -25,7 +25,7 @@ const io = new Server(server, {
   maxHttpBufferSize: 1e6, // hex, 486
 });
 
-const DEBUG_MODE = false;
+const DEBUG_MODE = true;
 
 const userDb = new UserDatabase();
 
@@ -1304,7 +1304,7 @@ class Car {
     this.cannonCharging = false; // Currently holding ability key
     this.cannonChargeStartTime = 0; // When hold began
     this.cannonMaxCharge = 100;
-    this.cannonRegenRate = 10; // Charge per second (affected by upgrades)
+    this.cannonRegenRate = 6; // Charge per second (affected by upgrades)
 
     // Ability upgrade stats
     this.abilityCooldownReduction = 0;
