@@ -239,11 +239,11 @@ const CAR_TYPES = {
         maxUpgrades: 4,
         color: '#3b82f6'
       },
-      abilityCooldown: {
-        name: 'Trap Cooldown',
-        amount: -600,
-        maxUpgrades: 5,
-        color: '#ec4899'
+      abilityRegenRate: {
+        name: 'Charge Regen',
+        amount: 1.5,
+        maxUpgrades: 4,
+        color: '#f59e0b'
       }
     }
   },

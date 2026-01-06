@@ -7,10 +7,16 @@ class SpikeTrapAbility extends Ability {
     super({
       id: 'spike_trap',
       name: 'Spike Trap',
-      cooldown: 8000, // 8 seconds
-      duration: 30000 // 30 seconds trap lifetime
+      cooldown: 8000,
+      duration: 30000,
+      usesChargeSystem: true,
+      maxCharge: 100,
+      baseRegenRate: 2,
+      minChargeToUse: 40,
+      maxChargeToUse: 80,
+      chargeTime: 2000
     });
-    
+
     this.damage = 5;
     this.trapRadius = 12;
     this.maxTrapsPerPlayer = 3;
@@ -18,18 +24,21 @@ class SpikeTrapAbility extends Ability {
 
   activate(car, world, gameState) {
     const currentTime = Date.now();
-    
-    if (!this.canUse(car, currentTime)) {
-      return { 
-        success: false, 
-        reason: 'cooldown',
-        remainingCooldown: this.getRemainingCooldown(currentTime)
+    const chargeUsed = this.calculateChargeUsage(car, currentTime);
+
+    if (!car.chargeState || car.chargeState.current < chargeUsed) {
+      return {
+        success: false,
+        reason: 'low_charge',
+        currentCharge: car.chargeState ? car.chargeState.current : 0,
+        requiredCharge: chargeUsed
       };
     }
-    const playerTraps = gameState.abilityObjects.filter(obj => 
+
+    const playerTraps = gameState.abilityObjects.filter(obj =>
       obj.type === 'spike_trap' && obj.createdBy === car.id
     );
-    
+
     if (playerTraps.length >= this.maxTrapsPerPlayer) {
       const oldestTrap = playerTraps.sort((a, b) => a.createdAt - b.createdAt)[0];
       Matter.World.remove(world, oldestTrap.body);
@@ -39,20 +48,27 @@ class SpikeTrapAbility extends Ability {
       }
     }
 
-    const backwardOffset = 20;
+    car.chargeState.current -= chargeUsed;
+    const chargeScale = this.getChargeScale(chargeUsed);
+
+    const scaledTrapRadius = this.trapRadius * (0.5 + (chargeScale * 0.5 * 2));
+    const scaledTrapDamage = this.damage * (0.4 + (chargeScale * 0.6 * 2));
+
+    const backwardOffset = 20 + scaledTrapRadius;
     const position = {
       x: car.body.position.x - Math.cos(car.body.angle) * backwardOffset,
       y: car.body.position.y - Math.sin(car.body.angle) * backwardOffset
     };
-    const spikeBody = this.createSpikeTrap(position, world, car.id);
-    
+
+    const spikeBody = this.createSpikeTrap(position, world, car.id, scaledTrapRadius);
+
     const throwForce = 0.6;
     const backwardForce = {
       x: -Math.cos(car.body.angle) * throwForce,
       y: -Math.sin(car.body.angle) * throwForce
     };
     Matter.Body.applyForce(spikeBody, spikeBody.position, backwardForce);
-    
+
     const trapObject = {
       id: uuidv4(),
       type: 'spike_trap',
@@ -61,30 +77,35 @@ class SpikeTrapAbility extends Ability {
       createdBy: car.id,
       createdAt: currentTime,
       expiresAt: currentTime + this.duration,
-      damage: this.damage,
+      damage: scaledTrapDamage,
       position: position,
-      radius: this.trapRadius
+      radius: scaledTrapRadius
     };
-    
+
     gameState.abilityObjects.push(trapObject);
 
     this.lastUsed = currentTime;
 
-    return { 
-      success: true, 
+    return {
+      success: true,
       type: 'spike_trap',
       position: position,
       trapId: trapObject.id,
       duration: this.duration,
-      serverTime: currentTime
+      serverTime: currentTime,
+      chargeUsed: chargeUsed
     };
   }
 
-  createSpikeTrap(position, world, ownerId) {
-    const radius = this.trapRadius;
+  update(car, world, gameState, dt) {
+    super.update(car, world, gameState, dt);
+  }
+
+  createSpikeTrap(position, world, ownerId, scaledRadius) {
+    const radius = scaledRadius;
     const innerRadius = radius * 0.4;
     const vertices = [];
-    
+
     for (let i = 0; i < 3; i++) {
       const angle = (i * Math.PI * 2) / 3;
       vertices.push({
