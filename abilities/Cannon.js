@@ -8,7 +8,13 @@ class CannonAbility extends Ability {
       id: 'cannon',
       name: 'Cannon',
       cooldown: 5000, // 5 seconds base cooldown
-      duration: 4000  // 4 seconds projectile lifetime
+      duration: 4000,  // 4 seconds projectile lifetime
+      usesChargeSystem: true,
+      maxCharge: 100,
+      baseRegenRate: 6,
+      minChargeToUse: 30,
+      maxChargeToUse: 80,
+      chargeTime: 1500 
     });
 
     this.baseDamage = 4;
@@ -21,20 +27,30 @@ class CannonAbility extends Ability {
   activate(car, world, gameState) {
     const currentTime = Date.now();
 
-    if (!this.canUse(car, currentTime)) {
+    const chargeUsed = this.calculateChargeUsage(car, currentTime);
+    if (!car.chargeState || car.chargeState.current < chargeUsed) {
       return {
         success: false,
-        reason: 'cooldown',
-        remainingCooldown: this.getRemainingCooldown(currentTime)
+        reason: 'low_charge',
+        currentCharge: car.chargeState ? car.chargeState.current : 0,
+        requiredCharge: chargeUsed
       };
     }
 
-    // vals with upgrades
-    const projectileSpeed = this.baseProjectileForce + (car.projectileSpeed || 0) + (car.projectileDensity * 10 || 0);
-    const projectileDensity = this.baseProjectileDensity + (car.projectileDensity * 3 || 0);
-    const projectileSize = this.projectileRadius + (car.projectileDensity * 20 || 0);
-    const projectileDamage = this.baseDamage + ((car.projectileDensity * 10 || 0) + (car.projectileSpeed * 2 || 0));
-    const recoilForce = this.baseRecoilForce + (((car.projectileSpeed || 0) + (car.projectileDensity * 5 || 0)) * 0.5);
+    car.chargeState.current -= chargeUsed;
+    const chargeScale = this.getChargeScale(chargeUsed);
+
+    const baseProjectileSpeed = this.baseProjectileForce + (car.projectileSpeed || 0) + (car.projectileDensity * 10 || 0);
+    const baseProjectileDensity = this.baseProjectileDensity + (car.projectileDensity * 3 || 0);
+    const baseProjectileSize = this.projectileRadius + (car.projectileDensity * 20 || 0);
+    const baseProjectileDamage = this.baseDamage + ((car.projectileDensity * 10 || 0) + (car.projectileSpeed * 2 || 0));
+    const baseRecoilForce = this.baseRecoilForce + (((car.projectileSpeed || 0) + (car.projectileDensity * 5 || 0)) * 0.5);
+
+    const projectileSpeed = baseProjectileSpeed * (0.5 + ((chargeScale * 0.6) * 1.2));
+    const projectileDensity = baseProjectileDensity * (0.7 + (chargeScale * 0.3));
+    const projectileSize = baseProjectileSize * (0.6 + ((chargeScale * 0.3) * 2));
+    const projectileDamage = baseProjectileDamage * (0.5 + ((chargeScale * 0.3) * 2));
+    const recoilForce = baseRecoilForce * (0.5 + ((chargeScale * 0.3) * 5));
 
     const forwardOffset = 20 + projectileSize;
     const position = {
@@ -81,8 +97,13 @@ class CannonAbility extends Ability {
       position: position,
       projectileId: cannonballObject.id,
       duration: this.duration,
-      serverTime: currentTime
+      serverTime: currentTime,
+      chargeUsed: chargeUsed,
     };
+  }
+
+  update(car, world, gameState, dt) {
+    super.update(car, world, gameState, dt);
   }
 
   createCannonball(position, world, ownerId, density, projectileSize) {

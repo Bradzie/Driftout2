@@ -68,7 +68,7 @@ html, body {
 
 .room-name-display {
   background: #ff5f5f;
-  color: #ffffff;
+  color: #fafafa;
   text-align: center;
   margin-bottom: 1rem;
   padding-top: 10px;
@@ -77,6 +77,12 @@ html, body {
   padding-right: 20px;
   line-height: 200%;
   font-size: 1rem;
+  font-weight: 600;
+  font-family: 'Overpass', sans-serif;';
+}
+
+.room-name-display-room {
+  font-size: 1.2rem;
   font-weight: 600;
   font-family: 'Overpass', sans-serif;';
 }
@@ -1452,7 +1458,7 @@ input[type="number"]:focus {
   z-index: 1000;
   backdrop-filter: blur(2px);
 }
-
+ 
 .room-browser-content {
   background: #2f2f2f;
   width: 90%;
@@ -1478,23 +1484,23 @@ input[type="number"]:focus {
 }
 
 .room-browser-close-btn {
-  background: none;
+  background: white;
   border: none;
-  color: white;
+  color: #ff5f5f;
   font-size: 2rem;
   cursor: pointer;
-  padding: 0;
-  width: 40px;
-  height: 40px;
+  padding-bottom: 5px;
+  width: 30px;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
   transition: background-color 0.3s ease;
 }
 
 .room-browser-close-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: #ff5f5f;
+  color: white;
 }
 
 .room-browser-body {
@@ -2726,6 +2732,7 @@ input[type="number"]:focus {
   font-weight: 500;
 }
 
+.toolbar-back-btn,
 .toolbar-logout-btn,
 .toolbar-settings-btn {
   background: #ffffff;
@@ -2741,14 +2748,15 @@ input[type="number"]:focus {
   height: 36px;
 }
 
+.toolbar-back-btn:hover,
 .toolbar-logout-btn:hover,
 .toolbar-settings-btn:hover {
   background: #ff5f5f;
   color: #ffffff;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(37, 150, 190, 0.3);
 }
 
+.toolbar-back-btn svg,
 .toolbar-logout-btn svg,
 .toolbar-settings-btn svg {
   transition: transform 0.2s ease;
@@ -2759,7 +2767,11 @@ input[type="number"]:focus {
 }
 
 .toolbar-logout-btn:hover svg {
-  transform: translateX(1px);
+  transform: rotate(180deg);
+}
+
+.toolbar-back-btn:hover svg {
+  transform: rotate(180deg);
 }
 
 /* Remove old settings button styles */
@@ -3070,25 +3082,6 @@ input[type="number"]:focus {
 select.property-input {
   width: 100%;
   font-size: 0.8rem;
-}
-
-/* General button style for map editor */
-#mapEditorButton {
-  background: #ff5f5f;
-  border: none;
-  color: #ffffff;
-  padding: 12px 24px;
-  font-size: 1rem;
-  font-weight: 600;
-  font-family: 'Overpass', sans-serif;
-  cursor: pointer;
-  margin-top: 1rem;
-  transition: all 0.3s ease;
-}
-
-#mapEditorButton:hover {
-  background: #993939;
-  transform: translateY(-2px);
 }
 
 /* Chat System Styles */
@@ -3900,4 +3893,109 @@ select.property-input {
   .mobile-controls {
     display: none !important;
   }
+}
+
+/* Menu Buttons Grid */
+.menu-buttons-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 12px;
+  margin-top: 1rem;
+  max-width: 500px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.menu-grid-button {
+  background: #ff5f5f;
+  border: none;
+  color: #ffffff;
+  padding: 16px 24px;
+  font-size: 1rem;
+  font-weight: 600;
+  font-family: 'Overpass', sans-serif;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.menu-grid-button:hover:not(:disabled) {
+  background: #ff7f7f;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.menu-grid-button:disabled {
+  background: #555;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.global-leaderboard-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+}
+
+.global-leaderboard-header {
+  background: #ff5f5f;
+  color: white;
+  padding-left: 20px;
+  padding-right: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.global-leaderboard-content {
+  background: #2f2f2f;
+  width: 90%;
+  max-width: 800px;
+  max-height: 90vh;
+  overflow: hidden;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* maybe a search feature in future? */
+.global-leaderboard-body {
+  
+}
+
+.global-leaderboard-close-btn {
+  background: white;
+  border: none;
+  color: #ff5f5f;
+  font-size: 2rem;
+  cursor: pointer;
+  padding-bottom: 5px;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.3s ease;
+}
+
+.global-leaderboard-close-btn:hover {
+  background: #ff5f5f;
+  color: white;
+}
+
+.current-user-leaderboard-row {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 2px solid #ff5f5f;
+}
+
+.current-user-leaderboard-row .leaderboard-table tbody tr {
+  background: rgba(255, 95, 95, 0.2);
+  border: 2px solid #ff5f5f;
 }

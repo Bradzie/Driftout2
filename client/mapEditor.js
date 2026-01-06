@@ -960,10 +960,12 @@ function createCircleShape(center, radius, segments = 16) {
   const shape = {
     type: "polygon",
     vertices: vertices,
-    color: [100, 100, 100],
+    fillColor: [100, 100, 100],
+    borderColors: ['#ff4d4d', '#ffffff'],
+    borderWidth: 20,
     isStatic: true
   };
-  
+
   saveToHistory();
   editorMap.shapes.push(shape);
   updateUI();
@@ -975,7 +977,7 @@ function createRectangleShape(startPos, endPos) {
   const maxX = Math.max(startPos.x, endPos.x);
   const minY = Math.min(startPos.y, endPos.y);
   const maxY = Math.max(startPos.y, endPos.y);
-  
+
   const shape = {
     type: "polygon",
     vertices: [
@@ -984,10 +986,12 @@ function createRectangleShape(startPos, endPos) {
       { x: maxX, y: maxY },
       { x: minX, y: maxY }
     ],
-    color: [100, 100, 100],
+    fillColor: [100, 100, 100],
+    borderColors: ['#ff4d4d', '#ffffff'],
+    borderWidth: 20,
     isStatic: true
   };
-  
+
   saveToHistory();
   editorMap.shapes.push(shape);
   updateUI();
@@ -1003,11 +1007,13 @@ function createTriangleShape(center, radius) {
       y: center.y + Math.sin(angle) * radius
     });
   }
-  
+
   const shape = {
     type: "polygon",
     vertices: vertices,
-    color: [100, 100, 100],
+    fillColor: [100, 100, 100],
+    borderColors: ['#ff4d4d', '#ffffff'],
+    borderWidth: 20,
     isStatic: true
   };
   
@@ -2094,50 +2100,61 @@ function drawShape(shape, isSelected, isHovered = false) {
 
   // Draw border with alternating colors if available
   if (Array.isArray(shape.borderColors) && shape.borderColors.length > 0 && shape.borderWidth > 0) {
-    const lineWidth = shape.borderWidth || 8;
-    const stripeLength = shape.stripeLength || shape.borderWidth * 1.8 || 25;
-    
-    for (let i = 0; i < shape.vertices.length; i++) {
-      const a = { x: shape.vertices[i].x, y: -shape.vertices[i].y };
-      const b = { x: shape.vertices[(i + 1) % shape.vertices.length].x, y: -shape.vertices[(i + 1) % shape.vertices.length].y };
-      
-      // Use different color for each side of the polygon
-      const sideColor = shape.borderColors[i % shape.borderColors.length];
-      
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const len = Math.hypot(dx, dy);
-      const steps = Math.max(1, Math.floor(len / stripeLength));
-      
-      const perpX = -dy / len;
-      const perpY = dx / len;
-      const offsetX = (perpX * lineWidth) / 2;
-      const offsetY = (perpY * lineWidth) / 2;
-      
-      for (let s = 0; s < steps; s++) {
-        const t0 = s / steps;
-        const t1 = (s + 1) / steps;
-        const x0 = a.x + dx * t0;
-        const y0 = a.y + dy * t0;
-        const x1 = a.x + dx * t1;
-        const y1 = a.y + dy * t1;
-        
+    const lineWidth = shape.borderWidth;
+    const baseColor = shape.borderColors[0];
+
+    // Single color mode: draw solid border
+    if (shape.borderColors.length === 1) {
+      editorCtx.lineWidth = lineWidth;
+      editorCtx.strokeStyle = baseColor;
+      editorCtx.lineJoin = 'round';
+      editorCtx.lineCap = 'round';
+      editorCtx.stroke();
+    }
+    // Dual color mode: draw striped border
+    else {
+      const stripeLength = shape.stripeLength || shape.borderWidth * 1.8 || 25;
+
+      for (let i = 0; i < shape.vertices.length; i++) {
+        const a = { x: shape.vertices[i].x, y: -shape.vertices[i].y };
+        const b = { x: shape.vertices[(i + 1) % shape.vertices.length].x, y: -shape.vertices[(i + 1) % shape.vertices.length].y };
+
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const len = Math.hypot(dx, dy);
+        const steps = Math.max(1, Math.floor(len / stripeLength));
+
+        const perpX = -dy / len;
+        const perpY = dx / len;
+        const offsetX = (perpX * lineWidth) / 2;
+        const offsetY = (perpY * lineWidth) / 2;
+
+        for (let s = 0; s < steps; s++) {
+          const t0 = s / steps;
+          const t1 = (s + 1) / steps;
+          const x0 = a.x + dx * t0;
+          const y0 = a.y + dy * t0;
+          const x1 = a.x + dx * t1;
+          const y1 = a.y + dy * t1;
+
+          editorCtx.beginPath();
+          editorCtx.moveTo(x0 + offsetX, y0 + offsetY);
+          editorCtx.lineTo(x1 + offsetX, y1 + offsetY);
+          editorCtx.lineTo(x1 - offsetX, y1 - offsetY);
+          editorCtx.lineTo(x0 - offsetX, y0 - offsetY);
+          editorCtx.closePath();
+
+          const isLastStripe = s === steps - 1;
+          editorCtx.fillStyle = isLastStripe ? baseColor : shape.borderColors[s % shape.borderColors.length];
+          editorCtx.fill();
+        }
+
+        const radius = lineWidth / 2;
         editorCtx.beginPath();
-        editorCtx.moveTo(x0 + offsetX, y0 + offsetY);
-        editorCtx.lineTo(x1 + offsetX, y1 + offsetY);
-        editorCtx.lineTo(x1 - offsetX, y1 - offsetY);
-        editorCtx.lineTo(x0 - offsetX, y0 - offsetY);
-        editorCtx.closePath();
-        
-        editorCtx.fillStyle = sideColor;
+        editorCtx.arc(a.x, a.y, radius, 0, Math.PI * 2);
+        editorCtx.fillStyle = baseColor;
         editorCtx.fill();
       }
-      
-      const radius = lineWidth / 2;
-      editorCtx.beginPath();
-      editorCtx.arc(a.x, a.y, radius, 0, Math.PI * 2);
-      editorCtx.fillStyle = sideColor;
-      editorCtx.fill();
     }
   }
 
@@ -2928,26 +2945,67 @@ function createSliderInput(label, value, id, min = 0, max = 1, step = 0.01) {
 
 function buildShapeProperties(shape, index) {
   let html = '';
-  
+
   html += createColorInput('Fill Color', shape.fillColor, `shape_fillColor_${index}`);
-  
-  if (shape.borderColors) {
-    shape.borderColors.forEach((color, i) => {
-      html += createColorInput(`Border ${i + 1}`, hexToRgb(color), `shape_borderColor_${index}_${i}`);
-    });
+
+  // Initialize fill collision if missing (default: false for backward compatibility)
+  if (shape.fillCollision === undefined) {
+    shape.fillCollision = false;
   }
-  
-  html += createNumberInput('Border Width', shape.borderWidth, `shape_borderWidth_${index}`, 0, 100, 1);
-  
+  html += createCheckboxInput('Fill Collision', shape.fillCollision, `shape_fillCollision_${index}`);
+
+  // Initialize border properties if missing
+  if (!shape.borderColors) {
+    shape.borderColors = [];
+  }
+  if (shape.borderWidth === undefined) {
+    shape.borderWidth = 0;
+  }
+  // Initialize border collision if missing (default: true for backward compatibility)
+  if (shape.borderCollision === undefined) {
+    shape.borderCollision = true;
+  }
+
+  const borderEnabled = shape.borderWidth > 0 && shape.borderColors.length > 0;
+  const borderMode = shape.borderColors.length === 1 ? 'single' : 'dual';
+
+  html += '<div class="property-group"><h5>Border</h5>';
+  html += createCheckboxInput('Border Enabled', borderEnabled, `shape_borderEnabled_${index}`);
+
+  if (borderEnabled) {
+    html += createCheckboxInput('Border Collision', shape.borderCollision, `shape_borderCollision_${index}`);
+    html += createSelectInput('Border Mode', borderMode, `shape_borderMode_${index}`, [
+      { value: 'single', label: 'Single Color' },
+      { value: 'dual', label: 'Dual Color' }
+    ]);
+
+    if (borderMode === 'single') {
+      html += createColorInput('Border Color', hexToRgb(shape.borderColors[0] || '#ff4d4d'), `shape_borderColor_${index}_0`);
+    } else {
+      html += createColorInput('Border Color 1', hexToRgb(shape.borderColors[0] || '#ff4d4d'), `shape_borderColor_${index}_0`);
+      html += createColorInput('Border Color 2', hexToRgb(shape.borderColors[1] || '#ffffff'), `shape_borderColor_${index}_1`);
+    }
+
+    html += createNumberInput('Border Width', shape.borderWidth, `shape_borderWidth_${index}`, 0, 100, 1);
+  }
+
+  html += '</div>';
+
   return html;
 }
 
 function buildDynamicObjectProperties(obj, index) {
   let html = '';
-  
+
   html += createTextInput('ID', obj.id, `dynamic_id_${index}`, 'Object identifier');
-  
+
+  // Initialize collision if missing (default: true for backward compatibility)
+  if (obj.collision === undefined) {
+    obj.collision = true;
+  }
+
   html += '<div class="property-group"><h5>Physics</h5>';
+  html += createCheckboxInput('Collision Enabled', obj.collision, `dynamic_collision_${index}`);
   html += createCheckboxInput('Static', obj.isStatic, `dynamic_isStatic_${index}`);
   html += createSliderInput('Density', obj.density, `dynamic_density_${index}`, 0, 5, 0.01);
   html += createSliderInput('Friction', obj.friction, `dynamic_friction_${index}`, 0, 2, 0.01);
@@ -3163,10 +3221,29 @@ function handleCheckboxChange(event) {
   const objectType = idParts[0];
   const property = idParts[1];
   const index = parseInt(idParts[2]);
-  
+
   const objectData = getSelectedObjectData();
   if (!objectData) return;
-  
+
+  // Special handling for border enabled checkbox
+  if (property === 'borderEnabled') {
+    if (value) {
+      // Enable border: set default values if not already set
+      if (!objectData.borderColors || objectData.borderColors.length === 0) {
+        objectData.borderColors = ['#ff4d4d', '#ffffff'];
+      }
+      if (!objectData.borderWidth || objectData.borderWidth === 0) {
+        objectData.borderWidth = 20;
+      }
+    } else {
+      // Disable border: set width to 0
+      objectData.borderWidth = 0;
+    }
+    updateMapAndRender();
+    updatePropertiesPanel();
+    return;
+  }
+
   objectData[property] = value;
   updateMapAndRender();
 }
@@ -3178,10 +3255,32 @@ function handleSelectChange(event) {
   const objectType = idParts[0];
   const property = idParts[1];
   const index = parseInt(idParts[2]);
-  
+
   const objectData = getSelectedObjectData();
   if (!objectData) return;
-  
+
+  // Special handling for border mode dropdown
+  if (property === 'borderMode') {
+    if (value === 'single') {
+      // Switch to single color: keep only first color
+      if (objectData.borderColors && objectData.borderColors.length > 0) {
+        objectData.borderColors = [objectData.borderColors[0]];
+      } else {
+        objectData.borderColors = ['#ff4d4d'];
+      }
+    } else if (value === 'dual') {
+      // Switch to dual color: add second color if missing
+      if (!objectData.borderColors || objectData.borderColors.length === 0) {
+        objectData.borderColors = ['#ff4d4d', '#ffffff'];
+      } else if (objectData.borderColors.length === 1) {
+        objectData.borderColors.push('#ffffff');
+      }
+    }
+    updateMapAndRender();
+    updatePropertiesPanel();
+    return;
+  }
+
   objectData[property] = value;
   updateMapAndRender();
 }

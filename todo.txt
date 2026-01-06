@@ -1,6 +1,6 @@
 X (map editor) allow multiple vertecies and easy point by point setup for dynamic objects (create and edit like regular shapes?)
 X (map editor) re-sizable finish lines
-X (server/client) fix trap ability (currently not doing damage, funky styling and low density)
+\ (server/client) fix trap ability (currently not doing damage, funky styling and low density) (still isnt doing damage)
 - (client) fix disconnect message (currently showing in the top-left of the screen)
 X (client) re-style leaderboard
 X (client) fix leaderboard stats not showing when spectating
@@ -32,3 +32,23 @@ X (client) remove 'rank' column on the leaderboard
 - (client) change `alert()` errors for something more sensible (vuetify-style rules/validation errors?)
 - (map editor) option to turn off collisions with walls on dynamic objects, it would allow spinners to clip through the side
 - (map editor / client / server) Change the way shapes work completely. We rely on hollow shapes for collisions when we could just be using full shapes with holes in the center? It gives us so much more control over border thickness and level design.
+- (client/server) update debugger to only show for isDev players
+- (client/server) gamemodes? deathmatch, teams
+- (client/server) round modifiers? peaceful (no collide), double upgrade points, randomizer abilities/upgrades (ability objects could use car colour, then could be suitible for all cars!)
+- (client/server) change the colour of the default shape borders, the red is a bit strong, go lighter
+- (map editor) allow shape layer editing for proper overlapping of shapes
+- (client/server) leaderboard for registered accounts / shows top levels and their career stats (will require tracking of kills/deaths/wins in official servers) would be really cool to track their main cartype too
+- (map editor) force users to include at least one checkpoint (maybe not if we introduce gamemodes??)
+- (map editor) shapes can be have collisions enabled/disabled on shape and border
+- (map editor) don't allow editing of author name when saving
+- (map editor) get rid of the area effect emojis
+X (map editor) fix 'back' button and give it styling
+- (server/map editor) we have server.js code preventing users from editing other users maps. Either we keep this or introduce a 'copy' feature where users can copy other users creations
+- (client/server) we still have a weird glitch where when the angle is 0 or 360 on the players car and ticks over to either 360 or 0, the car will do a fast spin, which can be annoying
+- (client/server) custom border widths are not rendering correctly
+- (client/server) trap size / damage upgrades
+- (client/server) dash power upgrades
+- (client) changelog window
+- (client) disconnected screen doesn't hide room name/map header and changelog/leaderboard buttons
+- (client) the driftz.io title seems to be messing with player movement. do we have the wrong css props on it?
+- (client/server) overheal

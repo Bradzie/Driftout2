@@ -115,7 +115,7 @@
   <div id="menu" class="overlay hidden">
     <h1 class="title">DRIFTZ.IO</h1>
     <div id="roomNameDisplay" class="room-name-display hidden">
-      <span id="roomNameText" style="display: block;">-</span>
+      <span id="roomNameText" class="room-name-display-room" style="display: block;">-</span>
       <span id="roomMapText" style="display: block;">-</span>
     </div>
     <div id="carSelector" class="car-selector">
@@ -152,8 +152,12 @@
       </div>
       <button id="joinButton" class="nav-button play-button">➤</button>
     </div>
-    <button id="roomBrowserButton" class="room-browser-button">Browse Rooms</button>
-    <button id="mapEditorButton" class="map-editor-button">Map Editor</button>
+    <div class="menu-buttons-grid">
+      <button id="roomBrowserButton" class="menu-grid-button">Browse Rooms</button>
+      <button id="changelogButton" class="menu-grid-button">Changelog</button>
+      <button id="mapEditorButton" class="menu-grid-button">Map Editor</button>
+      <button id="globalLeaderboardButton" class="menu-grid-button">Leaderboard</button>
+    </div>
   </div>
 
   <canvas id="spectatorCanvas" class="spectator-canvas"></canvas>
@@ -666,6 +670,37 @@
       </div>
       <div class="modal-footer">
         <button class="btn btn-primary" onclick="closeEditorOptionsModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="globalLeaderboardModal" class="modal hidden">
+    <div class="global-leaderboard-content">
+      <div class="global-leaderboard-header">
+        <h2>Global Leaderboard</h2>
+        <button class="global-leaderboard-close-btn" id="closeGlobalLeaderboard">×</button>
+      </div>
+      <div class="global-leaderboard-body">
+        <table class="leaderboard-table">
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Player</th>
+              <th>Level</th>
+              <th>Kills</th>
+              <th>Deaths</th>
+              <th>Wins</th>
+            </tr>
+          </thead>
+          <tbody id="globalLeaderboardTableBody">
+          </tbody>
+        </table>
+        <div id="currentUserRow" class="current-user-leaderboard-row hidden">
+          <table class="leaderboard-table">
+            <tbody id="currentUserLeaderboardBody">
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>

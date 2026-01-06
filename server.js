@@ -8,8 +8,11 @@ const { Server } = require('socket.io');
 const Matter = require('matter-js');
 const decomp = require('poly-decomp');
 Matter.Common.setDecomp(decomp);
-const { v4: uuidv4 } = require('uuid');
+const { v4: uuidv4, validate: isUUID } = require('uuid');
 const session = require('express-session');
+const rateLimit = require('express-rate-limit');
+const validator = require('validator');
+const FileType = require('file-type');
 const UserDatabase = require('./database');
 
 const app = express();
@@ -19,10 +22,10 @@ const io = new Server(server, {
   perMessageDeflate: false,   // disables compression to hopefully reduce latency
   pingInterval: 10000,
   pingTimeout: 5000,
-  maxHttpBufferSize: 1e6,
+  maxHttpBufferSize: 1e6, // hex, 486
 });
 
-const DEBUG_MODE = false;
+const DEBUG_MODE = true;
 
 const userDb = new UserDatabase();
 
@@ -30,23 +33,77 @@ function isValidFilename(filename) {
   if (!filename || typeof filename !== 'string') return false;
   if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) return false;
   if (path.isAbsolute(filename)) return false;
+  if (!isUUID(filename)) return false;
   return true;
+}
+
+// double check map data structure
+function validateMapData(mapData) {
+  if (!mapData || typeof mapData !== 'object') {
+    return { valid: false, error: 'Map data is invalid or missing. CODE: 1' };
+  }
+  // ensure mapid
+  if (!mapData.id || typeof mapData.id !== 'string') {
+    return { valid: false, error: 'Map data is invalid or missing. CODE: 2' };
+  }
+  // ensure uuid
+  if (!isUUID(mapData.id)) {
+    return { valid: false, error: 'Map data is invalid or missing. CODE: 3' };
+  }
+
+  // other checks
+  if (mapData.shapes && !Array.isArray(mapData.shapes)) {
+    return { valid: false, error: 'Map data is invalid or missing. CODE: 4' };
+  }
+  if (mapData.shapes && mapData.shapes.length > 1000) {
+    return { valid: false, error: 'Too many shapes (max 1000)' };
+  }
+  if (mapData.shapes) {
+    for (const shape of mapData.shapes) {
+      if (!shape || typeof shape !== 'object') {
+        return { valid: false, error: 'Map data is invalid or missing. CODE: 5' };
+      }
+      if (shape.vertices && !Array.isArray(shape.vertices)) {
+        return { valid: false, error: 'Map data is invalid or missing. CODE: 6' };
+      }
+      if (shape.vertices && shape.vertices.length > 100) {
+        return { valid: false, error: 'Shape has too many vertices (max 100 per shape)' };
+      }
+    }
+  }
+
+  // validate name/description
+  if (mapData.displayName && typeof mapData.displayName === 'string') {
+    if (mapData.displayName.length > 100) {
+      return { valid: false, error: 'Display name too long (max 100 characters)' };
+    }
+  }
+  if (mapData.description && typeof mapData.description === 'string') {
+    if (mapData.description.length > 500) {
+      return { valid: false, error: 'Description too long (max 500 characters)' };
+    }
+  }
+
+  // map can be too big, prevent spam maps
+  const jsonSize = JSON.stringify(mapData).length;
+  if (jsonSize > 1024 * 1024) { // 1MB limit
+    return { valid: false, error: 'Map data too large (max 1MB)' };
+  }
+
+  return { valid: true };
 }
 
 const activeUserSessions = new Map();
 const activeGuestSessions = new Map();
 const sessionRegistrationLocks = new Set();
 
-// Configuration for duplicate login handling
 const DUPLICATE_LOGIN_POLICY = {
-  KICK_EXISTING: 'kick_existing',    // Disconnect existing sessions and allow new login
-  REJECT_NEW: 'reject_new'           // Reject new login attempt
+  KICK_EXISTING: 'kick_existing',
+  REJECT_NEW: 'reject_new'
 };
-
-// Current policy - can be changed as needed
 const currentDuplicateLoginPolicy = DUPLICATE_LOGIN_POLICY.KICK_EXISTING;
 
-// XP and Level calculation (matches client-side logic)
+// code needs to match client-side for level calculations
 const BASE_XP_LEVEL_1 = 10;
 const XP_SCALE_PER_LEVEL = 1.2;
 const KILL_XP_REWARD = 1;
@@ -76,7 +133,7 @@ function calculateLevel(totalXP) {
 
 if (!process.env.SESSION_SECRET) {
   const randomSecret = crypto.randomBytes(32).toString('hex');
-  console.warn('WARNING: No SESSION_SECRET environment variable set. Using random secret. Sessions will not persist across restarts.');
+  console.warn('random secret being used, fix me!');
   process.env.SESSION_SECRET = randomSecret;
 }
 
@@ -87,18 +144,57 @@ const sessionMiddleware = session({
   cookie: {
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000
+    maxAge: 24 * 60 * 60 * 1000,
+    sameSite: 'strict' // CSRF protection
   }
+});
+
+// auth rate limits
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 15, // 15 attempts per window
+  message: 'Too many auth attempts, try again soon.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const mapUploadLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10, // 10 map uploads per hour
+  message: 'Too many map uploads, try again soon',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const roomCreationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 room creations per 15 minutes
+  message: 'Too many room creations, try again soon',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const generalApiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 60, // 60 requests per minute
+  message: 'Too many requests, please slow down',
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
 app.use(express.json());
 app.use(sessionMiddleware);
+app.use('/api/', generalApiLimiter);
 app.use(express.static('client'));
-app.use('/previews', express.static('maps/previews')); // Serve preview images
+app.use('/previews', express.static('maps/previews'));
 
-// Share session with socket.io
+// wrap session middleware for socket.io
 const wrap = (middleware) => (socket, next) => middleware(socket.request, {}, next);
 io.use(wrap(sessionMiddleware));
+
+
+// app api endpoints
+
 
 app.get('/api/carTypes', (req, res) => {
   res.json(CAR_TYPES);
@@ -137,15 +233,21 @@ app.get('/api/maps/:category/:key', (req, res) => {
   }
 });
 
-// New map management endpoints
-
-// Upload a new community map or overwrite an existing one (authenticated users only)
-app.post('/api/maps', requireAuth, async (req, res) => {
+app.post('/api/maps', mapUploadLimiter, requireAuth, async (req, res) => {
   try {
     const { name, mapData, directory, key } = req.body;
-    
+
     if (!name || !mapData) {
       return sendError(res, 400, 'Name and map data are required');
+    }
+
+    if (typeof name !== 'string' || name.length < 1 || name.length > 100) {
+      return sendError(res, 400, 'Map name must be between 1 and 100 characters');
+    }
+
+    const validation = validateMapData(mapData);
+    if (!validation.valid) {
+      return sendError(res, 400, validation.error);
     }
 
     let filename;
@@ -153,7 +255,7 @@ app.post('/api/maps', requireAuth, async (req, res) => {
     let isNewMap = true;
 
     if (key) {
-      // Overwriting an existing map
+      // overwrite
       const keyParts = key.split('/');
       targetDirectory = keyParts[0];
       filename = keyParts.slice(1).join('/');
@@ -164,13 +266,10 @@ app.post('/api/maps', requireAuth, async (req, res) => {
       }
 
     } else {
-      // Creating a new map
       targetDirectory = directory || 'community';
       if (!['official', 'community'].includes(targetDirectory)) {
         return res.status(400).json({ error: 'Invalid directory. Must be "official" or "community"' });
       }
-
-      // Use UUID as filename for new maps (both official and community)
       if (!mapData.id) {
         return sendError(res, 400, 'Map data must include a UUID (id field)');
       }
@@ -178,12 +277,13 @@ app.post('/api/maps', requireAuth, async (req, res) => {
     }
 
     if (!isValidFilename(filename)) {
-      return sendError(res, 400, 'Invalid filename: path traversal not allowed');
+      return sendError(res, 400, 'Invalid filename: must be a valid UUID');
     }
-    
+    const sanitizedName = validator.escape(name);
+
     const enhancedMapData = {
       ...mapData,
-      displayName: name,
+      displayName: sanitizedName,
       author: mapData.author || req.session.username,
       author_id: req.session.userId,
       created_at: isNewMap ? new Date().toISOString() : (mapData.created_at || new Date().toISOString()),
@@ -197,20 +297,20 @@ app.post('/api/maps', requireAuth, async (req, res) => {
     }
 
     if (isNewMap) {
-      const dbResult = userDb.addMap(name, req.session.userId, filename, targetDirectory);
+      const dbResult = userDb.addMap(sanitizedName, req.session.userId, filename, targetDirectory);
       if (!dbResult.success) {
         mapManager.deleteMap(filename, targetDirectory);
         return res.status(500).json({ error: dbResult.error });
       }
-       res.json({ 
-        success: true, 
+       res.json({
+        success: true,
         mapId: dbResult.mapId,
         filename: filename,
         key: `${targetDirectory}/${filename}`
       });
     } else {
-         res.json({ 
-            success: true, 
+         res.json({
+            success: true,
             filename: filename,
             key: `${targetDirectory}/${filename}`
         });
@@ -245,7 +345,6 @@ app.put('/api/maps/:key', requireAuth, async (req, res) => {
       category: 'community'
     };
 
-    // Save updated map file
     const saved = mapManager.saveMap(key, 'community', enhancedMapData);
     if (!saved) {
       return sendError(res, 500, 'Failed to update map');
@@ -303,8 +402,7 @@ app.get('/api/maps/my', requireAuth, async (req, res) => {
   }
 });
 
-// Upload preview image for a map
-app.post('/api/maps/preview', requireAuth, async (req, res) => {
+app.post('/api/maps/preview', mapUploadLimiter, requireAuth, async (req, res) => {
   try {
     const form = new formidable.IncomingForm();
     form.maxFileSize = 5 * 1024 * 1024; // 5MB limit
@@ -315,32 +413,54 @@ app.post('/api/maps/preview', requireAuth, async (req, res) => {
         console.error('Preview upload parse error:', err);
         return sendError(res, 400, 'Failed to parse upload');
       }
-
       const mapId = Array.isArray(fields.mapId) ? fields.mapId[0] : fields.mapId;
       if (!mapId) {
         return sendError(res, 400, 'Map ID is required');
       }
-
+      if (!isUUID(mapId)) {
+        return sendError(res, 400, 'Invalid map ID format');
+      }
       const previewFile = files.preview;
       if (!previewFile) {
         return sendError(res, 400, 'No preview file provided');
       }
 
       try {
+        const file = Array.isArray(previewFile) ? previewFile[0] : previewFile;
+        const fileType = await FileType.fromFile(file.filepath);
+
+        if (!fileType || !['image/png', 'image/jpeg', 'image/jpg'].includes(fileType.mime)) {
+          fs.unlinkSync(file.filepath);
+          return sendError(res, 400, 'Invalid file type. Only PNG and JPEG images are allowed');
+        }
+        const stats = fs.statSync(file.filepath);
+        if (stats.size > 5 * 1024 * 1024) {
+          fs.unlinkSync(file.filepath);
+          return sendError(res, 400, 'File too large. Maximum size is 5MB');
+        }
+
         const previewsDir = path.join(__dirname, 'maps', 'previews');
         if (!fs.existsSync(previewsDir)) {
           fs.mkdirSync(previewsDir, { recursive: true });
         }
 
-        const filename = mapId + '.png';
+        const extension = fileType.ext;
+        const filename = mapId + '.' + extension;
         const targetPath = path.join(previewsDir, filename);
-        const file = Array.isArray(previewFile) ? previewFile[0] : previewFile;
+
+        // Ensure the target path is within the previews directory (prevent path traversal)
+        const resolvedTarget = path.resolve(targetPath);
+        const resolvedPreviewsDir = path.resolve(previewsDir);
+        if (!resolvedTarget.startsWith(resolvedPreviewsDir)) {
+          fs.unlinkSync(file.filepath);
+          return sendError(res, 400, 'Invalid file path');
+        }
 
         fs.copyFileSync(file.filepath, targetPath);
         fs.unlinkSync(file.filepath);
 
-        res.json({ 
-          success: true, 
+        res.json({
+          success: true,
           message: 'Preview image saved successfully',
           previewPath: `/previews/${filename}`,
           mapId: mapId
@@ -348,6 +468,15 @@ app.post('/api/maps/preview', requireAuth, async (req, res) => {
 
       } catch (saveError) {
         console.error('Preview save error:', saveError);
+        // Clean up file on error
+        try {
+          const file = Array.isArray(previewFile) ? previewFile[0] : previewFile;
+          if (file && file.filepath && fs.existsSync(file.filepath)) {
+            fs.unlinkSync(file.filepath);
+          }
+        } catch (cleanupError) {
+          console.error('Cleanup error:', cleanupError);
+        }
         sendError(res, 500, 'Failed to save preview image');
       }
     });
@@ -420,7 +549,7 @@ app.get('/api/rooms', (req, res) => {
   res.json(roomList);
 });
 
-app.post('/api/rooms/create', express.json(), (req, res) => {
+app.post('/api/rooms/create', roomCreationLimiter, express.json(), (req, res) => {
   try {
     const { name, mapKey, maxPlayers, isPrivate } = req.body;
     
@@ -467,51 +596,71 @@ app.post('/api/rooms/create', express.json(), (req, res) => {
   }
 });
 
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', authLimiter, async (req, res) => {
   try {
     const { username, email, password } = req.body;
-    
+
     if (!username || !email || !password) {
       return sendError(res, 400, 'Username, email, and password are required');
     }
-    
+
     if (username.length < 2 || username.length > 20) {
       return sendError(res, 400, 'Username must be between 2 and 20 characters');
     }
-    
-    if (password.length < 6) {
-      return sendError(res, 400, 'Password must be at least 6 characters long');
+
+    // Strengthened password requirements
+    if (password.length < 12) {
+      return sendError(res, 400, 'Password must be at least 12 characters long');
     }
-    
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+
+    // Check for password complexity
+    const hasUpperCase = /[A-Z]/.test(password);
+    const hasLowerCase = /[a-z]/.test(password);
+    const hasNumber = /[0-9]/.test(password);
+    const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+
+    if (!hasUpperCase || !hasLowerCase || !hasNumber || !hasSpecial) {
+      return sendError(res, 400, 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character');
+    }
+
+    // Use validator library for better email validation
+    if (!validator.isEmail(email)) {
       return sendError(res, 400, 'Please enter a valid email address');
     }
-    
+
     const result = await userDb.registerUser(username, email, password);
-    
+
     if (result.success) {
-      // Log in the user immediately after registration
-      req.session.userId = result.userId;
-      req.session.username = username;
-      req.session.isGuest = false;
-      
-      req.session.save((err) => {
+      // Regenerate session to prevent session fixation
+      req.session.regenerate((err) => {
         if (err) {
-          console.error('Session save error after registration:', err);
+          console.error('Session regeneration error after registration:', err);
+          return sendError(res, 500, 'Registration failed');
         }
-        res.json({ 
-          success: true, 
-          user: { 
-            id: result.userId, 
-            username: username, 
-            email: email,
-            isGuest: false
-          } 
+
+        // Log in the user immediately after registration
+        req.session.userId = result.userId;
+        req.session.username = username;
+        req.session.isGuest = false;
+
+        req.session.save((saveErr) => {
+          if (saveErr) {
+            console.error('Session save error after registration:', saveErr);
+          }
+          res.json({
+            success: true,
+            user: {
+              id: result.userId,
+              username: username,
+              email: email,
+              isGuest: false
+            }
+          });
         });
       });
     } else {
-      res.status(400).json({ error: result.error });
+      // Use generic error message to prevent user enumeration
+      res.status(400).json({ error: 'Registration failed. Please check your information and try again.' });
     }
   } catch (error) {
     console.error('Registration error:', error);
@@ -519,24 +668,24 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
-    
+
     if (!email || !password) {
       return sendError(res, 400, 'Email and password are required');
     }
-    
+
     const result = await userDb.loginUser(email, password);
-    
+
     if (result.success) {
       const userId = result.user.id;
       const existingSessions = getUserActiveSessions(userId);
-      
+
       if (existingSessions.size > 0) {
-        
+
         if (currentDuplicateLoginPolicy === DUPLICATE_LOGIN_POLICY.REJECT_NEW) {
-          return res.status(409).json({ 
+          return res.status(409).json({
             error: 'Account is already logged in from another location. Please log out from the other session first.',
             errorCode: 'ALREADY_LOGGED_IN'
           });
@@ -544,28 +693,37 @@ app.post('/api/auth/login', async (req, res) => {
           // We'll kick existing sessions after socket connection is established
         }
       }
-      
-      req.session.userId = result.user.id;
-      req.session.username = result.user.username;
-      req.session.isGuest = false;
-      
-      req.session.save((err) => {
+
+      // Regenerate session to prevent session fixation
+      req.session.regenerate((err) => {
         if (err) {
-          console.error('Session save error after login:', err);
+          console.error('Session regeneration error after login:', err);
+          return sendError(res, 500, 'Login failed');
         }
-        res.json({
-          success: true,
-          user: {
-            id: result.user.id,
-            username: result.user.username,
-            email: result.user.email,
-            isGuest: false,
-            xp: result.user.xp || 0
+
+        req.session.userId = result.user.id;
+        req.session.username = result.user.username;
+        req.session.isGuest = false;
+
+        req.session.save((saveErr) => {
+          if (saveErr) {
+            console.error('Session save error after login:', saveErr);
           }
+          res.json({
+            success: true,
+            user: {
+              id: result.user.id,
+              username: result.user.username,
+              email: result.user.email,
+              isGuest: false,
+              xp: result.user.xp || 0
+            }
+          });
         });
       });
     } else {
-      res.status(400).json({ error: result.error });
+      // Use generic error message to prevent user enumeration
+      res.status(401).json({ error: 'Invalid credentials. Please try again.' });
     }
   } catch (error) {
     console.error('Login error:', error);
@@ -662,18 +820,59 @@ app.get('/api/auth/session', (req, res) => {
   }
 });
 
+app.get('/api/leaderboard', (req, res) => {
+  try {
+    const topPlayers = userDb.getLeaderboard(100);
+
+    const leaderboardData = topPlayers.map(player => ({
+      username: player.username,
+      level: calculateLevel(player.xp),
+      xp: player.xp,
+      kills: player.total_kills,
+      deaths: player.total_deaths,
+      wins: player.total_wins
+    }));
+
+    let currentUserData = null;
+    if (req.session?.userId && !req.session.isGuest) {
+      const userData = userDb.getUserById(req.session.userId);
+      if (userData) {
+        const rank = userDb.getUserRank(req.session.userId);
+        currentUserData = {
+          username: userData.username,
+          level: calculateLevel(userData.xp),
+          xp: userData.xp,
+          kills: userData.total_kills,
+          deaths: userData.total_deaths,
+          wins: userData.total_wins,
+          rank: rank
+        };
+      }
+    }
+
+    res.json({
+      leaderboard: leaderboardData,
+      currentUser: currentUserData
+    });
+  } catch (error) {
+    console.error('Leaderboard error:', error);
+    res.status(500).json({ error: 'Failed to load leaderboard' });
+  }
+});
+
 if (DEBUG_MODE) {
-  app.get('/api/debug/sessions', (req, res) => {
+  // Restrict debug endpoint to localhost only for security
+  app.get('/api/debug/sessions', requireLocalhost, (req, res) => {
     const userSessionsInfo = {};
     for (const [userId, sockets] of activeUserSessions.entries()) {
       userSessionsInfo[userId] = Array.from(sockets);
     }
-    
+
     const guestSessionsInfo = {};
     for (const [sessionId, socketId] of activeGuestSessions.entries()) {
       guestSessionsInfo[sessionId] = socketId;
     }
-    
+
     res.json({
       userSessions: userSessionsInfo,
       guestSessions: guestSessionsInfo,
@@ -768,6 +967,17 @@ function sendError(res, statusCode, message) {
 function requireAuth(req, res, next) {
   if (!req.session.userId) {
     return sendError(res, 401, 'Authentication required');
+  }
+  next();
+}
+
+// Middleware to restrict debug endpoints to localhost only
+function requireLocalhost(req, res, next) {
+  const ip = req.ip || req.connection.remoteAddress;
+  const isLocalhost = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+
+  if (!isLocalhost) {
+    return sendError(res, 403, 'Access denied');
   }
   next();
 }
@@ -1088,9 +1298,33 @@ class Car {
 
     const carDef = CAR_TYPES[type];
     this.ability = carDef.ability ? abilityRegistry.create(carDef.ability) : null;
+
+    if (this.ability && this.ability.usesChargeSystem) {
+      this.ability.initializeChargeState(this);
+    } else {
+      this.chargeState = null;
+    }
+
+    // Ability upgrade stats
+    this.abilityCooldownReduction = 0;
+    this.projectileSpeed = 0;
+    this.projectileDensity = 0;
+
     this.isGhost = false;
     this.trapDamageHistory = new Map();
-    const roomMapKey = this.room ? this.room.currentMapKey : 'square'; // fallback
+
+    // anchor ability
+    this.isAnchored = false;
+    this.anchorStartTime = 0;
+    this.anchorResistance = 0;
+
+    // Focus ability state
+    this.isFocused = false;
+    this.focusStartTime = 0;
+    this.originalFrictionAir = null;
+    this.originalAcceleration = null;
+
+    const roomMapKey = this.room ? this.room.currentMapKey : 'square';
     
     const { category: mapCategory, key: mapKey } = HELPERS.parseMapKey(roomMapKey);
     
@@ -1435,7 +1669,11 @@ class Car {
       damage = (relativeSpeed * 1.5) * BASE_VELOCITY_DAMAGE_SCALE * damageMultiplier * damageScale * angleMultiplier;
     }
 
-    
+    // add anchor damage res
+    if (this.anchorResistance && this.anchorResistance > 0) {
+      damage *= (1 - this.anchorResistance);
+    }
+
     this.currentHealth -= damage;
 
     if (this.currentHealth <= 0) {
@@ -1761,6 +1999,12 @@ class Room {
           if (xpAwarded) {
             killerSocket.emit('xpGained', { amount: KILL_XP_REWARD, reason: 'Kill' });
           }
+          userDb.addKill(userId);
+        }
+
+        const victimSocket = io.sockets.sockets.get(carA.socketId);
+        if (victimSocket?.request?.session?.userId && !victimSocket.request.session.isGuest) {
+          userDb.addDeath(victimSocket.request.session.userId);
         }
       }
 
@@ -1782,6 +2026,12 @@ class Room {
           if (xpAwarded) {
             killerSocket.emit('xpGained', { amount: KILL_XP_REWARD, reason: 'Kill' });
           }
+          userDb.addKill(userId);
+        }
+
+        const victimSocket = io.sockets.sockets.get(carB.socketId);
+        if (victimSocket?.request?.session?.userId && !victimSocket.request.session.isGuest) {
+          userDb.addDeath(victimSocket.request.session.userId);
         }
       }
 
@@ -1793,6 +2043,19 @@ class Room {
       carB.deaths += 1;
       carA.saveStatsToRoom();
       carB.saveStatsToRoom();
+
+      if (this.isOfficial) {
+        const socketA = io.sockets.sockets.get(carA.socketId);
+        if (socketA?.request?.session?.userId && !socketA.request.session.isGuest) {
+          userDb.addDeath(socketA.request.session.userId);
+        }
+
+        const socketB = io.sockets.sockets.get(carB.socketId);
+        if (socketB?.request?.session?.userId && !socketB.request.session.isGuest) {
+          userDb.addDeath(socketB.request.session.userId);
+        }
+      }
+
       this.broadcastKillFeedMessage(`${carA.name} and ${carB.name} crashed!`, 'crash');
     } else {
       // Both cars survived - add damage tags for potential delayed kill credit
@@ -1916,11 +2179,51 @@ class Room {
 
     if (map.shapes) {
       for (const shape of map.shapes) {
-        if (shape.hollow) continue
         if (!Array.isArray(shape.vertices)) continue
 
         const verts = shape.vertices
         if (verts.length < 3) continue
+
+        // Create fill collision body if fillCollision is enabled
+        if (shape.fillCollision === true) {
+          const fillBodyOptions = HELPERS.getBodyOptionsFromShape(shape)
+
+          // Calculate the PROPER centroid using signed area method (not just vertex average!)
+          // This is critical for irregular and concave polygons
+          let area = 0;
+          let cx = 0, cy = 0;
+
+          for (let i = 0; i < verts.length; i++) {
+            const v1 = verts[i];
+            const v2 = verts[(i + 1) % verts.length];
+            const cross = v1.x * v2.y - v2.x * v1.y;
+            area += cross;
+            cx += (v1.x + v2.x) * cross;
+            cy += (v1.y + v2.y) * cross;
+          }
+
+          area *= 0.5;
+          cx /= (6 * area);
+          cy /= (6 * area);
+
+          // translate vertices relative to proper centroid
+          const translatedVerts = verts.map(v => ({ x: v.x - cx, y: v.y - cy }));
+
+          try {
+            const fillBody = Matter.Bodies.fromVertices(cx, cy, [translatedVerts], fillBodyOptions, true);
+            if (fillBody && fillBody.vertices && fillBody.vertices.length > 0) {
+              fillBody.label = 'shape-fill';
+              this.currentTrackBodies.push(fillBody);
+            } else {
+              console.warn('Failed to create fill collision body - decomposition may have failed for concave polygon');
+            }
+          } catch (error) {
+            console.error('Error creating fill collision body:', error);
+          }
+        }
+
+        // Create border collision bodies (skip if hollow or borderCollision is false)
+        if (shape.hollow || shape.borderCollision === false) continue
 
         for (let i = 0; i < verts.length; i++) {
           const a = verts[i]
@@ -1971,6 +2274,12 @@ class Room {
 
         body.originalVertices = relativeVertices;
         body.dynamicObject = dynObj
+
+        // Mark if collision is disabled (default: true for backward compatibility)
+        if (dynObj.collision === false) {
+          body.noCollision = true
+        }
+
         this.currentDynamicBodies.push(body)
 
         // Create constraint if axis is defined
@@ -2003,7 +2312,11 @@ class Room {
       Matter.World.add(this.world, this.currentTrackBodies)
     }
     if (this.currentDynamicBodies.length > 0) {
-      Matter.World.add(this.world, this.currentDynamicBodies)
+      // Only add dynamic bodies that have collision enabled
+      const collisionEnabledBodies = this.currentDynamicBodies.filter(body => !body.noCollision)
+      if (collisionEnabledBodies.length > 0) {
+        Matter.World.add(this.world, collisionEnabledBodies)
+      }
     }
   }
   
@@ -2196,6 +2509,10 @@ class Room {
           }))
         } : {}),
         abilityCooldownReduction: car.abilityCooldownReduction || 0,
+        chargeState: car.chargeState || null,
+        isAnchored: car.isAnchored || false,
+        anchorResistance: car.anchorResistance || 0,
+        isFocused: car.isFocused || false,
         crashed: car.justCrashed || false,
         crashedAt: car.crashedAt || null,
         currentBoost: car.currentBoost,
@@ -2381,6 +2698,7 @@ function clonePlayerState(player) {
     level: player.level,
     checkpointsVisited: [...player.checkpointsVisited],
     abilityCooldownReduction: player.abilityCooldownReduction,
+    chargeState: player.chargeState ? { ...player.chargeState } : null,
     crashed: player.crashed
   };
   if (player.vertices) {
@@ -2806,14 +3124,14 @@ io.on('connection', (socket) => {
   
   socket.on('binaryInput', (buffer) => {
     if (!myCar) return;
-    
+
     if (currentRoom) {
       currentRoom.updateMemberActivity(socket.id);
     }
-    
+
     // Ignore input from crashed cars
     if (myCar.crashedAt) return;
-    
+
     try {
       let arrayBuffer;
       if (buffer instanceof ArrayBuffer) {
@@ -2824,17 +3142,21 @@ io.on('connection', (socket) => {
         console.error('Invalid binary input data type:', typeof buffer, buffer);
         return;
       }
-      
+
       // Decode binary input data
       const data = decodeBinaryInput(arrayBuffer);
-      
+
       if (data.cursor) {
-        myCar.cursor.x = data.cursor.x;
-        myCar.cursor.y = data.cursor.y;
-        myCar.lastInputTime = data.timestamp || Date.now();
-        myCar.inputSequence = data.sequence || 0;
+        // Validate and clamp cursor values to prevent speed exploits
+        const CURSOR_MAX = 100;
+        if (typeof data.cursor.x === 'number' && typeof data.cursor.y === 'number') {
+          myCar.cursor.x = Math.max(-CURSOR_MAX, Math.min(CURSOR_MAX, data.cursor.x));
+          myCar.cursor.y = Math.max(-CURSOR_MAX, Math.min(CURSOR_MAX, data.cursor.y));
+          myCar.lastInputTime = data.timestamp || Date.now();
+          myCar.inputSequence = data.sequence || 0;
+        }
       }
-      
+
       if (typeof data.boostActive === 'boolean') {
         myCar.boostActive = data.boostActive && myCar.currentBoost > 0;
       }
@@ -2845,78 +3167,108 @@ io.on('connection', (socket) => {
   
   socket.on('input', (data) => {
     if (!myCar) return;
-    
+
     if (currentRoom) {
       currentRoom.updateMemberActivity(socket.id);
     }
-    
+
     // Ignore input from crashed cars
     if (myCar.crashedAt) return;
-    
+
     if (data.cursor) {
-      myCar.cursor.x = data.cursor.x;
-      myCar.cursor.y = data.cursor.y;
-      myCar.lastInputTime = data.timestamp || Date.now();
-      myCar.inputSequence = data.sequence || 0;
+      // Validate and clamp cursor values to prevent speed exploits
+      const CURSOR_MAX = 100;
+      if (typeof data.cursor.x === 'number' && typeof data.cursor.y === 'number') {
+        myCar.cursor.x = Math.max(-CURSOR_MAX, Math.min(CURSOR_MAX, data.cursor.x));
+        myCar.cursor.y = Math.max(-CURSOR_MAX, Math.min(CURSOR_MAX, data.cursor.y));
+        myCar.lastInputTime = data.timestamp || Date.now();
+        myCar.inputSequence = data.sequence || 0;
+      }
     }
-    
+
     if (typeof data.boostActive === 'boolean') {
       myCar.boostActive = data.boostActive && myCar.currentBoost > 0;
     }
   });
   socket.on('upgrade', (data) => {
     if (!myCar || !data || typeof data.stat !== 'string') return;
+
+    // Prevent concurrent upgrade processing (race condition protection)
+    if (myCar._upgradeInProgress) {
+      return;
+    }
+
     const stat = data.stat;
-    const validStats = ['maxHealth', 'acceleration', 'regen', 'size', 'abilityCooldown', 'projectileSpeed', 'projectileDensity'];
+    const validStats = ['maxHealth', 'acceleration', 'regen', 'size', 'abilityCooldown', 'projectileSpeed', 'projectileDensity', 'abilityRegenRate'];
     if (!validStats.includes(stat)) return;
-    if (myCar.upgradePoints > 0) {
+
+    // Atomic check-and-decrement to prevent race condition
+    if (myCar.upgradePoints <= 0) {
+      return;
+    }
+
+    // Set lock flag
+    myCar._upgradeInProgress = true;
+
+    try {
       const carType = CAR_TYPES[myCar.type];
       const upgradeConfig = carType.upgrades[stat];
-      
-      if (upgradeConfig) {
-        const currentUsage = myCar.upgradeUsage[stat] || 0;
-        if (currentUsage >= upgradeConfig.maxUpgrades) {
-          return;
-        }
-        
-        const amount = upgradeConfig.amount;
-        
-        switch (stat) {
-          case 'maxHealth':
-            myCar.stats.maxHealth += amount;
-            myCar.currentHealth += amount;
-            break;
-          case 'acceleration':
-            myCar.stats.acceleration += amount;
-            break;
-          case 'regen':
-            myCar.stats.regen += amount;
-            break;
-          case 'size': {
-            const scaleFactor = 1 + amount;
-            myCar.stats.acceleration += (amount / 10);
-            Matter.Body.scale(myCar.body, scaleFactor, scaleFactor);
-            Matter.Body.setDensity(myCar.body, myCar.body.density + amount);
 
-            break;
-          }
-          case 'abilityCooldown':
-            if (!myCar.abilityCooldownReduction) myCar.abilityCooldownReduction = 0;
-            myCar.abilityCooldownReduction += Math.abs(amount);
-            break;
-          case 'projectileSpeed':
-            if (!myCar.projectileSpeed) myCar.projectileSpeed = 0;
-            myCar.projectileSpeed += amount;
-            break;
-          case 'projectileDensity':
-            if (!myCar.projectileDensity) myCar.projectileDensity = 0;
-            myCar.projectileDensity += amount;
-            break;
-        }
-
-        myCar.upgradeUsage[stat] = currentUsage + 1;
-        myCar.upgradePoints -= 1;
+      if (!upgradeConfig) {
+        return;
       }
+
+      const currentUsage = myCar.upgradeUsage[stat] || 0;
+      if (currentUsage >= upgradeConfig.maxUpgrades) {
+        return;
+      }
+
+      // Decrement points BEFORE applying upgrade
+      myCar.upgradePoints -= 1;
+
+      const amount = upgradeConfig.amount;
+
+      switch (stat) {
+        case 'maxHealth':
+          myCar.stats.maxHealth += amount;
+          myCar.currentHealth += amount;
+          break;
+        case 'acceleration':
+          myCar.stats.acceleration += amount;
+          break;
+        case 'regen':
+          myCar.stats.regen += amount;
+          break;
+        case 'size': {
+          const scaleFactor = 1 + amount;
+          myCar.stats.acceleration += (amount / 10);
+          Matter.Body.scale(myCar.body, scaleFactor, scaleFactor);
+          Matter.Body.setDensity(myCar.body, myCar.body.density + amount);
+          break;
+        }
+        case 'abilityCooldown':
+          if (!myCar.abilityCooldownReduction) myCar.abilityCooldownReduction = 0;
+          myCar.abilityCooldownReduction += Math.abs(amount);
+          break;
+        case 'projectileSpeed':
+          if (!myCar.projectileSpeed) myCar.projectileSpeed = 0;
+          myCar.projectileSpeed += amount;
+          break;
+        case 'projectileDensity':
+          if (!myCar.projectileDensity) myCar.projectileDensity = 0;
+          myCar.projectileDensity += amount;
+          break;
+        case 'abilityRegenRate':
+          if (myCar.chargeState) {
+            myCar.chargeState.regenRate += amount;
+          }
+          break;
+      }
+
+      myCar.upgradeUsage[stat] = currentUsage + 1;
+    } finally {
+      // Always release lock
+      myCar._upgradeInProgress = false;
     }
   });
   
@@ -2925,7 +3277,35 @@ io.on('connection', (socket) => {
     const result = myCar.useAbility(currentRoom.gameState);
     socket.emit('abilityResult', result);
   });
-  
+
+  // Charge-based ability handlers (generic for all charge abilities)
+  socket.on('abilityStart', () => {
+    if (!myCar || !currentRoom || !myCar.ability) return;
+
+    // Only handle if ability uses charge system
+    if (myCar.ability.usesChargeSystem && myCar.chargeState) {
+      myCar.chargeState.isCharging = true;
+      myCar.chargeState.chargeStartTime = Date.now();
+
+      // For hold-to-consume abilities (Anchor, Focus), activate immediately
+      if (myCar.ability.id === 'anchor' || myCar.ability.id === 'focus') {
+        const result = myCar.useAbility(currentRoom.gameState);
+        socket.emit('abilityResult', result);
+      }
+    }
+  });
+
+  socket.on('abilityRelease', () => {
+    if (!myCar || !currentRoom || !myCar.ability) return;
+
+    // Only activate if ability uses charge system and is currently charging
+    if (myCar.ability.usesChargeSystem && myCar.chargeState && myCar.chargeState.isCharging) {
+      const result = myCar.useAbility(currentRoom.gameState);
+      socket.emit('abilityResult', result);
+      myCar.chargeState.isCharging = false;
+    }
+  });
+
   // Ping handler for latency measurement
   socket.on('ping', (timestamp, callback) => {
     if (callback) callback(Date.now());
@@ -3022,6 +3402,14 @@ io.on('connection', (socket) => {
       };
       myCar.currentHealth = myCar.stats.maxHealth;
       myCar.abilityCooldownReduction = 0;
+      myCar.projectileSpeed = 0;
+      myCar.projectileDensity = 0;
+      // Reset charge state if ability uses charge system
+      if (myCar.ability && myCar.ability.usesChargeSystem) {
+        myCar.ability.initializeChargeState(myCar);
+      } else {
+        myCar.chargeState = null;
+      }
       // Reset body density if it was modified
       Matter.Body.setDensity(myCar.body, baseCar.bodyOptions.density || 0.3);
     });
@@ -3040,34 +3428,36 @@ io.on('connection', (socket) => {
   
   socket.on('chatMessage', (data) => {
     if (!currentRoom || !myCar) return;
-    
+
     currentRoom.updateMemberActivity(socket.id);
-    
+
     if (!data.message || typeof data.message !== 'string') return;
     const message = data.message.trim();
     if (!message || message.length > 200) return;
-    
+
     // Validate player has a name
     const playerName = myCar.name || 'Anonymous';
     if (!playerName || playerName === 'Anonymous') {
       socket.emit('chatError', { error: 'Must have a valid name to chat' });
       return;
     }
-    
-    const sanitizedMessage = message.replace(/[<>]/g, '');
-    
-    
+
+    // Properly sanitize message to prevent XSS using validator library
+    const sanitizedMessage = validator.escape(message);
+    const sanitizedPlayerName = validator.escape(playerName);
+
+
     // Broadcast to all room members (players and spectators)
     const roomMembers = [
       ...Array.from(currentRoom.players.keys()),
       ...Array.from(currentRoom.spectators.keys())
     ];
-    
+
     for (const socketId of roomMembers) {
       const targetSocket = io.sockets.sockets.get(socketId);
       if (targetSocket) {
         targetSocket.emit('chatMessageReceived', {
-          playerName: playerName,
+          playerName: sanitizedPlayerName,
           message: sanitizedMessage,
           timestamp: Date.now()
         });
@@ -3139,12 +3529,15 @@ function gameLoop() {
       if (roundWinner && !room.winMessageSent) {
         const winnerName = roundWinner.name;
 
-        const winnerSocket = io.sockets.sockets.get(roundWinner.socketId);
-        if (winnerSocket && winnerSocket.request.session && winnerSocket.request.session.userId && !winnerSocket.request.session.isGuest) {
-          const userId = winnerSocket.request.session.userId;
-          const xpAwarded = userDb.addXP(userId, 10);
-          if (xpAwarded) {
-            winnerSocket.emit('xpGained', { amount: 10, reason: 'Race Win' });
+        if (room.isOfficial) {
+          const winnerSocket = io.sockets.sockets.get(roundWinner.socketId);
+          if (winnerSocket && winnerSocket.request.session && winnerSocket.request.session.userId && !winnerSocket.request.session.isGuest) {
+            const userId = winnerSocket.request.session.userId;
+            const xpAwarded = userDb.addXP(userId, 10);
+            if (xpAwarded) {
+              winnerSocket.emit('xpGained', { amount: 10, reason: 'Race Win' });
+            }
+            userDb.addWin(userId);
           }
         }
 
@@ -3210,6 +3603,12 @@ function gameLoop() {
                       if (xpAwarded) {
                         killerSocket.emit('xpGained', { amount: KILL_XP_REWARD, reason: 'Kill' });
                       }
+                      userDb.addKill(userId);
+                    }
+
+                    const victimSocket = io.sockets.sockets.get(sid);
+                    if (victimSocket?.request?.session?.userId && !victimSocket.request.session.isGuest) {
+                      userDb.addDeath(victimSocket.request.session.userId);
                     }
                   }
 
@@ -3229,6 +3628,13 @@ function gameLoop() {
               if (!car.crashedByPlayer && !car.killFeedSent) {
                 car.deaths += 1;
                 car.saveStatsToRoom();
+
+                if (room.isOfficial) {
+                  const crashedSocket = io.sockets.sockets.get(sid);
+                  if (crashedSocket?.request?.session?.userId && !crashedSocket.request.session.isGuest) {
+                    userDb.addDeath(crashedSocket.request.session.userId);
+                  }
+                }
 
                 // Broadcast solo crash message to kill feed (send once to each player)
                 for (const [socketId] of room.players.entries()) {

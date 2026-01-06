@@ -8,6 +8,9 @@ const CAR_TYPES = {
     acceleration: 0.012,
     boost: 50,
     regen: 0.05,
+    ability: 'repair',
+    abilityName: 'Repair',
+    abilityCooldown: 8000,
     color: { fill: [255, 95, 95], stroke: [153, 57, 57], strokeWidth: 4 },
     shapes: [
       {
@@ -44,6 +47,12 @@ const CAR_TYPES = {
         amount: 0.06,
         maxUpgrades: 6,
         color: '#10b981' // green
+      },
+      abilityRegenRate: {
+        name: 'Charge Regen',
+        amount: 1.5,
+        maxUpgrades: 4,
+        color: '#f59e0b' // orange
       }
     }
   },
@@ -56,6 +65,9 @@ const CAR_TYPES = {
     acceleration: 0.012,
     boost: 60,
     regen: 0.05,
+    ability: 'focus',
+    abilityName: 'Focus',
+    abilityCooldown: 0,
     color: { fill: [47, 152, 206], stroke: [28, 89, 121], strokeWidth: 4 },
     shapes: [
       {
@@ -92,6 +104,12 @@ const CAR_TYPES = {
         amount: 0.05,
         maxUpgrades: 6,
         color: '#10b981' // green
+      },
+      abilityRegenRate: {
+        name: 'Charge Regen',
+        amount: 1.5,
+        maxUpgrades: 4,
+        color: '#f59e0b' // orange
       }
     }
   },
@@ -104,6 +122,9 @@ const CAR_TYPES = {
     acceleration: 0.025,
     boost: 40,
     regen: 0.05,
+    ability: 'anchor',
+    abilityName: 'Anchor',
+    abilityCooldown: 0,
     color: { fill: [157, 230, 160], stroke: [99, 145, 101], strokeWidth: 4 },
     shapes: [
       {
@@ -136,6 +157,12 @@ const CAR_TYPES = {
         amount: 0.1,
         maxUpgrades: 4,
         color: '#10b981' // green
+      },
+      abilityRegenRate: {
+        name: 'Charge Regen',
+        amount: 1,
+        maxUpgrades: 4,
+        color: '#f59e0b' // orange
       }
     }
   },
@@ -185,9 +212,9 @@ const CAR_TYPES = {
         maxUpgrades: 2,
         color: '#10b981' // green
       },
-      abilityCooldown: {
-        name: 'Dash',
-        amount: -500,
+      abilityRegenRate: {
+        name: 'Charge Regen',
+        amount: 1.5,
         maxUpgrades: 3,
         color: '#f59e0b' // orange
       }
@@ -239,11 +266,11 @@ const CAR_TYPES = {
         maxUpgrades: 4,
         color: '#3b82f6'
       },
-      abilityCooldown: {
-        name: 'Trap Cooldown',
-        amount: -600,
-        maxUpgrades: 5,
-        color: '#ec4899'
+      abilityRegenRate: {
+        name: 'Charge Regen',
+        amount: 1.5,
+        maxUpgrades: 4,
+        color: '#f59e0b'
       }
     }
   },
@@ -361,9 +388,9 @@ const CAR_TYPES = {
         maxUpgrades: 5,
         color: '#0e3c85ff'
       },
-      abilityCooldown: {
-        name: 'Fire Rate',
-        amount: -400,
+      abilityRegenRate: {
+        name: 'Charge Regen',
+        amount: 1.25,
         maxUpgrades: 4,
         color: '#f59e0b'
       },

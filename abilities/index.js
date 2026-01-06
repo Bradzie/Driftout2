@@ -8,6 +8,9 @@ const DashAbility = require('./Dash');
 const SpikeTrapAbility = require('./Trap');
 const GhostModeAbility = require('./Ghost');
 const CannonAbility = require('./Cannon');
+const RepairAbility = require('./Repair');
+const AnchorAbility = require('./Anchor');
+const FocusAbility = require('./Focus');
 
 module.exports = {
   Ability,
@@ -15,5 +18,8 @@ module.exports = {
   DashAbility,
   SpikeTrapAbility,
   GhostModeAbility,
-  CannonAbility
+  CannonAbility,
+  RepairAbility,
+  AnchorAbility,
+  FocusAbility
 };

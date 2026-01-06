@@ -191,6 +191,13 @@
   const maxPlayersValue = document.getElementById('maxPlayersValue');
   const createRoomPrivate = document.getElementById('createRoomPrivate');
   const createRoomButton = document.getElementById('createRoomButton');
+
+  const globalLeaderboardButton = document.getElementById('globalLeaderboardButton');
+  const globalLeaderboardModal = document.getElementById('globalLeaderboardModal');
+  const closeGlobalLeaderboard = document.getElementById('closeGlobalLeaderboard');
+  const globalLeaderboardTableBody = document.getElementById('globalLeaderboardTableBody');
+  const currentUserRow = document.getElementById('currentUserRow');
+  const currentUserLeaderboardBody = document.getElementById('currentUserLeaderboardBody');
   
   const carRadioInput = document.querySelector('input[name="car"]');
   const carName = document.getElementById('carName');
@@ -242,9 +249,9 @@
     
     // Hide map editor button for guest users
     if (currentUser && currentUser.isGuest) {
-      mapEditorButton.style.display = 'none';
+      mapEditorButton.disabled = true;
     } else {
-      mapEditorButton.style.display = 'block';
+      mapEditorButton.disabled = false;
     }
     
     loadSettings();
@@ -520,7 +527,7 @@
     }
   }
 
-  function updateRoomNameDisplay(roomName, mapName) {
+  function updateRoomNameDisplay(roomName, map) {
     const roomNameDisplay = document.getElementById('roomNameDisplay');
     const roomNameText = document.getElementById('roomNameText');
     const roomMapText = document.getElementById('roomMapText');
@@ -529,9 +536,9 @@
       return;
     }
     
-    if (roomName && mapName && isSpectating) {
+    if (roomName && map && map.displayName && isSpectating) {
       roomNameText.textContent = roomName;
-      roomMapText.textContent = mapName;
+      roomMapText.textContent = `${map.displayName} by ${map.author || 'Unknown'}`;
       show(roomNameDisplay);
     } else {
       hide(roomNameDisplay);
@@ -685,7 +692,10 @@
       initMapEditor();
     }
   });
-  
+
+  globalLeaderboardButton.addEventListener('click', openGlobalLeaderboard);
+  closeGlobalLeaderboard.addEventListener('click', closeGlobalLeaderboardModal);
+
   // close room browser when clicking outside
   roomBrowserModal.addEventListener('click', (e) => {
     if (e.target === roomBrowserModal) {
@@ -699,7 +709,14 @@
       closeCreateRoomModal();
     }
   });
-  
+
+  // close global leaderboard when clicking outside
+  globalLeaderboardModal.addEventListener('click', (e) => {
+    if (e.target === globalLeaderboardModal) {
+      closeGlobalLeaderboardModal();
+    }
+  });
+
   // close browse map dialog when clicking outside or ESC
   const browseMapModal = document.getElementById('browseMapModal');
   const closeBrowseModalBtn = document.getElementById('closeBrowseModal');
@@ -891,6 +908,7 @@
   let CAR_TYPES = {};
   let myAbility = null;
   let lastAbilityUse = 0;
+  let abilityChargeState = null;
   let currentLapStartTime = 0;
   let bestLapTime = null;
   let previousLapCount = 0;
@@ -1296,7 +1314,59 @@
   function closeCreateRoomModal() {
     hide(createRoomModal);
   }
-  
+
+  function openGlobalLeaderboard() {
+    show(globalLeaderboardModal);
+    loadGlobalLeaderboard();
+  }
+
+  function closeGlobalLeaderboardModal() {
+    hide(globalLeaderboardModal);
+  }
+
+  function loadGlobalLeaderboard() {
+    fetch('/api/leaderboard')
+      .then(res => res.json())
+      .then(data => {
+        // Display top 100 players
+        globalLeaderboardTableBody.innerHTML = '';
+        data.leaderboard.forEach((player, index) => {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${index + 1}</td>
+            <td>${player.username}</td>
+            <td>${player.level}</td>
+            <td>${player.kills || 0}</td>
+            <td>${player.deaths || 0}</td>
+            <td>${player.wins || 0}</td>
+          `;
+          globalLeaderboardTableBody.appendChild(row);
+        });
+
+        // Display current user row if they're a registered user
+        if (data.currentUser) {
+          currentUserLeaderboardBody.innerHTML = '';
+          const userRow = document.createElement('tr');
+          userRow.innerHTML = `
+            <td>${data.currentUser.rank}</td>
+            <td>${data.currentUser.username}</td>
+            <td>${data.currentUser.level}</td>
+            <td>${data.currentUser.kills || 0}</td>
+            <td>${data.currentUser.deaths || 0}</td>
+            <td>${data.currentUser.wins || 0}</td>
+          `;
+          currentUserLeaderboardBody.appendChild(userRow);
+          currentUserRow.classList.remove('hidden');
+        } else {
+          currentUserRow.classList.add('hidden');
+        }
+      })
+      .catch(error => {
+        console.error('Failed to load leaderboard:', error);
+        globalLeaderboardTableBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">Failed to load leaderboard</td></tr>';
+      });
+  }
+
   let allMapsData = [];
 
   function openMapBrowserForRoom() {
@@ -1897,6 +1967,7 @@
       const carDef = CAR_TYPES[me.type];
       const baseCooldown = carDef.abilityCooldown || 0;
       myAbility.cooldown = Math.max(0, baseCooldown - (me.abilityCooldownReduction || 0));
+      abilityChargeState = me.chargeState || null;
     }
 
     hasReceivedFirstState = true;
@@ -1956,6 +2027,9 @@
         const carDef = CAR_TYPES[me.type];
         const baseCooldown = carDef.abilityCooldown || 0;
         myAbility.cooldown = Math.max(0, baseCooldown - (me.abilityCooldownReduction || 0));
+        // Update charge state
+        cannonCharge = me.cannonCharge !== undefined ? me.cannonCharge : 100;
+        cannonCharging = me.cannonCharging || false;
       }
 
       hasReceivedFirstState = true;
@@ -2014,6 +2088,7 @@
       const carDef = CAR_TYPES[me.type];
       const baseCooldown = carDef.abilityCooldown || 0;
       myAbility.cooldown = Math.max(0, baseCooldown - (me.abilityCooldownReduction || 0));
+      abilityChargeState = me.chargeState || null;
     }
 
     hasReceivedFirstState = true;
@@ -2050,7 +2125,7 @@
       currentRoomId = data.roomId;
     }
     
-    updateRoomNameDisplay(data.roomName, data.map.displayName);
+    updateRoomNameDisplay(data.roomName, data.map);
 
     if (data.map) {
       // we need a map key to handle the same map in different rooms
@@ -2228,34 +2303,30 @@
       if (typeof sendInput === 'function') sendInput();
     }, { passive: false });
 
-    // Mobile Ability Button
+    // Mobile Ability Button (charge-based)
     const abilityButton = document.getElementById('mobileAbilityButton');
     abilityButton.addEventListener('touchstart', (e) => {
       e.preventDefault();
+      // Visual feedback
+      abilityButton.style.transform = 'scale(0.9)';
+      // Emit ability start for charge-based abilities
+      socket.emit('abilityStart');
+    }, { passive: false });
 
-      if (myAbility) {
-        const now = getServerTime();
-        const remaining = Math.max(0, myAbility.cooldown - (now - lastAbilityUse));
+    abilityButton.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      // Reset visual
+      abilityButton.style.transform = '';
+      // Emit ability release for charge-based abilities
+      socket.emit('abilityRelease');
+    }, { passive: false });
 
-        if (remaining === 0) {
-          // Visual feedback (same as keyboard spacebar)
-          abilityButton.style.transform = 'scale(0.9)';
-          setTimeout(() => {
-            abilityButton.style.transform = '';
-          }, 100);
-
-          socket.emit('useAbility');
-        } else {
-          // Show disabled state briefly if on cooldown
-          abilityButton.classList.add('disabled');
-          setTimeout(() => {
-            abilityButton.classList.remove('disabled');
-          }, 200);
-        }
-      } else {
-        // No ability available
-        socket.emit('useAbility');
-      }
+    abilityButton.addEventListener('touchcancel', (e) => {
+      e.preventDefault();
+      // Reset visual
+      abilityButton.style.transform = '';
+      // Emit ability release for charge-based abilities
+      socket.emit('abilityRelease');
     }, { passive: false });
   }
 
@@ -2399,33 +2470,15 @@
       return;
     }
     
-    // listen for ability
+    // listen for ability (charge-based)
     if (e.code === 'Space' && !e.repeat) {
       e.preventDefault();
-      if (myAbility) {
-        const now = getServerTime();
-        const remaining = Math.max(0, myAbility.cooldown - (now - lastAbilityUse));
 
-        if (remaining === 0) {
-          updateAbilityHUD();
+      // gives a 'press' effect
+      abilityHud.style.transform = 'scale(0.95)';
 
-          // gives a 'press' effect
-          abilityHud.style.transform = 'scale(0.95)';
-          setTimeout(() => {
-            abilityHud.style.transform = 'scale(1)';
-          }, 100);
-
-          // client-side prediction for Dash ability TODO: don't think this is need and/or even works
-          // if (myAbility.name === 'Dash') {
-          //   const originalLastAbilityUse = lastAbilityUse; // Store original value
-          //   lastAbilityUse = now; // Update client-side for immediate HUD feedback
-          //   updateAbilityHUD(); // Re-render HUD with new cooldown
-          //   myAbility._originalLastAbilityUse = originalLastAbilityUse;
-          // }
-        }
-      }
-      
-      socket.emit('useAbility');
+      // Emit ability start for charge-based abilities
+      socket.emit('abilityStart');
     }
     
     // listen for upgrade numbers
@@ -2456,6 +2509,15 @@
       hideDetailedLeaderboard();
       return;
     }
+
+    // Release ability (charge-based)
+    if (e.code === 'Space') {
+      // Reset visual effect
+      abilityHud.style.transform = 'scale(1)';
+
+      // Emit ability release for charge-based abilities
+      socket.emit('abilityRelease');
+    }
   });
 
   socket.on('abilityResult', (result) => {
@@ -2474,11 +2536,6 @@
       return;
     }
 
-    const now = getServerTime();
-    const timeSinceUse = now - lastAbilityUse;
-    const remaining = Math.max(0, myAbility.cooldown - timeSinceUse);
-    const isReady = remaining === 0;
-
     abilityName.textContent = myAbility.name;
     show(abilityHud);
 
@@ -2487,14 +2544,42 @@
       return;
     }
 
-    // style ability based on status
-    if (isReady) {
-      progressBg.classList.remove('on-cooldown');
-      progressBg.style.transform = 'scaleX(1)';
+    if (abilityChargeState) {
+      const chargePercent = abilityChargeState.current / abilityChargeState.max;
+      const hasCharge = abilityChargeState.current >= 30;
+      if (hasCharge) {
+        progressBg.classList.remove('on-cooldown');
+        progressBg.style.transform = `scaleX(${chargePercent})`;
+      } else {
+        progressBg.classList.add('on-cooldown');
+        progressBg.style.transform = `scaleX(${chargePercent})`;
+      }
+
+      if (abilityChargeState.isCharging) {
+        abilityHud.style.opacity = '0.8';
+        abilityHud.style.boxShadow = '0 0 10px rgba(255, 95, 95, 0.5)';
+      } else {
+        abilityHud.style.opacity = '1';
+        abilityHud.style.boxShadow = '';
+      }
     } else {
-      progressBg.classList.add('on-cooldown');
-      const progress = remaining / myAbility.cooldown;
-      progressBg.style.transform = `scaleX(${progress})`;
+      const now = getServerTime();
+      const timeSinceUse = now - lastAbilityUse;
+      const remaining = Math.max(0, myAbility.cooldown - timeSinceUse);
+      const isReady = remaining === 0;
+
+      if (isReady) {
+        progressBg.classList.remove('on-cooldown');
+        progressBg.style.transform = 'scaleX(1)';
+      } else {
+        progressBg.classList.add('on-cooldown');
+        const progress = remaining / myAbility.cooldown;
+        progressBg.style.transform = `scaleX(${progress})`;
+      }
+
+      // Reset charge-specific styling
+      abilityHud.style.opacity = '1';
+      abilityHud.style.boxShadow = '';
     }
   }
 
@@ -3235,52 +3320,64 @@
           ctx.fill('evenodd');
           
           // draw map shape border stripes if they exist
-          if (Array.isArray(shape.borderColors) && shape.borderColors.length > 0) {
-            const lineWidth = (shape.borderWidth || 8) * scale;
-            const stripeLength = (shape.stripeLength || shape.borderWidth * 1.8 || 25) * scale;
+          if (Array.isArray(shape.borderColors) && shape.borderColors.length > 0 && shape.borderWidth > 0) {
+            const lineWidth = shape.borderWidth * scale;
             const baseColor = shape.borderColors[0] || '#ff0000'; // default to red
-            
-            for (let i = 0; i < verts.length; i++) {
-              const a = verts[i];
-              const b = verts[(i + 1) % verts.length];
-              
-              const dx = b.x - a.x;
-              const dy = b.y - a.y;
-              const len = Math.hypot(dx, dy);
-              const steps = Math.max(1, Math.floor(len / stripeLength));
-              
-              const perpX = -dy / len;
-              const perpY = dx / len;
-              const offsetX = (perpX * lineWidth) / 2;
-              const offsetY = (perpY * lineWidth) / 2;
-              
-              for (let s = 0; s < steps; s++) {
-                const t0 = s / steps;
-                const t1 = (s + 1) / steps;
-                const x0 = a.x + dx * t0;
-                const y0 = a.y + dy * t0;
-                const x1 = a.x + dx * t1;
-                const y1 = a.y + dy * t1;
-                
+
+            // Single color mode: draw solid border
+            if (shape.borderColors.length === 1) {
+              ctx.lineWidth = lineWidth;
+              ctx.strokeStyle = baseColor;
+              ctx.lineJoin = 'round';
+              ctx.lineCap = 'round';
+              ctx.stroke();
+            }
+            // Dual color mode: draw striped border
+            else {
+              const stripeLength = (shape.stripeLength || shape.borderWidth * 1.8 || 25) * scale;
+
+              for (let i = 0; i < verts.length; i++) {
+                const a = verts[i];
+                const b = verts[(i + 1) % verts.length];
+
+                const dx = b.x - a.x;
+                const dy = b.y - a.y;
+                const len = Math.hypot(dx, dy);
+                const steps = Math.max(1, Math.floor(len / stripeLength));
+
+                const perpX = -dy / len;
+                const perpY = dx / len;
+                const offsetX = (perpX * lineWidth) / 2;
+                const offsetY = (perpY * lineWidth) / 2;
+
+                for (let s = 0; s < steps; s++) {
+                  const t0 = s / steps;
+                  const t1 = (s + 1) / steps;
+                  const x0 = a.x + dx * t0;
+                  const y0 = a.y + dy * t0;
+                  const x1 = a.x + dx * t1;
+                  const y1 = a.y + dy * t1;
+
+                  ctx.beginPath();
+                  ctx.moveTo(x0 + offsetX, y0 + offsetY);
+                  ctx.lineTo(x1 + offsetX, y1 + offsetY);
+                  ctx.lineTo(x1 - offsetX, y1 - offsetY);
+                  ctx.lineTo(x0 - offsetX, y0 - offsetY);
+                  ctx.closePath();
+
+                  const isLastStripe = s === steps - 1;
+                  ctx.fillStyle = isLastStripe
+                    ? baseColor
+                    : shape.borderColors[s % shape.borderColors.length];
+                  ctx.fill();
+                }
+
+                const radius = lineWidth / 2;
                 ctx.beginPath();
-                ctx.moveTo(x0 + offsetX, y0 + offsetY);
-                ctx.lineTo(x1 + offsetX, y1 + offsetY);
-                ctx.lineTo(x1 - offsetX, y1 - offsetY);
-                ctx.lineTo(x0 - offsetX, y0 - offsetY);
-                ctx.closePath();
-                
-                const isLastStripe = s === steps - 1;
-                ctx.fillStyle = isLastStripe
-                  ? baseColor
-                  : shape.borderColors[s % shape.borderColors.length];
+                ctx.arc(a.x, a.y, radius, 0, Math.PI * 2);
+                ctx.fillStyle = baseColor;
                 ctx.fill();
               }
-              
-              const radius = lineWidth / 2;
-              ctx.beginPath();
-              ctx.arc(a.x, a.y, radius, 0, Math.PI * 2);
-              ctx.fillStyle = baseColor;
-              ctx.fill();
             }
           }
         }

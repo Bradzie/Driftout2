@@ -1,6 +1,3 @@
-/**
- * Base Ability class - defines the interface for all abilities
- */
 class Ability {
   constructor(config) {
     this.id = config.id;
@@ -8,92 +5,98 @@ class Ability {
     this.cooldown = config.cooldown; // milliseconds
     this.duration = config.duration || 0; // for temporary effects
     this.lastUsed = 0;
+
+    // optional charge system
+    this.usesChargeSystem = config.usesChargeSystem || false;
+    this.maxCharge = config.maxCharge || 100;
+    this.baseRegenRate = config.baseRegenRate || 10;
+    this.minChargeToUse = config.minChargeToUse || 0;
+    this.maxChargeToUse = config.maxChargeToUse || 100;
+    this.chargeTime = config.chargeTime || 2000;
   }
 
-  /**
-   * Check if the ability can be used based on cooldown
-   */
   canUse(car, currentTime) {
     const effectiveCooldown = this.getEffectiveCooldown(car);
     return (currentTime - this.lastUsed) >= effectiveCooldown;
   }
 
-  /**
-   * Get effective cooldown after reductions
-   */
   getEffectiveCooldown(car) {
     const reduction = car.abilityCooldownReduction || 0;
-    return Math.max(500, this.cooldown - reduction); // Minimum 500ms cooldown
+    return Math.max(500, this.cooldown - reduction); // minimum 500ms cooldown
   }
 
-  /**
-   * Get remaining cooldown time in milliseconds
-   */
   getRemainingCooldown(car, currentTime) {
     const elapsed = currentTime - this.lastUsed;
     const effectiveCooldown = this.getEffectiveCooldown(car);
     return Math.max(0, effectiveCooldown - elapsed);
   }
 
-  /**
-   * Get cooldown progress as percentage (0-100)
-   */
   getCooldownProgress(car, currentTime) {
     const remaining = this.getRemainingCooldown(car, currentTime);
     const effectiveCooldown = this.getEffectiveCooldown(car);
     return ((effectiveCooldown - remaining) / effectiveCooldown) * 100;
   }
 
+  initializeChargeState(car) {
+    if (this.usesChargeSystem) {
+      car.chargeState = {
+        current: this.maxCharge,
+        max: this.maxCharge,
+        regenRate: this.baseRegenRate,
+        isCharging: false,
+        chargeStartTime: 0
+      };
+    }
+  }
+
+  calculateChargeUsage(car, currentTime) {
+    if (!this.usesChargeSystem || !car.chargeState) return 0;
+
+    const holdDuration = Math.min(
+      currentTime - (car.chargeState.chargeStartTime || currentTime),
+      this.chargeTime
+    );
+
+    const isTap = holdDuration < 200;
+
+    if (isTap) {
+      return this.minChargeToUse;
+    } else {
+      const progress = holdDuration / this.chargeTime;
+      const chargeRange = this.maxChargeToUse - this.minChargeToUse;
+      return this.minChargeToUse + (progress * chargeRange);
+    }
+  }
+
+  getChargeScale(chargeUsed) {
+    return chargeUsed / this.maxChargeToUse;
+  }
+
   // Template methods - subclasses must/can override these
 
-  /**
-   * Activate the ability - MUST be implemented by subclasses
-   * @param {Car} car - The car using the ability
-   * @param {Matter.World} world - Physics world
-   * @param {Object} gameState - Current game state
-   * @returns {Object} Result object with success status and any relevant data
-   */
   activate(car, world, gameState) {
     throw new Error(`Ability ${this.id} must implement activate() method`);
   }
 
-  /**
-   * Update ongoing ability effects - Override if ability has continuous effects
-   * @param {Car} car - The car with the ability
-   * @param {Matter.World} world - Physics world
-   * @param {Object} gameState - Current game state
-   * @param {number} dt - Delta time in seconds
-   */
   update(car, world, gameState, dt) {
-    // Default: no ongoing effects
+    if (this.usesChargeSystem && car.chargeState) {
+      if (car.chargeState.current < car.chargeState.max) {
+        car.chargeState.current = Math.min(
+          car.chargeState.max,
+          car.chargeState.current + (car.chargeState.regenRate * dt)
+        );
+      }
+    }
   }
 
-  /**
-   * Deactivate/cleanup ability effects - Override if ability needs cleanup
-   * @param {Car} car - The car with the ability
-   * @param {Matter.World} world - Physics world
-   * @param {Object} gameState - Current game state
-   */
   deactivate(car, world, gameState) {
-    // Default: no cleanup needed
+    // default
   }
 
-  /**
-   * Client-side rendering for ability effects - Override for visual effects
-   * @param {CanvasRenderingContext2D} ctx - Canvas context
-   * @param {Object} car - Car data from server
-   * @param {number} scale - Render scale
-   * @param {number} centerX - Screen center X
-   * @param {number} centerY - Screen center Y
-   * @param {Object} me - Player's car data
-   */
   render(ctx, car, scale, centerX, centerY, me) {
-    // Default: no visual effects
+    // default
   }
 
-  /**
-   * Get ability data for client synchronization
-   */
   getClientData() {
     return {
       id: this.id,
