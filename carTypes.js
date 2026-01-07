@@ -53,6 +53,12 @@ const CAR_TYPES = {
         amount: 1.5,
         maxUpgrades: 4,
         color: '#f59e0b' // orange
+      },
+      maxBoost: {
+        name: 'Max Boost',
+        amount: 10,
+        maxUpgrades: 4,
+        color: '#22d3ee' // cyan
       }
     }
   },
@@ -110,6 +116,12 @@ const CAR_TYPES = {
         amount: 1.5,
         maxUpgrades: 4,
         color: '#f59e0b' // orange
+      },
+      maxBoost: {
+        name: 'Max Boost',
+        amount: 10,
+        maxUpgrades: 4,
+        color: '#22d3ee' // cyan
       }
     }
   },
@@ -163,6 +175,12 @@ const CAR_TYPES = {
         amount: 1,
         maxUpgrades: 4,
         color: '#f59e0b' // orange
+      },
+      maxBoost: {
+        name: 'Max Boost',
+        amount: 10,
+        maxUpgrades: 4,
+        color: '#22d3ee' // cyan
       }
     }
   },
@@ -217,6 +235,12 @@ const CAR_TYPES = {
         amount: 1.5,
         maxUpgrades: 3,
         color: '#f59e0b' // orange
+      },
+      maxBoost: {
+        name: 'Max Boost',
+        amount: 10,
+        maxUpgrades: 4,
+        color: '#22d3ee' // cyan
       }
     }
   },
@@ -271,6 +295,18 @@ const CAR_TYPES = {
         amount: 1.5,
         maxUpgrades: 4,
         color: '#f59e0b'
+      },
+      trapDamage: {
+        name: 'Trap Damage',
+        amount: 1.5,
+        maxUpgrades: 4,
+        color: '#8b5cf6'
+      },
+      maxBoost: {
+        name: 'Max Boost',
+        amount: 10,
+        maxUpgrades: 4,
+        color: '#22d3ee' // cyan
       }
     }
   },
@@ -399,6 +435,12 @@ const CAR_TYPES = {
         amount: 0.05,
         maxUpgrades: 5,
         color: '#8b5cf6'
+      },
+      maxBoost: {
+        name: 'Max Boost',
+        amount: 10,
+        maxUpgrades: 4,
+        color: '#22d3ee' // cyan
       }
     }
   }

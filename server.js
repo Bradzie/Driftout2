@@ -25,7 +25,7 @@ const io = new Server(server, {
   maxHttpBufferSize: 1e6, // hex, 486
 });
 
-const DEBUG_MODE = false;
+const DEBUG_MODE = true;
 
 const userDb = new UserDatabase();
 
@@ -1310,11 +1310,14 @@ class Car {
     this.anchorStartTime = 0;
     this.anchorResistance = 0;
 
-    // focus ability
+    // Focus ability state
     this.isFocused = false;
     this.focusStartTime = 0;
     this.originalFrictionAir = null;
     this.originalAcceleration = null;
+
+    // Trap ability upgrades
+    this.trapDamage = 0;
 
     const roomMapKey = this.room ? this.room.currentMapKey : 'square';
     
@@ -3070,7 +3073,7 @@ io.on('connection', (socket) => {
     
     view.setUint8(offset, players.length); offset += 1;
     
-    const typeMap = { 'Stream': 0, 'Tank': 1, 'Bullet': 2, 'Prankster': 3 };
+    //const typeMap = { 'Stream': 0, 'Tank': 1, 'Bullet': 2, 'Prankster': 3 };
     
     for (const player of players) {
       view.setUint32(offset, room.getPlayerNumericId(player.socketId), true); offset += 4;
@@ -3191,7 +3194,7 @@ io.on('connection', (socket) => {
     }
 
     const stat = data.stat;
-    const validStats = ['maxHealth', 'acceleration', 'regen', 'size', 'abilityCooldown', 'projectileSpeed', 'projectileDensity', 'abilityRegenRate'];
+    const validStats = ['maxHealth', 'acceleration', 'regen', 'size', 'abilityCooldown', 'projectileSpeed', 'projectileDensity', 'abilityRegenRate', 'maxBoost', 'trapDamage'];
     if (!validStats.includes(stat)) return;
 
     // Atomic check-and-decrement to prevent race condition
@@ -3254,6 +3257,13 @@ io.on('connection', (socket) => {
           if (myCar.chargeState) {
             myCar.chargeState.regenRate += amount;
           }
+          break;
+        case 'trapDamage':
+          myCar.trapDamage += amount;
+          break;
+        case 'maxBoost':
+          myCar.maxBoost += amount;
+          myCar.currentBoost += amount;
           break;
       }
 

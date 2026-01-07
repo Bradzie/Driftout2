@@ -2483,13 +2483,15 @@
     }
     
     // listen for upgrade numbers
-    if (e.key >= '1' && e.key <= '6' && !e.repeat) {
+    if (e.key >= '1' && e.key <= '9' && !e.repeat) {
       e.preventDefault();
       if (!upgradeCardsContainer.classList.contains('hidden') && sendInputInterval) {
+        console.log(e.key)
         const upgradeKey = parseInt(e.key);
         const upgradeCard = document.querySelector(`[data-key="${upgradeKey}"]`);
         
         if (upgradeCard) {
+          console.log(upgradeCard)
           const stat = upgradeCard.getAttribute('data-stat');
           
           upgradeCard.style.transform = 'translateY(-3px) scale(1.1)';
