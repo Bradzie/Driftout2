@@ -114,11 +114,26 @@ html, body {
   margin-bottom: 1rem;
 }
 
+.car-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  align-items: flex-start;
+}
+
 .car-name {
   font-size: 1.5rem;
   color: #ff5f5f;
   font-family: 'Overpass', serif;
   font-weight: bold;
+}
+
+.car-ability {
+  font-size: 0.9rem;
+  color: #818181;
+  font-family: 'Overpass', serif;
+  font-weight: normal;
+  margin-left: 1px;
 }
 
 .car-visual {
@@ -327,7 +342,7 @@ html, body {
   background: rgba(20, 20, 20, 0.9);
   padding: 14px 12px;
   z-index: 50;
-  width: 150px;
+  width: 148px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -371,6 +386,7 @@ html, body {
 
 .hidden {
   display: none !important;
+  pointer-events: none !important;
 }
 
 /* Kill Feed */

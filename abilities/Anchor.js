@@ -58,8 +58,10 @@ class AnchorAbility extends Ability {
         car.chargeState.current -= this.drainRate * dt;
 
         // stop momentum | todo add massive airfriction instead, smoother, unspamable and allows small movement
-        Matter.Body.setVelocity(car.body, { x: 0, y: 0 });
-        Matter.Body.setAngularVelocity(car.body, 0);
+        var currentVelocity = Matter.Body.getVelocity(car.body);
+        Matter.Body.setVelocity(car.body, { x: currentVelocity.x * 0.99, y: currentVelocity.y * 0.99 });
+        //Matter.Body.setVelocity(car.body, { x: 0, y: 0 });
+        //Matter.Body.setAngularVelocity(car.body, 0);
 
         const elapsed = currentTime - car.anchorStartTime;
         const progress = Math.min(1, elapsed / this.resistanceRampTime);

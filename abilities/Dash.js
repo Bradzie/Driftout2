@@ -6,28 +6,24 @@ class DashAbility extends Ability {
     super({
       id: 'dash',
       name: 'Dash',
-      cooldown: 6000, // Not actively used for charge-based
-
-      // Charge system configuration
+      cooldown: 6000,
       usesChargeSystem: true,
       maxCharge: 100,
-      baseRegenRate: 7, // Charge per second (higher than cannon for mobility)
-      minChargeToUse: 25, // Minimum for quick repositioning
-      maxChargeToUse: 80, // Maximum usable charge
-      chargeTime: 1200 // Time in ms to reach max charge (1.2 seconds)
+      baseRegenRate: 7,
+      minChargeToUse: 25,
+      maxChargeToUse: 80,
+      chargeTime: 1200
     });
 
-    this.baseDashPower = 2; // Base dash force
+    this.baseDashPower = 1.5;
     this.minSpeed = 0.1;
   }
 
   activate(car, world, gameState) {
     const currentTime = Date.now();
 
-    // Calculate charge usage using base class helper
     const chargeUsed = this.calculateChargeUsage(car, currentTime);
 
-    // Check if we have enough charge
     if (!car.chargeState || car.chargeState.current < chargeUsed) {
       return {
         success: false,
@@ -37,15 +33,10 @@ class DashAbility extends Ability {
       };
     }
 
-    // Consume charge
     car.chargeState.current -= chargeUsed;
 
-    // Get charge scale for force scaling using base class helper
     const chargeScale = this.getChargeScale(chargeUsed);
 
-    // Super-linear force scaling - held dashes are MORE efficient than tap spam
-    // Formula: base * (0.3 + (scale * 0.5) + (scale² * 1.2))
-    // This gives 48.7% MORE force efficiency for full holds vs equivalent taps
     const dashPower = this.baseDashPower * (0.3 + (chargeScale * 0.5) + (chargeScale * chargeScale * 1.2));
 
     const angle = car.body.angle;
@@ -71,9 +62,7 @@ class DashAbility extends Ability {
   }
 
   update(car, world, gameState, dt) {
-    // Call base class update to handle charge regeneration
     super.update(car, world, gameState, dt);
-    // No additional ongoing effects for dash ability
   }
 
   getClientData() {

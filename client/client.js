@@ -201,6 +201,7 @@
   
   const carRadioInput = document.querySelector('input[name="car"]');
   const carName = document.getElementById('carName');
+  const carAbility = document.getElementById('carAbility');
   const carShape = document.getElementById('carShape');
   const speedFill = document.getElementById('speedFill');
   const healthFill = document.getElementById('healthFill');
@@ -1130,7 +1131,6 @@
 
         return `
           <tr class="spectator-row">
-            <td>--</td>
             <td>
               <div class="leaderboard-player-cell">
                 <div class="leaderboard-player-color spectator-indicator"></div>
@@ -1259,9 +1259,8 @@
         const oldOffset = clockOffset;
         clockOffset = clockOffset === 0 ? newOffset : (clockOffset * 0.8 + newOffset * 0.2);
 
-        // Debug: log significant clock offset changes
         if (Math.abs(clockOffset) > 100 || (oldOffset === 0 && clockOffset !== 0)) {
-          console.log(`Clock sync: offset=${Math.round(clockOffset)}ms (client is ${clockOffset > 0 ? 'behind' : 'ahead'} server)`);
+          console.log(`clock sync, offset by ${Math.round(clockOffset)}ms`);
         }
 
         if (settings.showPing) {
@@ -1795,7 +1794,8 @@
     
     carRadioInput.value = carType;
     carName.textContent = car.displayName || carType;
-    
+    carAbility.textContent = car.abilityName || 'No Ability';
+
     carShape.innerHTML = '';
     car.shapes.forEach((shape, index) => {
       const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
@@ -2201,6 +2201,28 @@
     if (typeof sendInput === 'function') sendInput();
   });
 
+  document.addEventListener('mousemove', (e) => {
+    if (isSpectating && !menu.classList.contains('hidden')) {
+      const centerX = window.innerWidth / 2;
+      const centerY = window.innerHeight / 2;
+      const dx = e.clientX - centerX;
+      const dy = e.clientY - centerY;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      const fadeStartDistance = 400;
+      const fadeEndDistance = 600;
+
+      let opacity = 1;
+      if (distance > fadeStartDistance) {
+        const fadeProgress = Math.min(1, (distance - fadeStartDistance) / (fadeEndDistance - fadeStartDistance));
+        opacity = 1 - fadeProgress;
+      }
+
+      menu.style.opacity = opacity;
+    } else if (!menu.classList.contains('hidden')) {
+      menu.style.opacity = 1;
+    }
+  });
+
   // Mobile Virtual Joystick
   if (isMobile) {
     const joystick = document.getElementById('mobileJoystick');
@@ -2457,8 +2479,8 @@
         return;
       }
     }
-    // don't process game inputs when chat is focused
-    if (isChatFocused) return;
+    // don't process game inputs when chat is focused or typing in an input field
+    if (isChatFocused || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
     // listen for leaderboard
     if (e.code === 'Tab') {
@@ -2469,7 +2491,7 @@
       }
       return;
     }
-    
+
     // listen for ability (charge-based)
     if (e.code === 'Space' && !e.repeat) {
       e.preventDefault();
@@ -2480,15 +2502,17 @@
       // Emit ability start for charge-based abilities
       socket.emit('abilityStart');
     }
-    
+
     // listen for upgrade numbers
-    if (e.key >= '1' && e.key <= '6' && !e.repeat) {
+    if (e.key >= '1' && e.key <= '9' && !e.repeat) {
       e.preventDefault();
       if (!upgradeCardsContainer.classList.contains('hidden') && sendInputInterval) {
+        console.log(e.key)
         const upgradeKey = parseInt(e.key);
         const upgradeCard = document.querySelector(`[data-key="${upgradeKey}"]`);
         
         if (upgradeCard) {
+          console.log(upgradeCard)
           const stat = upgradeCard.getAttribute('data-stat');
           
           upgradeCard.style.transform = 'translateY(-3px) scale(1.1)';
@@ -2510,12 +2534,8 @@
       return;
     }
 
-    // Release ability (charge-based)
     if (e.code === 'Space') {
-      // Reset visual effect
       abilityHud.style.transform = 'scale(1)';
-
-      // Emit ability release for charge-based abilities
       socket.emit('abilityRelease');
     }
   });
@@ -2524,9 +2544,6 @@
     if (result.success) {
       lastAbilityUse = result.serverTime || Date.now();
       updateAbilityHUD();
-    } else {
-      // server rejected ability use
-      console.error('ability rejected:', result);
     }
   });
 
@@ -3687,18 +3704,17 @@
             ctx.beginPath();
             
             vertices.forEach((v, i) => {
-              // verticies need flipping for multi shape cars
-              const flippedX = -v.x;
+              const originalX = v.x;
               const originalY = v.y;
-              
+
               let rotatedX, rotatedY;
               if (p.angle !== undefined) {
                 const cos = Math.cos(p.angle);
                 const sin = Math.sin(p.angle);
-                rotatedX = flippedX * cos - originalY * sin;
-                rotatedY = flippedX * sin + originalY * cos;
+                rotatedX = originalX * cos - originalY * sin;
+                rotatedY = originalX * sin + originalY * cos;
               } else {
-                rotatedX = flippedX;
+                rotatedX = originalX;
                 rotatedY = originalY;
               }
             

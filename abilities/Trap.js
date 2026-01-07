@@ -52,7 +52,8 @@ class SpikeTrapAbility extends Ability {
     const chargeScale = this.getChargeScale(chargeUsed);
 
     const scaledTrapRadius = this.trapRadius * (0.5 + (chargeScale * 0.5 * 2));
-    const scaledTrapDamage = this.damage * (0.4 + (chargeScale * 0.6 * 2));
+    const baseDamage = this.damage + (car.trapDamage || 0);
+    const scaledTrapDamage = baseDamage * (0.4 + (chargeScale * 0.6 * 2));
 
     const backwardOffset = 20 + scaledTrapRadius;
     const position = {

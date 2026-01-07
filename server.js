@@ -1183,14 +1183,6 @@ function applyCurrentEffects(car, currentEffects) {
   }
 }
 
-
-// Global physics engine removed - now each room has its own
-
-
-// Global collision detection removed - now handled per room
-
-
-// Helper functions for angle-based damage calculation
 function calculateImpactAngle(relativeVelocity, collisionNormal) {
   const velMagnitude = Math.sqrt(relativeVelocity.x * relativeVelocity.x + relativeVelocity.y * relativeVelocity.y);
   
@@ -1323,6 +1315,9 @@ class Car {
     this.focusStartTime = 0;
     this.originalFrictionAir = null;
     this.originalAcceleration = null;
+
+    // Trap ability upgrades
+    this.trapDamage = 0;
 
     const roomMapKey = this.room ? this.room.currentMapKey : 'square';
     
@@ -3078,7 +3073,7 @@ io.on('connection', (socket) => {
     
     view.setUint8(offset, players.length); offset += 1;
     
-    const typeMap = { 'Stream': 0, 'Tank': 1, 'Bullet': 2, 'Prankster': 3 };
+    //const typeMap = { 'Stream': 0, 'Tank': 1, 'Bullet': 2, 'Prankster': 3 };
     
     for (const player of players) {
       view.setUint32(offset, room.getPlayerNumericId(player.socketId), true); offset += 4;
@@ -3199,7 +3194,7 @@ io.on('connection', (socket) => {
     }
 
     const stat = data.stat;
-    const validStats = ['maxHealth', 'acceleration', 'regen', 'size', 'abilityCooldown', 'projectileSpeed', 'projectileDensity', 'abilityRegenRate'];
+    const validStats = ['maxHealth', 'acceleration', 'regen', 'size', 'abilityCooldown', 'projectileSpeed', 'projectileDensity', 'abilityRegenRate', 'maxBoost', 'trapDamage'];
     if (!validStats.includes(stat)) return;
 
     // Atomic check-and-decrement to prevent race condition
@@ -3262,6 +3257,13 @@ io.on('connection', (socket) => {
           if (myCar.chargeState) {
             myCar.chargeState.regenRate += amount;
           }
+          break;
+        case 'trapDamage':
+          myCar.trapDamage += amount;
+          break;
+        case 'maxBoost':
+          myCar.maxBoost += amount;
+          myCar.currentBoost += amount;
           break;
       }
 

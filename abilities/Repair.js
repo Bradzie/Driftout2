@@ -9,12 +9,12 @@ class RepairAbility extends Ability {
       usesChargeSystem: true,
       maxCharge: 100,
       baseRegenRate: 5,
-      minChargeToUse: 20,
+      minChargeToUse: 60,
       maxChargeToUse: 100,
       chargeTime: 2000
     });
 
-    this.baseHealAmount = 1;
+    this.baseHealAmount = 1.4;
   }
 
   activate(car, world, gameState) {
