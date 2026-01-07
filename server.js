@@ -896,7 +896,7 @@ const PORT = process.env.PORT || 3000;
 
 const HELPERS = require('./helpers');
 const CAR_TYPES = require('./carTypes');
-const { abilityRegistry, SpikeTrapAbility, CannonAbility } = require('./abilities');
+const { abilityRegistry, SpikeTrapAbility, CannonAbility, PortalAbility } = require('./abilities');
 
 const MapManager = require('./MapManager');
 const mapManager = new MapManager('./maps');
@@ -1868,6 +1868,18 @@ class Room {
         const isCannonballA = bodyA.label === 'cannonball'
         const isCannonballB = bodyB.label === 'cannonball'
 
+        const isPortalProjectileA = bodyA.label === 'portal-projectile'
+        const isPortalProjectileB = bodyB.label === 'portal-projectile'
+
+        const isExplosionProjectileA = bodyA.label === 'explosion-projectile'
+        const isExplosionProjectileB = bodyB.label === 'explosion-projectile'
+
+        const isPortalOrangeA = bodyA.label === 'portal_orange'
+        const isPortalOrangeB = bodyB.label === 'portal_orange'
+
+        const isPortalBlueA = bodyA.label === 'portal_blue'
+        const isPortalBlueB = bodyB.label === 'portal_blue'
+
         const findCarFromBody = (body) => {
           let car = this.carBodyMap.get(body)
           if (car) {
@@ -1921,7 +1933,61 @@ class Room {
           }
         }
 
-        if (!isSpikeA && !isSpikeB && !isCannonballA && !isCannonballB) {
+        // Portal projectile collisions - create portals on ANY collision
+        if (isPortalProjectileA) {
+          const projectile = this.gameState.abilityObjects.find(obj => obj.body === bodyA)
+          if (projectile) {
+            PortalAbility.handlePortalProjectileCollision(projectile, bodyB, this.world, this.gameState, this)
+          }
+        }
+        if (isPortalProjectileB) {
+          const projectile = this.gameState.abilityObjects.find(obj => obj.body === bodyB)
+          if (projectile) {
+            PortalAbility.handlePortalProjectileCollision(projectile, bodyA, this.world, this.gameState, this)
+          }
+        }
+
+        // Explosion projectile collisions - create explosion on ANY collision
+        if (isExplosionProjectileA) {
+          const projectile = this.gameState.abilityObjects.find(obj => obj.body === bodyA)
+          if (projectile) {
+            PortalAbility.handleExplosionProjectileCollision(projectile, bodyB, this.world, this.gameState, this)
+          }
+        }
+        if (isExplosionProjectileB) {
+          const projectile = this.gameState.abilityObjects.find(obj => obj.body === bodyB)
+          if (projectile) {
+            PortalAbility.handleExplosionProjectileCollision(projectile, bodyA, this.world, this.gameState, this)
+          }
+        }
+
+        // Portal teleportation - when cars touch portals
+        if (isPortalOrangeA && carB) {
+          const portal = this.gameState.abilityObjects.find(obj => obj.body === bodyA)
+          if (portal) {
+            PortalAbility.handlePortalTeleport(portal, carB, this.gameState)
+          }
+        }
+        if (isPortalOrangeB && carA) {
+          const portal = this.gameState.abilityObjects.find(obj => obj.body === bodyB)
+          if (portal) {
+            PortalAbility.handlePortalTeleport(portal, carA, this.gameState)
+          }
+        }
+        if (isPortalBlueA && carB) {
+          const portal = this.gameState.abilityObjects.find(obj => obj.body === bodyA)
+          if (portal) {
+            PortalAbility.handlePortalTeleport(portal, carB, this.gameState)
+          }
+        }
+        if (isPortalBlueB && carA) {
+          const portal = this.gameState.abilityObjects.find(obj => obj.body === bodyB)
+          if (portal) {
+            PortalAbility.handlePortalTeleport(portal, carA, this.gameState)
+          }
+        }
+
+        if (!isSpikeA && !isSpikeB && !isCannonballA && !isCannonballB && !isPortalProjectileA && !isPortalProjectileB && !isExplosionProjectileA && !isExplosionProjectileB) {
           const bodyAVel = carA ? carA.body.velocity : bodyA.velocity;
           const bodyBVel = carB ? carB.body.velocity : bodyB.velocity;
           
@@ -3269,6 +3335,14 @@ io.on('connection', (socket) => {
           break;
         case 'trapDamage':
           myCar.trapDamage += amount;
+          break;
+        case 'portalDuration':
+          if (!myCar.portalDuration) myCar.portalDuration = 0;
+          myCar.portalDuration += amount;
+          break;
+        case 'explosionRadius':
+          if (!myCar.explosionRadius) myCar.explosionRadius = 0;
+          myCar.explosionRadius += amount;
           break;
         case 'maxBoost':
           myCar.maxBoost += amount;

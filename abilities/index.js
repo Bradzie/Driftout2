@@ -11,6 +11,7 @@ const CannonAbility = require('./Cannon');
 const RepairAbility = require('./Repair');
 const AnchorAbility = require('./Anchor');
 const FocusAbility = require('./Focus');
+const PortalAbility = require('./Portal');
 
 module.exports = {
   Ability,
@@ -21,5 +22,6 @@ module.exports = {
   CannonAbility,
   RepairAbility,
   AnchorAbility,
-  FocusAbility
+  FocusAbility,
+  PortalAbility
 };

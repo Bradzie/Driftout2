@@ -3644,6 +3644,174 @@
 
           ctx.restore();
         }
+
+        // Portal projectile rendering
+        if (obj.type === 'portal-projectile' && obj.vertices && obj.vertices.length) {
+          ctx.save();
+
+          const objX = obj.position.x;
+          const objY = obj.position.y;
+
+          ctx.beginPath();
+          obj.vertices.forEach((v, i) => {
+            const cos = Math.cos(obj.angle);
+            const sin = Math.sin(obj.angle);
+            const rotatedX = v.x * cos - v.y * sin;
+            const rotatedY = v.x * sin + v.y * cos;
+
+            const worldX = objX + rotatedX;
+            const worldY = objY + rotatedY;
+
+            const screenX = centerX + (worldX - focusX) * scale;
+            const screenY = centerY - (worldY - focusY) * scale;
+
+            if (i === 0) {
+              ctx.moveTo(screenX, screenY);
+            } else {
+              ctx.lineTo(screenX, screenY);
+            }
+          });
+          ctx.closePath();
+
+          ctx.fillStyle = obj.render?.fillStyle || '#0088ff';
+          ctx.fill('evenodd');
+          ctx.strokeStyle = obj.render?.strokeStyle || '#64b4ff';
+          ctx.lineWidth = (obj.render?.lineWidth || 3) * scale;
+          ctx.lineJoin = 'round';
+          ctx.stroke();
+
+          ctx.restore();
+        }
+
+        // Explosion projectile rendering with transparent blast radius indicator
+        if (obj.type === 'explosion-projectile' && obj.vertices && obj.vertices.length) {
+          ctx.save();
+
+          const objX = obj.position.x;
+          const objY = obj.position.y;
+
+          // Render blast radius indicator
+          if (obj.explosionRadius) {
+            const radiusScreenX = centerX + (objX - focusX) * scale;
+            const radiusScreenY = centerY - (objY - focusY) * scale;
+            const radiusSize = obj.explosionRadius * scale;
+
+            ctx.beginPath();
+            ctx.arc(radiusScreenX, radiusScreenY, radiusSize, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 136, 0, 0.15)';
+            ctx.fill();
+            ctx.strokeStyle = '#ff8800';
+            ctx.lineWidth = 2 * scale;
+            ctx.stroke();
+          }
+
+          // Render projectile body
+          ctx.beginPath();
+          obj.vertices.forEach((v, i) => {
+            const cos = Math.cos(obj.angle);
+            const sin = Math.sin(obj.angle);
+            const rotatedX = v.x * cos - v.y * sin;
+            const rotatedY = v.x * sin + v.y * cos;
+
+            const worldX = objX + rotatedX;
+            const worldY = objY + rotatedY;
+
+            const screenX = centerX + (worldX - focusX) * scale;
+            const screenY = centerY - (worldY - focusY) * scale;
+
+            if (i === 0) {
+              ctx.moveTo(screenX, screenY);
+            } else {
+              ctx.lineTo(screenX, screenY);
+            }
+          });
+          ctx.closePath();
+
+          ctx.fillStyle = obj.render?.fillStyle || 'rgba(255, 136, 0, 0.4)';
+          ctx.fill('evenodd');
+          ctx.strokeStyle = obj.render?.strokeStyle || '#ff8800';
+          ctx.lineWidth = (obj.render?.lineWidth || 3) * scale;
+          ctx.lineJoin = 'round';
+          ctx.stroke();
+
+          ctx.restore();
+        }
+
+        // Portal orange rendering (static, no shadows/particles)
+        if (obj.type === 'portal_orange' && obj.vertices && obj.vertices.length) {
+          ctx.save();
+
+          const objX = obj.position.x;
+          const objY = obj.position.y;
+
+          ctx.beginPath();
+          obj.vertices.forEach((v, i) => {
+            const cos = Math.cos(obj.angle);
+            const sin = Math.sin(obj.angle);
+            const rotatedX = v.x * cos - v.y * sin;
+            const rotatedY = v.x * sin + v.y * cos;
+
+            const worldX = objX + rotatedX;
+            const worldY = objY + rotatedY;
+
+            const screenX = centerX + (worldX - focusX) * scale;
+            const screenY = centerY - (worldY - focusY) * scale;
+
+            if (i === 0) {
+              ctx.moveTo(screenX, screenY);
+            } else {
+              ctx.lineTo(screenX, screenY);
+            }
+          });
+          ctx.closePath();
+
+          ctx.fillStyle = obj.render?.fillStyle || '#ff8800';
+          ctx.fill('evenodd');
+          ctx.strokeStyle = obj.render?.strokeStyle || '#ffaa44';
+          ctx.lineWidth = (obj.render?.lineWidth || 4) * scale;
+          ctx.lineJoin = 'round';
+          ctx.stroke();
+
+          ctx.restore();
+        }
+
+        // Portal blue rendering (static, no shadows/particles)
+        if (obj.type === 'portal_blue' && obj.vertices && obj.vertices.length) {
+          ctx.save();
+
+          const objX = obj.position.x;
+          const objY = obj.position.y;
+
+          ctx.beginPath();
+          obj.vertices.forEach((v, i) => {
+            const cos = Math.cos(obj.angle);
+            const sin = Math.sin(obj.angle);
+            const rotatedX = v.x * cos - v.y * sin;
+            const rotatedY = v.x * sin + v.y * cos;
+
+            const worldX = objX + rotatedX;
+            const worldY = objY + rotatedY;
+
+            const screenX = centerX + (worldX - focusX) * scale;
+            const screenY = centerY - (worldY - focusY) * scale;
+
+            if (i === 0) {
+              ctx.moveTo(screenX, screenY);
+            } else {
+              ctx.lineTo(screenX, screenY);
+            }
+          });
+          ctx.closePath();
+
+          ctx.fillStyle = obj.render?.fillStyle || '#0088ff';
+          ctx.fill('evenodd');
+          ctx.strokeStyle = obj.render?.strokeStyle || '#64b4ff';
+          ctx.lineWidth = (obj.render?.lineWidth || 4) * scale;
+          ctx.lineJoin = 'round';
+          ctx.stroke();
+
+          ctx.restore();
+        }
       });
     }
 

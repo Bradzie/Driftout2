@@ -443,6 +443,81 @@ const CAR_TYPES = {
         color: '#22d3ee' // cyan
       }
     }
+  },
+  Gate: {
+    displayName: 'Gate',
+    displaySpeed: 45,
+    displayHealth: 50,
+    displayHandling: 45,
+    maxHealth: 9,
+    acceleration: 0.011,
+    boost: 48,
+    regen: 0.045,
+    ability: 'portal',
+    abilityName: 'Portal',
+    abilityCooldown: 0,
+    color: { fill: [0, 136, 255], stroke: [100, 180, 255], strokeWidth: 4 },
+    shapes: [
+      {
+        vertices: [
+          { x: 12, y: 0 },
+          { x: -12, y: 10 },
+          { x: -12, y: -10 }
+        ],
+        bodyOptions: {
+          friction: 0.55,
+          restitution: 0.45,
+          density: 0.42
+        }
+      }
+    ],
+    bodyOptions: {
+      frictionAir: 0.0015
+    },
+    upgrades: {
+      maxHealth: {
+        name: 'Health',
+        amount: 2,
+        maxUpgrades: 6,
+        color: '#ef4444' // red
+      },
+      acceleration: {
+        name: 'Speed',
+        amount: 0.0018,
+        maxUpgrades: 6,
+        color: '#3b82f6' // blue
+      },
+      regen: {
+        name: 'Regen',
+        amount: 0.055,
+        maxUpgrades: 6,
+        color: '#10b981' // green
+      },
+      abilityRegenRate: {
+        name: 'Charge Regen',
+        amount: 1.25,
+        maxUpgrades: 4,
+        color: '#f59e0b' // orange
+      },
+      portalDuration: {
+        name: 'Portal Duration',
+        amount: 2000,
+        maxUpgrades: 5,
+        color: '#0088ff' // portal blue
+      },
+      explosionRadius: {
+        name: 'Explosion Radius',
+        amount: 10,
+        maxUpgrades: 4,
+        color: '#ff8800' // portal orange
+      },
+      maxBoost: {
+        name: 'Max Boost',
+        amount: 10,
+        maxUpgrades: 4,
+        color: '#22d3ee' // cyan
+      }
+    }
   }
 }
 
