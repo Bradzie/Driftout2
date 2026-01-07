@@ -15,8 +15,8 @@ class FocusAbility extends Ability {
     });
 
     this.drainRate = 10;
-    this.targetFrictionAir = 0.1;
-    this.accelerationMultiplier = 5.0;
+    this.targetFrictionAir = 0.05;
+    this.accelerationMultiplier = 6.0;
   }
 
   activate(car, world, gameState) {
@@ -32,8 +32,10 @@ class FocusAbility extends Ability {
 
     car.chargeState.current -= this.minChargeToUse;
 
-    car.originalFrictionAir = car._originalBodyProps.frictionAir;
-    car.originalAcceleration = car._originalBodyProps.acceleration;
+    if (!car.isFocused) {
+      car.originalFrictionAir = car._originalBodyProps.frictionAir;
+      car.originalAcceleration = car._originalBodyProps.acceleration;
+    }
 
     car._originalBodyProps.frictionAir = this.targetFrictionAir;
     car._originalBodyProps.acceleration = car.originalAcceleration * this.accelerationMultiplier;

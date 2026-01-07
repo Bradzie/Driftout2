@@ -1130,7 +1130,6 @@
 
         return `
           <tr class="spectator-row">
-            <td>--</td>
             <td>
               <div class="leaderboard-player-cell">
                 <div class="leaderboard-player-color spectator-indicator"></div>

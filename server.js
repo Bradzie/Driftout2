@@ -25,7 +25,7 @@ const io = new Server(server, {
   maxHttpBufferSize: 1e6, // hex, 486
 });
 
-const DEBUG_MODE = true;
+const DEBUG_MODE = false;
 
 const userDb = new UserDatabase();
 
@@ -1183,14 +1183,6 @@ function applyCurrentEffects(car, currentEffects) {
   }
 }
 
-
-// Global physics engine removed - now each room has its own
-
-
-// Global collision detection removed - now handled per room
-
-
-// Helper functions for angle-based damage calculation
 function calculateImpactAngle(relativeVelocity, collisionNormal) {
   const velMagnitude = Math.sqrt(relativeVelocity.x * relativeVelocity.x + relativeVelocity.y * relativeVelocity.y);
   
