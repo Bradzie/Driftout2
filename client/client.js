@@ -3335,68 +3335,6 @@
           }
           ctx.closePath();
           ctx.fill('evenodd');
-          
-          // draw map shape border stripes if they exist
-          if (Array.isArray(shape.borderColors) && shape.borderColors.length > 0 && shape.borderWidth > 0) {
-            const lineWidth = shape.borderWidth * scale;
-            const baseColor = shape.borderColors[0] || '#ff0000'; // default to red
-
-            // Single color mode: draw solid border
-            if (shape.borderColors.length === 1) {
-              ctx.lineWidth = lineWidth;
-              ctx.strokeStyle = baseColor;
-              ctx.lineJoin = 'round';
-              ctx.lineCap = 'round';
-              ctx.stroke();
-            }
-            // Dual color mode: draw striped border
-            else {
-              const stripeLength = (shape.stripeLength || shape.borderWidth * 1.8 || 25) * scale;
-
-              for (let i = 0; i < verts.length; i++) {
-                const a = verts[i];
-                const b = verts[(i + 1) % verts.length];
-
-                const dx = b.x - a.x;
-                const dy = b.y - a.y;
-                const len = Math.hypot(dx, dy);
-                const steps = Math.max(1, Math.floor(len / stripeLength));
-
-                const perpX = -dy / len;
-                const perpY = dx / len;
-                const offsetX = (perpX * lineWidth) / 2;
-                const offsetY = (perpY * lineWidth) / 2;
-
-                for (let s = 0; s < steps; s++) {
-                  const t0 = s / steps;
-                  const t1 = (s + 1) / steps;
-                  const x0 = a.x + dx * t0;
-                  const y0 = a.y + dy * t0;
-                  const x1 = a.x + dx * t1;
-                  const y1 = a.y + dy * t1;
-
-                  ctx.beginPath();
-                  ctx.moveTo(x0 + offsetX, y0 + offsetY);
-                  ctx.lineTo(x1 + offsetX, y1 + offsetY);
-                  ctx.lineTo(x1 - offsetX, y1 - offsetY);
-                  ctx.lineTo(x0 - offsetX, y0 - offsetY);
-                  ctx.closePath();
-
-                  const isLastStripe = s === steps - 1;
-                  ctx.fillStyle = isLastStripe
-                    ? baseColor
-                    : shape.borderColors[s % shape.borderColors.length];
-                  ctx.fill();
-                }
-
-                const radius = lineWidth / 2;
-                ctx.beginPath();
-                ctx.arc(a.x, a.y, radius, 0, Math.PI * 2);
-                ctx.fillStyle = baseColor;
-                ctx.fill();
-              }
-            }
-          }
         }
       }
     }
@@ -3454,6 +3392,90 @@
             }
             ctx.closePath();
             ctx.fill('evenodd');
+          }
+        }
+      }
+    }
+
+    // Third pass: Draw shape borders (on top of area effects)
+    if (mapToUse && Array.isArray(mapToUse.shapes)) {
+      for (const shape of mapToUse.shapes) {
+        if (Array.isArray(shape.vertices)) {
+          const verts = shape.vertices.map(v => ({
+            x: centerX + (v.x - focusX) * scale,
+            y: centerY - (v.y - focusY) * scale
+          }));
+
+          // draw map shape border stripes if they exist
+          if (Array.isArray(shape.borderColors) && shape.borderColors.length > 0 && shape.borderWidth > 0) {
+            const lineWidth = shape.borderWidth * scale;
+            const baseColor = shape.borderColors[0] || '#ff0000'; // default to red
+
+            ctx.beginPath();
+            ctx.moveTo(verts[0].x, verts[0].y);
+            for (let i = 1; i < verts.length; i++) {
+              ctx.lineTo(verts[i].x, verts[i].y);
+            }
+            ctx.closePath();
+
+            // Single color mode: draw solid border
+            if (shape.borderColors.length === 1) {
+              ctx.lineWidth = lineWidth;
+              ctx.strokeStyle = baseColor;
+              ctx.lineJoin = 'round';
+              ctx.lineCap = 'round';
+              ctx.stroke();
+            }
+            // Dual color mode: draw striped border
+            else {
+              const stripeLength = (shape.stripeLength || shape.borderWidth * 1.8 || 25) * scale;
+              let cumulativeStripeCount = 0;
+
+              for (let i = 0; i < verts.length; i++) {
+                const a = verts[i];
+                const b = verts[(i + 1) % verts.length];
+
+                const dx = b.x - a.x;
+                const dy = b.y - a.y;
+                const len = Math.hypot(dx, dy);
+                const steps = Math.max(1, Math.floor(len / stripeLength));
+
+                const perpX = -dy / len;
+                const perpY = dx / len;
+                const offsetX = (perpX * lineWidth) / 2;
+                const offsetY = (perpY * lineWidth) / 2;
+
+                for (let s = 0; s < steps; s++) {
+                  const t0 = s / steps;
+                  const t1 = (s + 1) / steps;
+                  const x0 = a.x + dx * t0;
+                  const y0 = a.y + dy * t0;
+                  const x1 = a.x + dx * t1;
+                  const y1 = a.y + dy * t1;
+
+                  ctx.beginPath();
+                  ctx.moveTo(x0 + offsetX, y0 + offsetY);
+                  ctx.lineTo(x1 + offsetX, y1 + offsetY);
+                  ctx.lineTo(x1 - offsetX, y1 - offsetY);
+                  ctx.lineTo(x0 - offsetX, y0 - offsetY);
+                  ctx.closePath();
+
+                  const isLastStripe = s === steps - 1;
+                  ctx.fillStyle = isLastStripe
+                    ? baseColor
+                    : shape.borderColors[cumulativeStripeCount % shape.borderColors.length];
+                  ctx.fill();
+
+                  cumulativeStripeCount++;
+                }
+
+                const radius = lineWidth / 2;
+                ctx.beginPath();
+                ctx.arc(a.x, a.y, radius, 0, Math.PI * 2);
+                ctx.fillStyle = baseColor;
+                ctx.fill();
+              }
+            }
           }
         }
       }
@@ -3617,6 +3639,174 @@
           ctx.fill('evenodd');
           ctx.strokeStyle = obj.render?.strokeStyle || '#34495e';
           ctx.lineWidth = (obj.render?.lineWidth || 2) * scale;
+          ctx.lineJoin = 'round';
+          ctx.stroke();
+
+          ctx.restore();
+        }
+
+        // Portal projectile rendering
+        if (obj.type === 'portal-projectile' && obj.vertices && obj.vertices.length) {
+          ctx.save();
+
+          const objX = obj.position.x;
+          const objY = obj.position.y;
+
+          ctx.beginPath();
+          obj.vertices.forEach((v, i) => {
+            const cos = Math.cos(obj.angle);
+            const sin = Math.sin(obj.angle);
+            const rotatedX = v.x * cos - v.y * sin;
+            const rotatedY = v.x * sin + v.y * cos;
+
+            const worldX = objX + rotatedX;
+            const worldY = objY + rotatedY;
+
+            const screenX = centerX + (worldX - focusX) * scale;
+            const screenY = centerY - (worldY - focusY) * scale;
+
+            if (i === 0) {
+              ctx.moveTo(screenX, screenY);
+            } else {
+              ctx.lineTo(screenX, screenY);
+            }
+          });
+          ctx.closePath();
+
+          ctx.fillStyle = obj.render?.fillStyle || '#0088ff';
+          ctx.fill('evenodd');
+          ctx.strokeStyle = obj.render?.strokeStyle || '#64b4ff';
+          ctx.lineWidth = (obj.render?.lineWidth || 3) * scale;
+          ctx.lineJoin = 'round';
+          ctx.stroke();
+
+          ctx.restore();
+        }
+
+        // Explosion projectile rendering with transparent blast radius indicator
+        if (obj.type === 'explosion-projectile' && obj.vertices && obj.vertices.length) {
+          ctx.save();
+
+          const objX = obj.position.x;
+          const objY = obj.position.y;
+
+          // Render blast radius indicator
+          if (obj.explosionRadius) {
+            const radiusScreenX = centerX + (objX - focusX) * scale;
+            const radiusScreenY = centerY - (objY - focusY) * scale;
+            const radiusSize = obj.explosionRadius * scale;
+
+            ctx.beginPath();
+            ctx.arc(radiusScreenX, radiusScreenY, radiusSize, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 136, 0, 0.15)';
+            ctx.fill();
+            ctx.strokeStyle = '#ff8800';
+            ctx.lineWidth = 2 * scale;
+            ctx.stroke();
+          }
+
+          // Render projectile body
+          ctx.beginPath();
+          obj.vertices.forEach((v, i) => {
+            const cos = Math.cos(obj.angle);
+            const sin = Math.sin(obj.angle);
+            const rotatedX = v.x * cos - v.y * sin;
+            const rotatedY = v.x * sin + v.y * cos;
+
+            const worldX = objX + rotatedX;
+            const worldY = objY + rotatedY;
+
+            const screenX = centerX + (worldX - focusX) * scale;
+            const screenY = centerY - (worldY - focusY) * scale;
+
+            if (i === 0) {
+              ctx.moveTo(screenX, screenY);
+            } else {
+              ctx.lineTo(screenX, screenY);
+            }
+          });
+          ctx.closePath();
+
+          ctx.fillStyle = obj.render?.fillStyle || 'rgba(255, 136, 0, 0.4)';
+          ctx.fill('evenodd');
+          ctx.strokeStyle = obj.render?.strokeStyle || '#ff8800';
+          ctx.lineWidth = (obj.render?.lineWidth || 3) * scale;
+          ctx.lineJoin = 'round';
+          ctx.stroke();
+
+          ctx.restore();
+        }
+
+        // Portal orange rendering (static, no shadows/particles)
+        if (obj.type === 'portal_orange' && obj.vertices && obj.vertices.length) {
+          ctx.save();
+
+          const objX = obj.position.x;
+          const objY = obj.position.y;
+
+          ctx.beginPath();
+          obj.vertices.forEach((v, i) => {
+            const cos = Math.cos(obj.angle);
+            const sin = Math.sin(obj.angle);
+            const rotatedX = v.x * cos - v.y * sin;
+            const rotatedY = v.x * sin + v.y * cos;
+
+            const worldX = objX + rotatedX;
+            const worldY = objY + rotatedY;
+
+            const screenX = centerX + (worldX - focusX) * scale;
+            const screenY = centerY - (worldY - focusY) * scale;
+
+            if (i === 0) {
+              ctx.moveTo(screenX, screenY);
+            } else {
+              ctx.lineTo(screenX, screenY);
+            }
+          });
+          ctx.closePath();
+
+          ctx.fillStyle = obj.render?.fillStyle || '#ff8800';
+          ctx.fill('evenodd');
+          ctx.strokeStyle = obj.render?.strokeStyle || '#ffaa44';
+          ctx.lineWidth = (obj.render?.lineWidth || 4) * scale;
+          ctx.lineJoin = 'round';
+          ctx.stroke();
+
+          ctx.restore();
+        }
+
+        // Portal blue rendering (static, no shadows/particles)
+        if (obj.type === 'portal_blue' && obj.vertices && obj.vertices.length) {
+          ctx.save();
+
+          const objX = obj.position.x;
+          const objY = obj.position.y;
+
+          ctx.beginPath();
+          obj.vertices.forEach((v, i) => {
+            const cos = Math.cos(obj.angle);
+            const sin = Math.sin(obj.angle);
+            const rotatedX = v.x * cos - v.y * sin;
+            const rotatedY = v.x * sin + v.y * cos;
+
+            const worldX = objX + rotatedX;
+            const worldY = objY + rotatedY;
+
+            const screenX = centerX + (worldX - focusX) * scale;
+            const screenY = centerY - (worldY - focusY) * scale;
+
+            if (i === 0) {
+              ctx.moveTo(screenX, screenY);
+            } else {
+              ctx.lineTo(screenX, screenY);
+            }
+          });
+          ctx.closePath();
+
+          ctx.fillStyle = obj.render?.fillStyle || '#0088ff';
+          ctx.fill('evenodd');
+          ctx.strokeStyle = obj.render?.strokeStyle || '#64b4ff';
+          ctx.lineWidth = (obj.render?.lineWidth || 4) * scale;
           ctx.lineJoin = 'round';
           ctx.stroke();
 

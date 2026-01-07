@@ -2278,43 +2278,6 @@ function drawAreaEffect(area, isSelected, isHovered = false) {
     drawVertices(area.vertices);
   }
   
-  // Draw effect icon in center of area
-  const centerX = area.vertices.reduce((sum, v) => sum + v.x, 0) / area.vertices.length;
-  const centerY = area.vertices.reduce((sum, v) => sum + v.y, 0) / area.vertices.length;
-  
-  editorCtx.save();
-  editorCtx.translate(centerX, -centerY);
-  editorCtx.scale(1 / zoom, 1 / zoom);
-  
-  editorCtx.fillStyle = '#fff';
-  editorCtx.font = 'bold 16px Arial';
-  editorCtx.textAlign = 'center';
-  editorCtx.textBaseline = 'middle';
-  
-  let icon = '';
-  switch (area.effect) {
-    case 'ice':
-      icon = '❄️';
-      break;
-    case 'lava':
-      icon = '🔥';
-      break;
-    case 'boost':
-      icon = '⚡';
-      break;
-    case 'slow':
-      icon = '🐌';
-      break;
-    default:
-      icon = '?';
-  }
-  
-  editorCtx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-  editorCtx.fillRect(-12, -10, 24, 20);
-  
-  editorCtx.fillStyle = '#fff';
-  editorCtx.fillText(icon, 0, 0);
-  
   editorCtx.restore();
 }
 

@@ -20,6 +20,7 @@ class AbilityRegistry {
     const RepairAbility = require('./Repair');
     const AnchorAbility = require('./Anchor');
     const FocusAbility = require('./Focus');
+    const PortalAbility = require('./Portal');
 
     this.register(DashAbility);
     this.register(SpikeTrapAbility);
@@ -28,6 +29,7 @@ class AbilityRegistry {
     this.register(RepairAbility);
     this.register(AnchorAbility);
     this.register(FocusAbility);
+    this.register(PortalAbility);
   }
 
   /**
@@ -94,6 +96,15 @@ class AbilityRegistry {
    */
   getAllMetadata() {
     return this.getAllIds().map(id => this.getMetadata(id));
+  }
+
+  /**
+   * Get an ability instance (useful for accessing static methods and properties)
+   * @param {string} abilityId - The ability ID
+   * @returns {Ability|null} Ability instance or null if not found
+   */
+  getAbility(abilityId) {
+    return this.create(abilityId);
   }
 }
 

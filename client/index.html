@@ -265,16 +265,18 @@
     </div>
   </div>
 
-  <div id="menuDisconnectionWarning" class="menu-warning hidden">
-    <div class="warning-title">DISCONNECTED</div>
-    <div class="warning-message">Unable to connect to game server</div>
-    <div class="warning-details">
-      The connection has been lost. This can happen due to:<br>
-      • Network connectivity issues<br>
-      • Server maintenance or restart<br>
-      • Browser sleeping inactive tabs
+  <div id="menuDisconnectionWarning" class="overlay disconnect-overlay hidden">
+    <div class="disconnect-content">
+      <div class="disconnect-title">DISCONNECTED</div>
+      <div class="disconnect-message">Unable to connect to game server</div>
+      <div class="disconnect-details">
+        The connection has been lost. This can happen due to:<br>
+        • Network connectivity issues<br>
+        • Server maintenance or restart<br>
+        • Browser sleeping inactive tabs
+      </div>
+      <button id="menuRefreshBtn" class="disconnect-refresh-btn">CLICK TO REFRESH</button>
     </div>
-    <button id="menuRefreshBtn" class="menu-refresh-btn">CLICK TO REFRESH</button>
   </div>
 
   <div id="settingsModal" class="settings-modal hidden">
