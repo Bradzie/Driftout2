@@ -550,17 +550,13 @@ html, body {
   backdrop-filter: blur(5px);
   z-index: 2000;
   font-family: Arial, sans-serif;
-  /* Override default overlay centering to position below title */
-  align-items: flex-start;
-  padding-top: 25vh; /* Position below the DRIFTZ.IO title */
+
 }
 
 .disconnect-content {
   text-align: center;
-  background: #ffffff;
+  background: #ff5f5f;
   padding: 40px;
-  border-radius: 10px;
-  border: 2px solid #ff5f5f;
   font-family: Arial, sans-serif;
   max-width: 500px; /* Limit width for better readability */
   width: 90%; /* Responsive width */
@@ -570,37 +566,37 @@ html, body {
 .disconnect-title {
   font-size: 1.8em;
   margin-bottom: 20px;
-  color: #ff5f5f;
-  font-family: 'Quicksilver', serif;
+  color: white;
+  font-family: 'Overpass', serif;
 }
 
 .disconnect-message {
   font-size: 1.2em;
   margin-bottom: 15px;
-  color: #000000;
+  color: white;
 }
 
 .disconnect-details {
   font-size: 0.9em;
-  color: #000000;
+  color: white;
   margin-bottom: 25px;
   line-height: 1.4;
 }
 
 .disconnect-refresh-btn {
-  background: #ff5f5f;
+  background: #ff4444;
   color: white;
   border: none;
   padding: 12px 24px;
   font-size: 1em;
-  border-radius: 5px;
+  font-weight: bold;
   cursor: pointer;
   transition: background-color 0.2s;
-  font-family: 'Quicksilver', serif;
+  font-family: 'Overpass', serif;
 }
 
 .disconnect-refresh-btn:hover {
-  background-color: #ffffff;
+  background-color: #993939;
 }
 
 /* Menu Disconnection Warning Styles */

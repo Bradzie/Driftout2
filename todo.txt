@@ -54,4 +54,4 @@ X (client/server) trap size / damage upgrades
 - (client/server) overheal
 - (client/server) increase body.slop prop on cannonballs to help with collision response for very fast shots
 - (server) only pick OFFICIAL maps for official rooms, shapeconfigtest is being pulled through somehow?
-- (client) feature where if the cursor is far enough away from the spectator menu ui, it becomes transparent so you can just watch the match unfold
+X (client) feature where if the cursor is far enough away from the spectator menu ui, it becomes transparent so you can just watch the match unfold
