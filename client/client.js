@@ -2201,6 +2201,28 @@
     if (typeof sendInput === 'function') sendInput();
   });
 
+  document.addEventListener('mousemove', (e) => {
+    if (isSpectating && !menu.classList.contains('hidden')) {
+      const centerX = window.innerWidth / 2;
+      const centerY = window.innerHeight / 2;
+      const dx = e.clientX - centerX;
+      const dy = e.clientY - centerY;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      const fadeStartDistance = 400;
+      const fadeEndDistance = 600;
+
+      let opacity = 1;
+      if (distance > fadeStartDistance) {
+        const fadeProgress = Math.min(1, (distance - fadeStartDistance) / (fadeEndDistance - fadeStartDistance));
+        opacity = 1 - fadeProgress;
+      }
+
+      menu.style.opacity = opacity;
+    } else if (!menu.classList.contains('hidden')) {
+      menu.style.opacity = 1;
+    }
+  });
+
   // Mobile Virtual Joystick
   if (isMobile) {
     const joystick = document.getElementById('mobileJoystick');
