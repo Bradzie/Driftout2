@@ -9,7 +9,7 @@ class RepairAbility extends Ability {
       usesChargeSystem: true,
       maxCharge: 100,
       baseRegenRate: 5,
-      minChargeToUse: 20,
+      minChargeToUse: 60,
       maxChargeToUse: 100,
       chargeTime: 2000
     });

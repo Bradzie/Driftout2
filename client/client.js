@@ -201,6 +201,7 @@
   
   const carRadioInput = document.querySelector('input[name="car"]');
   const carName = document.getElementById('carName');
+  const carAbility = document.getElementById('carAbility');
   const carShape = document.getElementById('carShape');
   const speedFill = document.getElementById('speedFill');
   const healthFill = document.getElementById('healthFill');
@@ -1794,7 +1795,8 @@
     
     carRadioInput.value = carType;
     carName.textContent = car.displayName || carType;
-    
+    carAbility.textContent = car.abilityName || 'No Ability';
+
     carShape.innerHTML = '';
     car.shapes.forEach((shape, index) => {
       const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');

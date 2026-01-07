@@ -114,11 +114,26 @@ html, body {
   margin-bottom: 1rem;
 }
 
+.car-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  align-items: flex-start;
+}
+
 .car-name {
   font-size: 1.5rem;
   color: #ff5f5f;
   font-family: 'Overpass', serif;
   font-weight: bold;
+}
+
+.car-ability {
+  font-size: 0.9rem;
+  color: #818181;
+  font-family: 'Overpass', serif;
+  font-weight: normal;
+  margin-left: 1px;
 }
 
 .car-visual {
