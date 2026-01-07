@@ -1318,7 +1318,7 @@ class Car {
     this.anchorStartTime = 0;
     this.anchorResistance = 0;
 
-    // Focus ability state
+    // focus ability
     this.isFocused = false;
     this.focusStartTime = 0;
     this.originalFrictionAir = null;

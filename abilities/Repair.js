@@ -14,7 +14,7 @@ class RepairAbility extends Ability {
       chargeTime: 2000
     });
 
-    this.baseHealAmount = 1;
+    this.baseHealAmount = 1.4;
   }
 
   activate(car, world, gameState) {
