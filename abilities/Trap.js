@@ -121,11 +121,11 @@ class SpikeTrapAbility extends Ability {
     }
 
     const spikeBody = Matter.Bodies.fromVertices(
-      position.x, 
-      position.y, 
+      position.x,
+      position.y,
       [vertices],
       {
-        isSensor: false,
+        isSensor: true,
         isStatic: false,
         label: 'spike-trap',
         ownerId: ownerId,

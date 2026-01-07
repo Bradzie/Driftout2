@@ -3335,68 +3335,6 @@
           }
           ctx.closePath();
           ctx.fill('evenodd');
-          
-          // draw map shape border stripes if they exist
-          if (Array.isArray(shape.borderColors) && shape.borderColors.length > 0 && shape.borderWidth > 0) {
-            const lineWidth = shape.borderWidth * scale;
-            const baseColor = shape.borderColors[0] || '#ff0000'; // default to red
-
-            // Single color mode: draw solid border
-            if (shape.borderColors.length === 1) {
-              ctx.lineWidth = lineWidth;
-              ctx.strokeStyle = baseColor;
-              ctx.lineJoin = 'round';
-              ctx.lineCap = 'round';
-              ctx.stroke();
-            }
-            // Dual color mode: draw striped border
-            else {
-              const stripeLength = (shape.stripeLength || shape.borderWidth * 1.8 || 25) * scale;
-
-              for (let i = 0; i < verts.length; i++) {
-                const a = verts[i];
-                const b = verts[(i + 1) % verts.length];
-
-                const dx = b.x - a.x;
-                const dy = b.y - a.y;
-                const len = Math.hypot(dx, dy);
-                const steps = Math.max(1, Math.floor(len / stripeLength));
-
-                const perpX = -dy / len;
-                const perpY = dx / len;
-                const offsetX = (perpX * lineWidth) / 2;
-                const offsetY = (perpY * lineWidth) / 2;
-
-                for (let s = 0; s < steps; s++) {
-                  const t0 = s / steps;
-                  const t1 = (s + 1) / steps;
-                  const x0 = a.x + dx * t0;
-                  const y0 = a.y + dy * t0;
-                  const x1 = a.x + dx * t1;
-                  const y1 = a.y + dy * t1;
-
-                  ctx.beginPath();
-                  ctx.moveTo(x0 + offsetX, y0 + offsetY);
-                  ctx.lineTo(x1 + offsetX, y1 + offsetY);
-                  ctx.lineTo(x1 - offsetX, y1 - offsetY);
-                  ctx.lineTo(x0 - offsetX, y0 - offsetY);
-                  ctx.closePath();
-
-                  const isLastStripe = s === steps - 1;
-                  ctx.fillStyle = isLastStripe
-                    ? baseColor
-                    : shape.borderColors[s % shape.borderColors.length];
-                  ctx.fill();
-                }
-
-                const radius = lineWidth / 2;
-                ctx.beginPath();
-                ctx.arc(a.x, a.y, radius, 0, Math.PI * 2);
-                ctx.fillStyle = baseColor;
-                ctx.fill();
-              }
-            }
-          }
         }
       }
     }
@@ -3454,6 +3392,90 @@
             }
             ctx.closePath();
             ctx.fill('evenodd');
+          }
+        }
+      }
+    }
+
+    // Third pass: Draw shape borders (on top of area effects)
+    if (mapToUse && Array.isArray(mapToUse.shapes)) {
+      for (const shape of mapToUse.shapes) {
+        if (Array.isArray(shape.vertices)) {
+          const verts = shape.vertices.map(v => ({
+            x: centerX + (v.x - focusX) * scale,
+            y: centerY - (v.y - focusY) * scale
+          }));
+
+          // draw map shape border stripes if they exist
+          if (Array.isArray(shape.borderColors) && shape.borderColors.length > 0 && shape.borderWidth > 0) {
+            const lineWidth = shape.borderWidth * scale;
+            const baseColor = shape.borderColors[0] || '#ff0000'; // default to red
+
+            ctx.beginPath();
+            ctx.moveTo(verts[0].x, verts[0].y);
+            for (let i = 1; i < verts.length; i++) {
+              ctx.lineTo(verts[i].x, verts[i].y);
+            }
+            ctx.closePath();
+
+            // Single color mode: draw solid border
+            if (shape.borderColors.length === 1) {
+              ctx.lineWidth = lineWidth;
+              ctx.strokeStyle = baseColor;
+              ctx.lineJoin = 'round';
+              ctx.lineCap = 'round';
+              ctx.stroke();
+            }
+            // Dual color mode: draw striped border
+            else {
+              const stripeLength = (shape.stripeLength || shape.borderWidth * 1.8 || 25) * scale;
+              let cumulativeStripeCount = 0;
+
+              for (let i = 0; i < verts.length; i++) {
+                const a = verts[i];
+                const b = verts[(i + 1) % verts.length];
+
+                const dx = b.x - a.x;
+                const dy = b.y - a.y;
+                const len = Math.hypot(dx, dy);
+                const steps = Math.max(1, Math.floor(len / stripeLength));
+
+                const perpX = -dy / len;
+                const perpY = dx / len;
+                const offsetX = (perpX * lineWidth) / 2;
+                const offsetY = (perpY * lineWidth) / 2;
+
+                for (let s = 0; s < steps; s++) {
+                  const t0 = s / steps;
+                  const t1 = (s + 1) / steps;
+                  const x0 = a.x + dx * t0;
+                  const y0 = a.y + dy * t0;
+                  const x1 = a.x + dx * t1;
+                  const y1 = a.y + dy * t1;
+
+                  ctx.beginPath();
+                  ctx.moveTo(x0 + offsetX, y0 + offsetY);
+                  ctx.lineTo(x1 + offsetX, y1 + offsetY);
+                  ctx.lineTo(x1 - offsetX, y1 - offsetY);
+                  ctx.lineTo(x0 - offsetX, y0 - offsetY);
+                  ctx.closePath();
+
+                  const isLastStripe = s === steps - 1;
+                  ctx.fillStyle = isLastStripe
+                    ? baseColor
+                    : shape.borderColors[cumulativeStripeCount % shape.borderColors.length];
+                  ctx.fill();
+
+                  cumulativeStripeCount++;
+                }
+
+                const radius = lineWidth / 2;
+                ctx.beginPath();
+                ctx.arc(a.x, a.y, radius, 0, Math.PI * 2);
+                ctx.fillStyle = baseColor;
+                ctx.fill();
+              }
+            }
           }
         }
       }
