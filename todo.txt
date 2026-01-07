@@ -49,7 +49,7 @@ X (map editor) fix 'back' button and give it styling
 X (client/server) trap size / damage upgrades
 - (client/server) dash power upgrades
 - (client) changelog window
-- (client) disconnected screen doesn't hide room name/map header and changelog/leaderboard buttons
+X (client) disconnected screen doesn't hide room name/map header and changelog/leaderboard buttons
 - (client) the driftz.io title seems to be messing with player movement. do we have the wrong css props on it? UPDATE: not the ui elements, it's biased to turn to each corner when cursor is further away?? is it stupid???
 - (client/server) overheal
 - (client/server) increase body.slop prop on cannonballs to help with collision response for very fast shots

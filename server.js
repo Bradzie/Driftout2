@@ -456,6 +456,15 @@ app.post('/api/maps/preview', mapUploadLimiter, requireAuth, async (req, res) =>
           return sendError(res, 400, 'Invalid file path');
         }
 
+        // Remove any existing preview files for this map ID (any extension)
+        const possibleExtensions = ['png', 'jpg', 'jpeg'];
+        for (const ext of possibleExtensions) {
+          const oldPath = path.join(previewsDir, `${mapId}.${ext}`);
+          if (fs.existsSync(oldPath)) {
+            fs.unlinkSync(oldPath);
+          }
+        }
+
         fs.copyFileSync(file.filepath, targetPath);
         fs.unlinkSync(file.filepath);
 
