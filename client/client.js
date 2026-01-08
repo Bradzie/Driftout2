@@ -4067,7 +4067,7 @@
     const me = players.find((p) => p.socketId === mySocketId);
 
     if (!me || !players.map(p => p.id).includes(me.id)) {
-      console.error("Can't find player, returning to menu")
+      // this is how most players return to menu from the game
       returnToMenu();
       return;
     }

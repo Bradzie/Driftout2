@@ -3014,8 +3014,9 @@ input[type="number"]:focus {
   background-color: #444;
   padding: 0.25rem 0.5rem;
   margin: 0.25rem 0;
-  cursor: pointer;
+  cursor: move;
   font-size: 0.8rem;
+  transition: background-color 0.2s, opacity 0.2s;
 }
 
 .layer-item:hover {
@@ -3024,6 +3025,16 @@ input[type="number"]:focus {
 
 .layer-item.selected {
   background-color: #ff5f5f;
+}
+
+.layer-item.dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
+.layer-item.drag-over {
+  background-color: #5f5fff;
+  border: 2px dashed #8f8fff;
 }
 
 /* Property Editor Styles */
