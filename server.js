@@ -1639,7 +1639,19 @@ class Car {
   applyCollisionDamage(otherBody, relativeSpeed, damageScale = 1.0, collisionPair = null) {
     // Don't take damage if god mode is enabled
     if (this.godMode) return;
-    
+
+    // Check portal invulnerability (brief grace period after teleporting)
+    if (this.portalInvulnerable) {
+      const now = Date.now();
+      if (now < this.portalInvulnerableUntil) {
+        return; // Still invulnerable
+      } else {
+        // Invulnerability expired, clear the flag
+        this.portalInvulnerable = false;
+        this.portalInvulnerableUntil = 0;
+      }
+    }
+
     if (relativeSpeed < MIN_DAMAGE_VELOCITY) return;
     
     const otherDensity = otherBody.density || 0.001;
@@ -2028,7 +2040,25 @@ class Room {
   // Move collision damage methods from global scope to Room scope
   applyMutualCollisionDamage(carA, carB, relativeSpeed, collisionPair = null) {
     if (!carA || !carB || carA.godMode || carB.godMode || carA.isGhost || carB.isGhost) return;
-    
+
+    // Check portal invulnerability for both cars
+    const now = Date.now();
+    const carAInvulnerable = carA.portalInvulnerable && now < carA.portalInvulnerableUntil;
+    const carBInvulnerable = carB.portalInvulnerable && now < carB.portalInvulnerableUntil;
+
+    // Clear expired invulnerability
+    if (carA.portalInvulnerable && now >= carA.portalInvulnerableUntil) {
+      carA.portalInvulnerable = false;
+      carA.portalInvulnerableUntil = 0;
+    }
+    if (carB.portalInvulnerable && now >= carB.portalInvulnerableUntil) {
+      carB.portalInvulnerable = false;
+      carB.portalInvulnerableUntil = 0;
+    }
+
+    // If either car is invulnerable, skip mutual damage
+    if (carAInvulnerable || carBInvulnerable) return;
+
     if (relativeSpeed < MIN_DAMAGE_VELOCITY) return;
     
     const carAInitialHealth = carA.currentHealth;
@@ -2662,11 +2692,18 @@ class Room {
         type: obj.type,
         position: obj.body.position,
         angle: obj.body.angle,
-        vertices: obj.body.vertices.map(v => ({ x: v.x - obj.body.position.x, y: v.y - obj.body.position.y })),
+        vertices: obj.body.vertices && obj.body.vertices.length > 0
+          ? obj.body.vertices.map(v => ({ x: v.x - obj.body.position.x, y: v.y - obj.body.position.y }))
+          : [],
         createdBy: obj.createdBy,
         expiresAt: obj.expiresAt,
         render: obj.body.render
       };
+
+      // Include explosion radius for explosion projectiles and effects
+      if (obj.explosionRadius !== undefined) {
+        serializedObj.explosionRadius = obj.explosionRadius;
+      }
 
       return serializedObj;
     });

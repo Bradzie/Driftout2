@@ -18,13 +18,13 @@ class PortalAbility extends Ability {
     });
 
     this.projectileRadius = 6;
-    this.projectileSpeed = 0.6;
+    this.projectileSpeed = 0.3;
     this.projectileDensity = 0.15;
 
     // explosion properties for charged shot
-    this.explosionRadius = 80;
+    this.explosionRadius = 75;
     this.explosionDamage = 2;  // very little damage
-    this.explosionForce = 0.008;  // utility knockback
+    this.explosionForce = 0.8;  // utility knockback (similar to dash power)
 
     // portal properties
     this.portalRadius = 20;
@@ -81,12 +81,12 @@ class PortalAbility extends Ability {
       };
     } else {
       // Create explosion projectile
-      const explosionSize = this.projectileRadius * 1.5 * (0.8 + chargeScale * 0.4);
+      const explosionSize = this.projectileRadius * 1.2 * (0.8 + chargeScale * 0.4);
       projectileBody = this.createExplosionProjectile(position, world, car.id, explosionSize);
 
       const projectileForce = {
-        x: Math.cos(car.body.angle) * this.projectileSpeed * 0.8,
-        y: Math.sin(car.body.angle) * this.projectileSpeed * 0.8
+        x: Math.cos(car.body.angle) * this.projectileSpeed * 1.5,
+        y: Math.sin(car.body.angle) * this.projectileSpeed * 1.5
       };
       Matter.Body.applyForce(projectileBody, projectileBody.position, projectileForce);
 
@@ -310,6 +310,7 @@ class PortalAbility extends Ability {
             strokeStyle: isOrange ? '#ffaa44' : '#64b4ff',
             lineWidth: 4
           },
+          slop: 0,
         },
         true
       );
@@ -371,11 +372,16 @@ class PortalAbility extends Ability {
   }
 
   static handleExplosionProjectileCollision(projectile, otherBody, world, gameState, room) {
+    // Prevent duplicate processing if already removed
+    if (!projectile || !projectile.body) return false;
+
     // Create explosion at collision point
     const explosionPos = projectile.body.position;
     const explosionRadius = projectile.explosionRadius;
     const explosionDamage = projectile.explosionDamage;
     const explosionForce = projectile.explosionForce;
+
+    console.log(`Explosion triggered at (${explosionPos.x.toFixed(1)}, ${explosionPos.y.toFixed(1)}) with radius ${explosionRadius}, force ${explosionForce}`);
 
     // Find all cars in radius
     const carsInRange = Array.from(room.players.values()).filter(targetCar => {
@@ -387,16 +393,20 @@ class PortalAbility extends Ability {
       return distance <= explosionRadius;
     });
 
-    // Apply damage and knockback
+    console.log(`Found ${carsInRange.length} cars in explosion radius`);
+
+    // Apply damage and knockback to cars
     carsInRange.forEach(targetCar => {
       const dx = targetCar.body.position.x - explosionPos.x;
       const dy = targetCar.body.position.y - explosionPos.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
 
-      // Falloff calculation
-      const falloff = 1 - (distance / explosionRadius);
+      // Falloff calculation (prevent division by zero at center)
+      const falloff = distance === 0 ? 1 : Math.max(0, 1 - (distance / explosionRadius));
       const actualDamage = explosionDamage * falloff;
       const actualForce = explosionForce * falloff;
+
+      console.log(`Applying to car ${targetCar.id.substring(0, 8)}: distance=${distance.toFixed(1)}, falloff=${falloff.toFixed(2)}, force=${actualForce.toFixed(4)}, damage=${actualDamage.toFixed(2)}`);
 
       // Apply damage (only if not self)
       if (targetCar.id !== projectile.createdBy) {
@@ -417,12 +427,81 @@ class PortalAbility extends Ability {
       }
 
       // Apply knockback to all cars (including self for mobility)
-      const angle = Math.atan2(dy, dx);
-      Matter.Body.applyForce(targetCar.body, targetCar.body.position, {
-        x: Math.cos(angle) * actualForce,
-        y: Math.sin(angle) * actualForce
-      });
+      if (distance > 0.1) {
+        const angle = Math.atan2(dy, dx);
+        const forceMultiplier = 0.15; // Impulse strength
+
+        // Get current velocity and add impulse
+        const currentVel = targetCar.body.velocity;
+        const impulseX = Math.cos(angle) * forceMultiplier * actualForce;
+        const impulseY = Math.sin(angle) * forceMultiplier * actualForce;
+
+        Matter.Body.setVelocity(targetCar.body, {
+          x: currentVel.x + impulseX,
+          y: currentVel.y + impulseY
+        });
+
+        console.log(`Applied impulse to car: (${impulseX.toFixed(4)}, ${impulseY.toFixed(4)}), new velocity: (${(currentVel.x + impulseX).toFixed(4)}, ${(currentVel.y + impulseY).toFixed(4)})`);
+      }
     });
+
+    // Find and apply knockback to dynamic objects in radius
+    const allBodies = Matter.Composite.allBodies(world);
+    const dynamicObjectsInRange = allBodies.filter(body => {
+      if (!body.label || !body.label.startsWith('dynamic-')) return false;
+      if (body.isStatic) return false;
+
+      const dx = body.position.x - explosionPos.x;
+      const dy = body.position.y - explosionPos.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      return distance <= explosionRadius;
+    });
+
+    console.log(`Found ${dynamicObjectsInRange.length} dynamic objects in explosion radius`);
+
+    dynamicObjectsInRange.forEach(body => {
+      const dx = body.position.x - explosionPos.x;
+      const dy = body.position.y - explosionPos.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      if (distance > 0.1) {
+        const falloff = Math.max(0, 1 - (distance / explosionRadius));
+        const actualForce = explosionForce * falloff * 3.0; // 3x force on dynamic objects
+        const forceMultiplier = 0.25; // Higher multiplier for dynamic objects
+
+        const angle = Math.atan2(dy, dx);
+
+        // Get current velocity and add impulse
+        const currentVel = body.velocity;
+        const impulseX = Math.cos(angle) * forceMultiplier * actualForce;
+        const impulseY = Math.sin(angle) * forceMultiplier * actualForce;
+
+        Matter.Body.setVelocity(body, {
+          x: currentVel.x + impulseX,
+          y: currentVel.y + impulseY
+        });
+
+        console.log(`Applied impulse to dynamic object: (${impulseX.toFixed(4)}, ${impulseY.toFixed(4)}), new velocity: (${(currentVel.x + impulseX).toFixed(4)}, ${(currentVel.y + impulseY).toFixed(4)})`);
+      }
+    });
+
+    // Create visual explosion effect that lasts briefly
+    const currentTime = Date.now();
+    const explosionEffect = {
+      id: uuidv4(),
+      type: 'explosion-effect',
+      body: {
+        position: explosionPos,
+        angle: 0,
+        vertices: [] // No vertices needed for circle rendering
+      },
+      createdBy: projectile.createdBy,
+      createdAt: currentTime,
+      expiresAt: currentTime + 400, // 0.4 seconds
+      explosionRadius: explosionRadius,
+      position: explosionPos
+    };
+    gameState.abilityObjects.push(explosionEffect);
 
     // Remove the projectile
     Matter.World.remove(world, projectile.body);
@@ -465,6 +544,10 @@ class PortalAbility extends Ability {
 
     // Preserve velocity (maintain momentum through portal)
     // Velocity is already preserved by not modifying it
+
+    // Grant brief invulnerability to prevent wall collision damage
+    car.portalInvulnerable = true;
+    car.portalInvulnerableUntil = now + 300; // 300ms (0.3 seconds) of invulnerability
 
     // Set cooldown for both portals
     car.portalCooldown.set(portal.id, now);

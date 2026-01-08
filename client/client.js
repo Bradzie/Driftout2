@@ -3683,27 +3683,12 @@
           ctx.restore();
         }
 
-        // Explosion projectile rendering with transparent blast radius indicator
+        // Explosion projectile rendering (just the projectile, no blast radius)
         if (obj.type === 'explosion-projectile' && obj.vertices && obj.vertices.length) {
           ctx.save();
 
           const objX = obj.position.x;
           const objY = obj.position.y;
-
-          // Render blast radius indicator
-          if (obj.explosionRadius) {
-            const radiusScreenX = centerX + (objX - focusX) * scale;
-            const radiusScreenY = centerY - (objY - focusY) * scale;
-            const radiusSize = obj.explosionRadius * scale;
-
-            ctx.beginPath();
-            ctx.arc(radiusScreenX, radiusScreenY, radiusSize, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(255, 136, 0, 0.15)';
-            ctx.fill();
-            ctx.strokeStyle = '#ff8800';
-            ctx.lineWidth = 2 * scale;
-            ctx.stroke();
-          }
 
           // Render projectile body
           ctx.beginPath();
@@ -3727,11 +3712,38 @@
           });
           ctx.closePath();
 
-          ctx.fillStyle = obj.render?.fillStyle || 'rgba(255, 136, 0, 0.4)';
+          ctx.fillStyle = obj.render?.fillStyle || 'rgba(255, 136, 0, 0.5)';
           ctx.fill('evenodd');
           ctx.strokeStyle = obj.render?.strokeStyle || '#ff8800';
           ctx.lineWidth = (obj.render?.lineWidth || 3) * scale;
           ctx.lineJoin = 'round';
+          ctx.stroke();
+
+          ctx.restore();
+        }
+
+        // Explosion effect rendering (brief visual after impact)
+        if (obj.type === 'explosion-effect') {
+          ctx.save();
+
+          const objX = obj.position.x;
+          const objY = obj.position.y;
+          const radiusScreenX = centerX + (objX - focusX) * scale;
+          const radiusScreenY = centerY - (objY - focusY) * scale;
+          const radiusSize = obj.explosionRadius * scale;
+
+          // Calculate fade based on remaining lifetime
+          const timeLeft = obj.expiresAt - Date.now();
+          const totalDuration = 400; // 0.4 seconds
+          const fadeProgress = Math.max(0, timeLeft / totalDuration);
+
+          // Render expanding blast radius
+          ctx.beginPath();
+          ctx.arc(radiusScreenX, radiusScreenY, radiusSize, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255, 136, 0, ${0.3 * fadeProgress})`; // Fade out
+          ctx.fill();
+          ctx.strokeStyle = `rgba(255, 136, 0, ${0.8 * fadeProgress})`;
+          ctx.lineWidth = Math.max(3, 4 * scale);
           ctx.stroke();
 
           ctx.restore();

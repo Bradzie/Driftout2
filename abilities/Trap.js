@@ -125,7 +125,7 @@ class SpikeTrapAbility extends Ability {
       position.y,
       [vertices],
       {
-        isSensor: true,
+        isSensor: false,
         isStatic: false,
         label: 'spike-trap',
         ownerId: ownerId,
