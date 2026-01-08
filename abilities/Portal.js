@@ -7,26 +7,22 @@ class PortalAbility extends Ability {
     super({
       id: 'portal',
       name: 'Portal',
-      cooldown: 0, // charge-based, no cooldown
-      duration: 15000,  // 15 seconds portal lifetime
+      cooldown: 0,
+      duration: 15000,
       usesChargeSystem: true,
       maxCharge: 100,
-      baseRegenRate: 8,
-      minChargeToUse: 20,  // tap shot uses 20%
-      maxChargeToUse: 50,  // charged shot uses 50%
-      chargeTime: 1000     // 1 second to reach max charge
+      baseRegenRate: 6,
+      minChargeToUse: 20,
+      maxChargeToUse: 50,
+      chargeTime: 1000
     });
 
     this.projectileRadius = 6;
     this.projectileSpeed = 0.3;
     this.projectileDensity = 0.15;
-
-    // explosion properties for charged shot
     this.explosionRadius = 75;
-    this.explosionDamage = 2;  // very little damage
-    this.explosionForce = 0.8;  // utility knockback (similar to dash power)
-
-    // portal properties
+    this.explosionDamage = 2;
+    this.explosionForce = 0.8;
     this.portalRadius = 20;
   }
 
@@ -45,9 +41,7 @@ class PortalAbility extends Ability {
 
     car.chargeState.current -= chargeUsed;
     const chargeScale = this.getChargeScale(chargeUsed);
-
-    // Determine if this is a tap (portal) or charged (explosion) shot
-    const isTapShot = chargeUsed <= this.minChargeToUse + 5; // small buffer
+    const isTapShot = chargeUsed <= this.minChargeToUse + 5;
 
     const forwardOffset = 20 + this.projectileRadius;
     const position = {
@@ -58,7 +52,6 @@ class PortalAbility extends Ability {
     let projectileBody, projectileObject;
 
     if (isTapShot) {
-      // Create portal projectile
       projectileBody = this.createPortalProjectile(position, world, car.id);
 
       const projectileForce = {
@@ -74,13 +67,12 @@ class PortalAbility extends Ability {
         abilityId: this.id,
         createdBy: car.id,
         createdAt: currentTime,
-        expiresAt: currentTime + 5000, // projectile expires after 5 seconds
+        expiresAt: currentTime + 5000, // 5 sec expiry
         position: position,
         radius: this.projectileRadius,
         damage: 0, // no damage
       };
     } else {
-      // Create explosion projectile
       const explosionSize = this.projectileRadius * 1.2 * (0.8 + chargeScale * 0.4);
       projectileBody = this.createExplosionProjectile(position, world, car.id, explosionSize);
 
@@ -145,12 +137,12 @@ class PortalAbility extends Ability {
       position.y,
       [vertices],
       {
-        isSensor: false,  // can collide but won't damage
+        isSensor: false,
         isStatic: false,
         label: 'portal-projectile',
         ownerId: ownerId,
         render: {
-          fillStyle: '#0088ff',  // Portal 2 blue
+          fillStyle: '#0088ff',
           strokeStyle: '#64b4ff',
           lineWidth: 3
         },
@@ -226,12 +218,12 @@ class PortalAbility extends Ability {
       position.y,
       [vertices],
       {
-        isSensor: true,  // no physics collision, only detection
-        isStatic: true,  // doesn't move
+        isSensor: true,
+        isStatic: true,
         label: type,
         ownerId: ownerId,
         render: {
-          fillStyle: isOrange ? '#ff8800' : '#0088ff',  // Portal 2 colors
+          fillStyle: isOrange ? '#ff8800' : '#0088ff',
           strokeStyle: isOrange ? '#ffaa44' : '#64b4ff',
           lineWidth: 4
         },
@@ -260,29 +252,24 @@ class PortalAbility extends Ability {
   }
 
   static handlePortalProjectileCollision(projectile, otherBody, world, gameState, room) {
-    // Create portal at collision point
     const currentTime = Date.now();
     const portalRadius = 20;
     const baseDuration = 15000; // 15 seconds
 
-    // Determine portal duration (check for upgrades)
     const creator = Array.from(room.players.values()).find(p => p.id === projectile.createdBy);
     const portalDuration = baseDuration + (creator?.portalDuration || 0);
 
-    // Find existing portals by this player
     const playerPortals = gameState.abilityObjects.filter(
       obj => (obj.type === 'portal_orange' || obj.type === 'portal_blue') &&
              obj.createdBy === projectile.createdBy
     );
 
-    // Remove the projectile immediately
     Matter.World.remove(world, projectile.body);
     const projectileIndex = gameState.abilityObjects.findIndex(obj => obj.id === projectile.id);
     if (projectileIndex !== -1) {
       gameState.abilityObjects.splice(projectileIndex, 1);
     }
 
-    // Helper function to create portal
     const createPortal = (type, position) => {
       const sides = 16;
       const vertices = [];
@@ -334,36 +321,28 @@ class PortalAbility extends Ability {
       return portal;
     };
 
-    // Create new portal
     if (playerPortals.length === 0) {
-      // First portal - create orange
       createPortal('portal_orange', projectile.body.position);
     } else if (playerPortals.length === 1) {
-      // Second portal - create blue and link them
       const newPortal = createPortal('portal_blue', projectile.body.position);
 
-      // Link portals bidirectionally
       const existingPortal = playerPortals[0];
       existingPortal.linkedPortalId = newPortal.id;
       newPortal.linkedPortalId = existingPortal.id;
     } else {
-      // Already have 2 portals - remove oldest and create new one
       const oldest = playerPortals.sort((a, b) => a.createdAt - b.createdAt)[0];
       const remaining = playerPortals.find(p => p.id !== oldest.id);
 
-      // Remove oldest portal
       Matter.World.remove(world, oldest.body);
       const oldestIndex = gameState.abilityObjects.findIndex(obj => obj.id === oldest.id);
       if (oldestIndex !== -1) {
         gameState.abilityObjects.splice(oldestIndex, 1);
       }
 
-      // Determine new portal type (opposite of remaining)
       const newType = remaining.type === 'portal_orange' ? 'portal_blue' : 'portal_orange';
 
       const newPortal = createPortal(newType, projectile.body.position);
 
-      // Link portals
       remaining.linkedPortalId = newPortal.id;
       newPortal.linkedPortalId = remaining.id;
     }
@@ -372,18 +351,14 @@ class PortalAbility extends Ability {
   }
 
   static handleExplosionProjectileCollision(projectile, otherBody, world, gameState, room) {
-    // Prevent duplicate processing if already removed
     if (!projectile || !projectile.body) return false;
 
-    // Create explosion at collision point
     const explosionPos = projectile.body.position;
     const explosionRadius = projectile.explosionRadius;
     const explosionDamage = projectile.explosionDamage;
     const explosionForce = projectile.explosionForce;
+    const forceMultiplier = 5;
 
-    console.log(`Explosion triggered at (${explosionPos.x.toFixed(1)}, ${explosionPos.y.toFixed(1)}) with radius ${explosionRadius}, force ${explosionForce}`);
-
-    // Find all cars in radius
     const carsInRange = Array.from(room.players.values()).filter(targetCar => {
       if (!targetCar.body || targetCar.isGhost || targetCar.godMode) return false;
 
@@ -393,26 +368,18 @@ class PortalAbility extends Ability {
       return distance <= explosionRadius;
     });
 
-    console.log(`Found ${carsInRange.length} cars in explosion radius`);
-
-    // Apply damage and knockback to cars
     carsInRange.forEach(targetCar => {
       const dx = targetCar.body.position.x - explosionPos.x;
       const dy = targetCar.body.position.y - explosionPos.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
 
-      // Falloff calculation (prevent division by zero at center)
       const falloff = distance === 0 ? 1 : Math.max(0, 1 - (distance / explosionRadius));
       const actualDamage = explosionDamage * falloff;
       const actualForce = explosionForce * falloff;
 
-      console.log(`Applying to car ${targetCar.id.substring(0, 8)}: distance=${distance.toFixed(1)}, falloff=${falloff.toFixed(2)}, force=${actualForce.toFixed(4)}, damage=${actualDamage.toFixed(2)}`);
-
-      // Apply damage (only if not self)
       if (targetCar.id !== projectile.createdBy) {
         targetCar.currentHealth -= actualDamage;
 
-        // Tag for kill credit
         if (!targetCar.damageTagHistory) {
           targetCar.damageTagHistory = [];
         }
@@ -426,12 +393,9 @@ class PortalAbility extends Ability {
         }
       }
 
-      // Apply knockback to all cars (including self for mobility)
       if (distance > 0.1) {
         const angle = Math.atan2(dy, dx);
-        const forceMultiplier = 0.15; // Impulse strength
 
-        // Get current velocity and add impulse
         const currentVel = targetCar.body.velocity;
         const impulseX = Math.cos(angle) * forceMultiplier * actualForce;
         const impulseY = Math.sin(angle) * forceMultiplier * actualForce;
@@ -440,12 +404,9 @@ class PortalAbility extends Ability {
           x: currentVel.x + impulseX,
           y: currentVel.y + impulseY
         });
-
-        console.log(`Applied impulse to car: (${impulseX.toFixed(4)}, ${impulseY.toFixed(4)}), new velocity: (${(currentVel.x + impulseX).toFixed(4)}, ${(currentVel.y + impulseY).toFixed(4)})`);
       }
     });
 
-    // Find and apply knockback to dynamic objects in radius
     const allBodies = Matter.Composite.allBodies(world);
     const dynamicObjectsInRange = allBodies.filter(body => {
       if (!body.label || !body.label.startsWith('dynamic-')) return false;
@@ -457,8 +418,6 @@ class PortalAbility extends Ability {
       return distance <= explosionRadius;
     });
 
-    console.log(`Found ${dynamicObjectsInRange.length} dynamic objects in explosion radius`);
-
     dynamicObjectsInRange.forEach(body => {
       const dx = body.position.x - explosionPos.x;
       const dy = body.position.y - explosionPos.y;
@@ -466,12 +425,10 @@ class PortalAbility extends Ability {
 
       if (distance > 0.1) {
         const falloff = Math.max(0, 1 - (distance / explosionRadius));
-        const actualForce = explosionForce * falloff * 3.0; // 3x force on dynamic objects
-        const forceMultiplier = 0.25; // Higher multiplier for dynamic objects
+        const actualForce = explosionForce * falloff * 2;
 
         const angle = Math.atan2(dy, dx);
 
-        // Get current velocity and add impulse
         const currentVel = body.velocity;
         const impulseX = Math.cos(angle) * forceMultiplier * actualForce;
         const impulseY = Math.sin(angle) * forceMultiplier * actualForce;
@@ -481,11 +438,9 @@ class PortalAbility extends Ability {
           y: currentVel.y + impulseY
         });
 
-        console.log(`Applied impulse to dynamic object: (${impulseX.toFixed(4)}, ${impulseY.toFixed(4)}), new velocity: (${(currentVel.x + impulseX).toFixed(4)}, ${(currentVel.y + impulseY).toFixed(4)})`);
       }
     });
 
-    // Create visual explosion effect that lasts briefly
     const currentTime = Date.now();
     const explosionEffect = {
       id: uuidv4(),
@@ -493,17 +448,16 @@ class PortalAbility extends Ability {
       body: {
         position: explosionPos,
         angle: 0,
-        vertices: [] // No vertices needed for circle rendering
+        vertices: [] // circle render, no verts
       },
       createdBy: projectile.createdBy,
       createdAt: currentTime,
-      expiresAt: currentTime + 400, // 0.4 seconds
+      expiresAt: currentTime + 300, // 0.3 secs
       explosionRadius: explosionRadius,
       position: explosionPos
     };
     gameState.abilityObjects.push(explosionEffect);
 
-    // Remove the projectile
     Matter.World.remove(world, projectile.body);
     const projectileIndex = gameState.abilityObjects.findIndex(obj => obj.id === projectile.id);
     if (projectileIndex !== -1) {
@@ -514,42 +468,32 @@ class PortalAbility extends Ability {
   }
 
   static handlePortalTeleport(portal, car, gameState) {
-    // Prevent teleporting if in ghost mode or god mode
     if (car.isGhost || car.godMode) return false;
 
-    // Cooldown to prevent infinite teleport loops
     const now = Date.now();
     if (!car.portalCooldown) car.portalCooldown = new Map();
 
     const lastTeleport = car.portalCooldown.get(portal.id);
-    const teleportCooldown = 500; // 500ms cooldown per portal
+    const teleportCooldown = 400;
 
     if (lastTeleport && (now - lastTeleport) < teleportCooldown) {
       return false;
     }
 
-    // Find linked portal
     const linkedPortal = gameState.abilityObjects.find(
       obj => obj.id === portal.linkedPortalId
     );
 
     if (!linkedPortal) return false;
-
-    // Teleport car to linked portal
     const exitPos = linkedPortal.body.position;
     Matter.Body.setPosition(car.body, {
       x: exitPos.x,
       y: exitPos.y
     });
 
-    // Preserve velocity (maintain momentum through portal)
-    // Velocity is already preserved by not modifying it
-
-    // Grant brief invulnerability to prevent wall collision damage
     car.portalInvulnerable = true;
-    car.portalInvulnerableUntil = now + 300; // 300ms (0.3 seconds) of invulnerability
+    car.portalInvulnerableUntil = now + 300; // small godmode frams to prevent instant crashes
 
-    // Set cooldown for both portals
     car.portalCooldown.set(portal.id, now);
     car.portalCooldown.set(linkedPortal.id, now);
 
