@@ -3605,123 +3605,93 @@
           ctx.restore();
         }
 
-        if (obj.type === 'cannonball' && obj.vertices && obj.vertices.length) {
-          console.log('Rendering cannonball at', obj.position, 'angle:', obj.angle, 'vertices:', obj.vertices.length);
+        if (obj.type === 'cannonball') {
           ctx.save();
 
           const objX = obj.position.x;
           const objY = obj.position.y;
 
+          let radius = 6;
+          if (obj.vertices && obj.vertices.length > 0) {
+            radius = Math.sqrt(obj.vertices[0].x * obj.vertices[0].x + obj.vertices[0].y * obj.vertices[0].y);
+          }
+          if (obj.radius) {
+            radius = obj.radius;
+          }
+
+          const screenX = centerX + (objX - focusX) * scale;
+          const screenY = centerY - (objY - focusY) * scale;
+          const screenRadius = radius * scale;
+
           ctx.beginPath();
-          obj.vertices.forEach((v, i) => {
-            const cos = Math.cos(obj.angle);
-            const sin = Math.sin(obj.angle);
-            const rotatedX = v.x * cos - v.y * sin;
-            const rotatedY = v.x * sin + v.y * cos;
-
-            const worldX = objX + rotatedX;
-            const worldY = objY + rotatedY;
-
-            const screenX = centerX + (worldX - focusX) * scale;
-            const screenY = centerY - (worldY - focusY) * scale;
-
-            if (i === 0) {
-              console.log('First vertex screenX:', screenX, 'screenY:', screenY, 'centerX:', centerX, 'centerY:', centerY, 'scale:', scale);
-              ctx.moveTo(screenX, screenY);
-            } else {
-              ctx.lineTo(screenX, screenY);
-            }
-          });
-          ctx.closePath();
-
+          ctx.arc(screenX, screenY, screenRadius, 0, Math.PI * 2);
           ctx.fillStyle = obj.render?.fillStyle || '#2c3e50';
-          ctx.fill('evenodd');
+          ctx.fill();
           ctx.strokeStyle = obj.render?.strokeStyle || '#34495e';
           ctx.lineWidth = (obj.render?.lineWidth || 2) * scale;
-          ctx.lineJoin = 'round';
           ctx.stroke();
 
           ctx.restore();
         }
 
-        // Portal projectile rendering
-        if (obj.type === 'portal-projectile' && obj.vertices && obj.vertices.length) {
+        if (obj.type === 'portal-projectile') {
           ctx.save();
 
           const objX = obj.position.x;
           const objY = obj.position.y;
 
+          let radius = 6; // default
+          if (obj.vertices && obj.vertices.length > 0) {
+            radius = Math.sqrt(obj.vertices[0].x * obj.vertices[0].x + obj.vertices[0].y * obj.vertices[0].y);
+          }
+          if (obj.radius) {
+            radius = obj.radius;
+          }
+
+          const screenX = centerX + (objX - focusX) * scale;
+          const screenY = centerY - (objY - focusY) * scale;
+          const screenRadius = radius * scale;
+
           ctx.beginPath();
-          obj.vertices.forEach((v, i) => {
-            const cos = Math.cos(obj.angle);
-            const sin = Math.sin(obj.angle);
-            const rotatedX = v.x * cos - v.y * sin;
-            const rotatedY = v.x * sin + v.y * cos;
-
-            const worldX = objX + rotatedX;
-            const worldY = objY + rotatedY;
-
-            const screenX = centerX + (worldX - focusX) * scale;
-            const screenY = centerY - (worldY - focusY) * scale;
-
-            if (i === 0) {
-              ctx.moveTo(screenX, screenY);
-            } else {
-              ctx.lineTo(screenX, screenY);
-            }
-          });
-          ctx.closePath();
-
+          ctx.arc(screenX, screenY, screenRadius, 0, Math.PI * 2);
           ctx.fillStyle = obj.render?.fillStyle || '#0088ff';
-          ctx.fill('evenodd');
+          ctx.fill();
           ctx.strokeStyle = obj.render?.strokeStyle || '#64b4ff';
           ctx.lineWidth = (obj.render?.lineWidth || 3) * scale;
-          ctx.lineJoin = 'round';
           ctx.stroke();
 
           ctx.restore();
         }
 
-        // Explosion projectile rendering (just the projectile, no blast radius)
-        if (obj.type === 'explosion-projectile' && obj.vertices && obj.vertices.length) {
+        if (obj.type === 'explosion-projectile') {
           ctx.save();
 
           const objX = obj.position.x;
           const objY = obj.position.y;
 
-          // Render projectile body
+          let radius = 7;
+          if (obj.vertices && obj.vertices.length > 0) {
+            radius = Math.sqrt(obj.vertices[0].x * obj.vertices[0].x + obj.vertices[0].y * obj.vertices[0].y);
+          }
+          if (obj.radius) {
+            radius = obj.radius;
+          }
+
+          const screenX = centerX + (objX - focusX) * scale;
+          const screenY = centerY - (objY - focusY) * scale;
+          const screenRadius = radius * scale;
+
           ctx.beginPath();
-          obj.vertices.forEach((v, i) => {
-            const cos = Math.cos(obj.angle);
-            const sin = Math.sin(obj.angle);
-            const rotatedX = v.x * cos - v.y * sin;
-            const rotatedY = v.x * sin + v.y * cos;
-
-            const worldX = objX + rotatedX;
-            const worldY = objY + rotatedY;
-
-            const screenX = centerX + (worldX - focusX) * scale;
-            const screenY = centerY - (worldY - focusY) * scale;
-
-            if (i === 0) {
-              ctx.moveTo(screenX, screenY);
-            } else {
-              ctx.lineTo(screenX, screenY);
-            }
-          });
-          ctx.closePath();
-
+          ctx.arc(screenX, screenY, screenRadius, 0, Math.PI * 2);
           ctx.fillStyle = obj.render?.fillStyle || 'rgba(255, 136, 0, 0.5)';
-          ctx.fill('evenodd');
+          ctx.fill();
           ctx.strokeStyle = obj.render?.strokeStyle || '#ff8800';
           ctx.lineWidth = (obj.render?.lineWidth || 3) * scale;
-          ctx.lineJoin = 'round';
           ctx.stroke();
 
           ctx.restore();
         }
 
-        // Explosion effect rendering (brief visual after impact)
         if (obj.type === 'explosion-effect') {
           ctx.save();
 
@@ -3731,15 +3701,13 @@
           const radiusScreenY = centerY - (objY - focusY) * scale;
           const radiusSize = obj.explosionRadius * scale;
 
-          // Calculate fade based on remaining lifetime
           const timeLeft = obj.expiresAt - Date.now();
           const totalDuration = 400; // 0.4 seconds
           const fadeProgress = Math.max(0, timeLeft / totalDuration);
 
-          // Render expanding blast radius
           ctx.beginPath();
           ctx.arc(radiusScreenX, radiusScreenY, radiusSize, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(255, 136, 0, ${0.3 * fadeProgress})`; // Fade out
+          ctx.fillStyle = `rgba(255, 136, 0, ${0.3 * fadeProgress})`;
           ctx.fill();
           ctx.strokeStyle = `rgba(255, 136, 0, ${0.8 * fadeProgress})`;
           ctx.lineWidth = Math.max(3, 4 * scale);
@@ -3748,7 +3716,6 @@
           ctx.restore();
         }
 
-        // Portal orange rendering (static, no shadows/particles)
         if (obj.type === 'portal_orange' && obj.vertices && obj.vertices.length) {
           ctx.save();
 
