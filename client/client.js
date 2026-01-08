@@ -756,7 +756,7 @@
   // to stop any rendering before first state packet
   let hasReceivedFirstState = false;
 
-  // Mobile detection and controls
+  // mobile
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
     || ('ontouchstart' in window)
     || (window.matchMedia && window.matchMedia("(max-width: 768px)").matches);
@@ -764,15 +764,9 @@
   let joystickStartPos = { x: 0, y: 0 };
   let joystickCurrentPos = { x: 0, y: 0 };
 
-  // Function to show/hide mobile controls based on game state
   function updateMobileControlsVisibility() {
     const mobileControls = document.getElementById('mobileControls');
     if (!mobileControls) return;
-
-    // Show mobile controls only when:
-    // - Device is mobile
-    // - Player is actively in game (sendInputInterval is running)
-    // - Chat is not focused
     if (isMobile && sendInputInterval !== null && !isChatFocused) {
       mobileControls.classList.remove('hidden');
     } else {
@@ -784,7 +778,7 @@
   let inputSequenceNumber = 0;
   // some inputs can be sent on execution (e.g. boost) so it responds slightly faster and isn't bound to the standard input frequency
   let lastInputSendTime = 0;
-  const MIN_INPUT_INTERVAL = 1000 / 120; // ~8.33ms max 120Hz
+  const MIN_INPUT_INTERVAL = 1000 / 60; // 16ms, 60hz
 
   function encodeBinaryInput(inputData) {
     const buffer = new ArrayBuffer(21);
