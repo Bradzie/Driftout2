@@ -2175,9 +2175,14 @@
     const rect = gameCanvas.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
-    inputState.cursor.x = e.clientX - cx;
-    inputState.cursor.y = e.clientY - cy;
-    // instant input send
+
+    const rawX = e.clientX - cx;
+    const rawY = e.clientY - cy;
+    const normalizeRadius = Math.min(rect.width, rect.height) / 2;
+    const CURSOR_MAX = 100;
+
+    inputState.cursor.x = (rawX / normalizeRadius) * CURSOR_MAX;
+    inputState.cursor.y = (rawY / normalizeRadius) * CURSOR_MAX;
     if (typeof sendInput === 'function') sendInput();
   });
 
