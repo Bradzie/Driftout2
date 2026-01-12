@@ -3428,7 +3428,6 @@
             // Dual color mode: draw striped border
             else {
               const stripeLength = (shape.stripeLength || shape.borderWidth * 1.8 || 25) * scale;
-              let cumulativeStripeCount = 0;
 
               for (let i = 0; i < verts.length; i++) {
                 const a = verts[i];
@@ -3459,18 +3458,15 @@
                   ctx.lineTo(x0 - offsetX, y0 - offsetY);
                   ctx.closePath();
 
-                  const isLastStripe = s === steps - 1;
-                  ctx.fillStyle = isLastStripe
-                    ? baseColor
-                    : shape.borderColors[cumulativeStripeCount % shape.borderColors.length];
+                  // First and last stripe always use base color (red)
+                  const isEdgeStripe = s === 0 || s === steps - 1;
+                  ctx.fillStyle = isEdgeStripe ? baseColor : shape.borderColors[s % shape.borderColors.length];
                   ctx.fill();
-
-                  cumulativeStripeCount++;
                 }
 
-                const radius = lineWidth / 2;
+                // Draw corner circle in base color
                 ctx.beginPath();
-                ctx.arc(a.x, a.y, radius, 0, Math.PI * 2);
+                ctx.arc(a.x, a.y, lineWidth / 2, 0, Math.PI * 2);
                 ctx.fillStyle = baseColor;
                 ctx.fill();
               }
@@ -4090,14 +4086,13 @@
     if (map.name) return map.name;
     if (map.key) return map.key;
     
-    // generate hash of map structure
     const mapString = JSON.stringify({
       shapes: map.shapes || [],
       checkpoints: map.checkpoints || [],
       dynamicObjects: map.dynamicObjects || []
     });
     
-    // simple but reliable hash
+    // hash
     let hash = 0;
     for (let i = 0; i < mapString.length; i++) {
       const char = mapString.charCodeAt(i);
