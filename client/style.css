@@ -6,7 +6,7 @@
 }
 
 @font-face {
-  font-family: 'Quicksilver Italic';
+  font-family: 'Quicksilver';
   src: url('/fonts/Quicksilver Italic.ttf') format('truetype');
   font-weight: normal;
   font-style: normal;
@@ -20,8 +20,15 @@
 }
 
 @font-face {
-  font-family: 'Overpass';
-  src: url('/fonts/Overpass-VariableFont_wght.ttf') format('truetype');
+  font-family: 'Nunito';
+  src: url('/fonts/Nunito-VariableFont_wght.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Nunito';
+  src: url('/fonts/Nunito-VariableFont_wght.ttf') format('truetype');
   font-weight: normal;
   font-style: normal;
 }
@@ -30,7 +37,7 @@ html, body {
   margin: 0;
   padding: 0;
   height: 100%;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: 'Nunito', Tahoma, Geneva, Verdana, serif;
   color: #ffffff;
   background: rgb(50, 50, 50);
   overflow: hidden;
@@ -50,7 +57,7 @@ html, body {
 }
 
 #menu .title {
-  font-family: 'Quicksilver Italic', serif;
+  font-family: 'Nunito', serif;
   font-size: 10rem;
   margin-bottom: 1rem;
   color: #ffffff;
@@ -78,13 +85,13 @@ html, body {
   line-height: 200%;
   font-size: 1rem;
   font-weight: 600;
-  font-family: 'Overpass', sans-serif;';
+  font-family: 'Nunito', serif;';
 }
 
 .room-name-display-room {
   font-size: 1.2rem;
   font-weight: 600;
-  font-family: 'Overpass', sans-serif;';
+  font-family: 'Nunito', serif;';
 }
 
 .car-selector {
@@ -124,14 +131,14 @@ html, body {
 .car-name {
   font-size: 1.5rem;
   color: #ff5f5f;
-  font-family: 'Overpass', serif;
+  font-family: 'Nunito', serif;
   font-weight: bold;
 }
 
 .car-ability {
   font-size: 0.9rem;
   color: #818181;
-  font-family: 'Overpass', serif;
+  font-family: 'Nunito', serif;
   font-weight: normal;
   margin-left: 1px;
 }
@@ -188,7 +195,7 @@ html, body {
   color: #ff4757;
   font-weight: bold;
   margin-bottom: 0.3rem;
-  font-family: "Overpass", sans-serif;
+  font-family: "Nunito", serif;
 }
 
 .stat-bar {
@@ -225,7 +232,7 @@ html, body {
   width: 350px;
   font-size: 1.5rem;
   font-weight: bolder;
-  font-family: 'Overpass', sans-serif;
+  font-family: 'Nunito', serif;
   background: #ffffff;
   color: #333;
   box-shadow: 0 2px 6px rgba(0,0,0,0.2);
@@ -372,7 +379,7 @@ html, body {
   color: #ffffff;
   font-size: 1em;
   font-weight: 600;
-  font-family: 'Overpass', sans-serif;
+  font-family: 'Nunito', serif;
   text-align: center;
   display: block;
 }
@@ -406,7 +413,7 @@ html, body {
   background: rgba(20, 20, 20, 0.95);
   padding: 8px 12px;
   margin-bottom: 6px;
-  font-family: 'Tahoma', sans-serif;
+  font-family: 'Tahoma', serif;
   font-size: 0.85em;
   font-weight: bold;
   border-left: 3px solid;
@@ -454,7 +461,7 @@ html, body {
   right: 20px;
   background: rgba(20, 20, 20, 0.9);
   padding: 10px 16px;
-  font-family: 'Overpass', monospace;
+  font-family: 'Nunito', monospace;
   backdrop-filter: blur(10px);
   z-index: 50;
   min-width: 140px;
@@ -498,7 +505,7 @@ html, body {
   justify-content: center;
   align-items: center;
   flex-direction: column;
-  font-family: Arial, sans-serif;
+  font-family: 'Nunito', serif;
   color: white;
 }
 
@@ -516,7 +523,7 @@ html, body {
   font-size: 2em;
   margin-bottom: 20px;
   font-weight: bold;
-  font-family: 'Quicksilver', serif;
+  font-family: 'Nunito', serif;
 }
 
 .loading-spinner {
@@ -549,7 +556,7 @@ html, body {
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(5px);
   z-index: 2000;
-  font-family: Arial, sans-serif;
+  font-family: 'Nunito', serif;
 
 }
 
@@ -557,7 +564,7 @@ html, body {
   text-align: center;
   background: #ff5f5f;
   padding: 40px;
-  font-family: Arial, sans-serif;
+  font-family: 'Nunito', serif;
   max-width: 500px; /* Limit width for better readability */
   width: 90%; /* Responsive width */
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3); /* Add shadow for better visibility */
@@ -567,7 +574,7 @@ html, body {
   font-size: 1.8em;
   margin-bottom: 20px;
   color: white;
-  font-family: 'Overpass', serif;
+  font-family: 'Nunito', serif;
 }
 
 .disconnect-message {
@@ -592,7 +599,7 @@ html, body {
   font-weight: bold;
   cursor: pointer;
   transition: background-color 0.2s;
-  font-family: 'Overpass', serif;
+  font-family: 'Nunito', serif;
 }
 
 .disconnect-refresh-btn:hover {
@@ -607,7 +614,7 @@ html, body {
   padding: 30px;
   text-align: center;
   color: white;
-  font-family: Arial, sans-serif;
+  font-family: 'Nunito', serif;
   margin: 20px 0;
   max-width: 350px;
 }
@@ -616,7 +623,7 @@ html, body {
   font-size: 1.5em;
   margin-bottom: 15px;
   color: #ff5f5f;
-  font-family: 'Quicksilver', serif;
+  font-family: 'Nunito', serif;
 }
 
 .warning-message {
@@ -641,7 +648,7 @@ html, body {
   border-radius: 5px;
   cursor: pointer;
   transition: background-color 0.2s;
-  font-family: 'Quicksilver', serif;
+  font-family: 'Nunito', serif;
 }
 
 .menu-refresh-btn:hover {
@@ -767,7 +774,7 @@ html, body {
   justify-content: center;
   font-size: 0.7em;
   font-weight: bold;
-  font-family: 'Arial', sans-serif;
+  font-family: 'Nunito', serif;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
@@ -777,7 +784,7 @@ html, body {
   font-weight: 600;
   text-align: center;
   margin-bottom: 1px;
-  font-family: 'Overpass', sans-serif;
+  font-family: 'Nunito', serif;
 }
 
 /* Animation for cards appearing */
@@ -867,7 +874,7 @@ html, body {
   right: 20px;
   background: rgba(20, 20, 20, 0.9);
   padding: 12px 16px;
-  font-family: 'Overpass', monospace;
+  font-family: 'Nunito', monospace;
   backdrop-filter: blur(10px);
   z-index: 50;
   min-width: 140px;
@@ -908,7 +915,7 @@ html, body {
   right: 20px;
   background: rgba(20, 20, 20, 0.9);
   padding: 10px 16px;
-  font-family: 'Overpass', monospace;
+  font-family: 'Nunito', monospace;
   backdrop-filter: blur(10px);
   z-index: 50;
   min-width: 140px;
@@ -960,7 +967,7 @@ html, body {
   color: #ffffff;
   font-size: 1.2em;
   font-weight: bold;
-  font-family: 'Overpass', monospace;
+  font-family: 'Nunito', monospace;
   text-align: center;
 }
 
@@ -973,7 +980,7 @@ html, body {
   background: rgba(20, 20, 20, 0.95);
   border: 2px solid #ff5f5f;
   border-radius: 8px;
-  font-family: 'Arial', sans-serif;
+  font-family: ''Nunito'', serif;
   font-size: 0.85em;
   backdrop-filter: blur(10px);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
@@ -1255,7 +1262,7 @@ input[type="number"]:focus {
 .settings-title {
   margin: 0;
   font-size: 2rem;
-  font-family: 'Overpass', serif;
+  font-family: 'Nunito', serif;
 }
 
 .settings-close-btn {
@@ -1299,7 +1306,7 @@ input[type="number"]:focus {
   margin: 0 0 15px 0;
   font-size: 1.2rem;
   color: #ff5f5f;
-  font-family: 'Overpass', sans-serif;
+  font-family: 'Nunito', serif;
   font-weight: 600;
 }
 
@@ -1318,7 +1325,7 @@ input[type="number"]:focus {
   color: #555;
   font-size: 1rem;
   font-weight: 500;
-  font-family: 'Overpass', sans-serif;
+  font-family: 'Nunito', serif;
 }
 
 .settings-placeholder {
@@ -1446,7 +1453,7 @@ input[type="number"]:focus {
   padding: 12px 24px;
   font-size: 1rem;
   font-weight: 600;
-  font-family: 'Overpass', sans-serif;';
+  font-family: 'Nunito', serif;
   cursor: pointer;
   margin-top: 1rem;
   transition: all 0.3s ease;
@@ -1729,7 +1736,7 @@ input[type="number"]:focus {
   background: #ffffff;
   color: #3a3a3a;
   font-size: 1.2rem;
-  font-family: 'Overpass', sans-serif;
+  font-family: 'Nunito', serif;
   font-weight: bold;
   text-align: center;
 }
@@ -2067,7 +2074,7 @@ input[type="number"]:focus {
   max-width: 300px;
   backdrop-filter: blur(10px);
   z-index: 100;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, serif;
   font-size: 12px;
   color: #ffffff;
   transition: top 0.3s ease-out;
@@ -2084,7 +2091,7 @@ input[type="number"]:focus {
   margin-bottom: 8px;
   font-size: 1rem;
   text-transform: uppercase;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, serif;
   letter-spacing: 1px;
 }
 
@@ -2148,7 +2155,7 @@ input[type="number"]:focus {
   display: flex;
   justify-content: center;
   align-items: center;
-  font-family: 'Arial', sans-serif;
+  font-family: 'Nunito', serif;
 }
 
 .detailed-leaderboard-content {
@@ -2186,7 +2193,7 @@ input[type="number"]:focus {
   padding: 15px 12px;
   text-align: center;
   color: #ffffff;
-  font-family: 'Overpass', sans-serif;
+  font-family: 'Nunito', serif;
   font-weight: bold;
   font-size: 14px;
   letter-spacing: 1px;
@@ -2244,7 +2251,7 @@ input[type="number"]:focus {
 
 .leaderboard-player-name {
   font-weight: 800;
-  font-family: 'Tahoma', sans-serif;
+  font-family: 'Tahoma', serif;
   text-shadow:
     -1px -1px 0 #000000,
     1px -1px 0 #000000,
@@ -2259,25 +2266,25 @@ input[type="number"]:focus {
 /* Stats highlighting */
 .leaderboard-table .stat-laps {
   color: #ff6b6b;
-  font-family: 'Overpass', sans-serif;
+  font-family: 'Nunito', serif;
   font-weight: bold;
 }
 
 .leaderboard-table .stat-kills {
   color: #ff6b6b;
-  font-family: 'Overpass', sans-serif;
+  font-family: 'Nunito', serif;
   font-weight: bold;
 }
 
 .leaderboard-table .stat-deaths {
   color: #ff6b6b;
-  font-family: 'Overpass', sans-serif;
+  font-family: 'Nunito', serif;
   font-weight: bold;
 }
 
 .leaderboard-table .stat-kdr {
   color: #ff6b6b;
-  font-family: 'Overpass', sans-serif;
+  font-family: 'Nunito', serif;
   font-weight: bold;
 }
 
@@ -2380,7 +2387,7 @@ input[type="number"]:focus {
 }
 
 .auth-title {
-  font-family: 'Quicksilver Italic', serif;
+  font-family: 'Nunito', serif;
   font-size: 3.5rem;
   margin-bottom: 2rem;
   color: #ffffff;
@@ -2418,7 +2425,7 @@ input[type="number"]:focus {
   color: #ffffff;
   cursor: pointer;
   transition: all 0.3s ease;
-  font-family: 'Segoe UI', sans-serif;
+  font-family: 'Segoe UI', serif;
 }
 
 .auth-option-btn:hover {
@@ -2484,7 +2491,7 @@ input[type="number"]:focus {
   background: rgba(255, 255, 255, 0.95);
   color: #333;
   font-size: 1.3rem;
-  font-family: 'Overpass', sans-serif;
+  font-family: 'Nunito', serif;
   font-weight: bold;
   transition: all 0.2s ease;
   text-align: center;
@@ -2560,7 +2567,7 @@ input[type="number"]:focus {
   padding: 1.2rem 2rem !important;
   font-weight: 700 !important;
   letter-spacing: 1px;
-  font-family: 'Overpass', sans-serif;
+  font-family: 'Nunito', serif;
 }
 
 .play-btn:hover {
@@ -2584,7 +2591,7 @@ input[type="number"]:focus {
   color: #ffffff;
   font-size: 1rem;
   font-weight: bold;
-  font-family: 'Overpass', sans-serif;
+  font-family: 'Nunito', serif;
   cursor: pointer;
   padding: 0.5rem;
   transition: all 0.2s ease;
@@ -2873,7 +2880,7 @@ input[type="number"]:focus {
   flex-direction: column;
   gap: 1rem;
   color: #ffffff;
-  font-family: 'Overpass', sans-serif;
+  font-family: 'Nunito', serif;
 }
 
 #mapSelect {
@@ -3115,7 +3122,7 @@ select.property-input {
   width: 350px;
   max-height: 250px;
   z-index: 15;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, serif;
 }
 
 .chat-messages {
@@ -3184,7 +3191,7 @@ select.property-input {
   outline: none;
   transition: all 0.2s ease;
   box-sizing: border-box;
-  font-family: 'Overpass', sans-serif;
+  font-family: 'Nunito', serif;
 }
 
 .chat-input:focus {
@@ -3635,7 +3642,7 @@ select.property-input {
   justify-content: space-between;
   align-items: center;
   padding: 0 15px;
-  font-family: 'Arial', sans-serif;
+  font-family: 'Nunito', serif;
   font-size: 12px;
   color: #ddd;
   z-index: 100;
@@ -3858,7 +3865,7 @@ select.property-input {
 }
 
 .boost-label {
-  font-family: 'Overpass', sans-serif;
+  font-family: 'Nunito', serif;
   font-size: 0.75em;
   color: #ffffff;
   font-weight: 600;
@@ -3904,7 +3911,7 @@ select.property-input {
 }
 
 .ability-label {
-  font-family: 'Overpass', sans-serif;
+  font-family: 'Nunito', serif;
   font-size: 0.65em;
   color: #ffffff;
   font-weight: 600;
@@ -3937,7 +3944,7 @@ select.property-input {
   padding: 16px 24px;
   font-size: 1rem;
   font-weight: 600;
-  font-family: 'Overpass', sans-serif;
+  font-family: 'Nunito', serif;
   cursor: pointer;
   transition: all 0.3s ease;
 }

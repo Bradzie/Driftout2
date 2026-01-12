@@ -3871,6 +3871,8 @@ async function executeSave(mapName, directory, author, key = null, generatePrevi
     if (key) {
       payload.key = key;
     }
+
+    console.log(payload)
     
     const response = await fetch('/api/maps', {
       method: 'POST',

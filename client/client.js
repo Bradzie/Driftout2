@@ -3122,7 +3122,7 @@
     
     // if no players on the map, show waiting message
     if (!spectatorState.players || spectatorState.players.length === 0) {
-      spectatorCtx.font = '22px Quicksilver';
+      spectatorCtx.font = '22px Nunito';
       spectatorCtx.textAlign = 'center';
       
       // black outline
@@ -3911,7 +3911,7 @@
 
       // draw player name
       const fontSize = Math.max(6, 10 * scale);
-      ctx.font = `bold ${fontSize}px 'Tahoma', 'Arial', sans-serif`;
+      ctx.font = `bold ${fontSize}px 'Nunito', 'Tahoma', 'Arial', sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       
