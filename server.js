@@ -2284,41 +2284,68 @@ class Room {
         const verts = shape.vertices
         if (verts.length < 3) continue
 
-        // Create fill collision body if fillCollision is enabled
         if (shape.fillCollision === true) {
           const fillBodyOptions = HELPERS.getBodyOptionsFromShape(shape)
 
-          // Calculate the PROPER centroid using signed area method (not just vertex average!)
-          // This is critical for irregular and concave polygons
-          let area = 0;
-          let cx = 0, cy = 0;
-
-          for (let i = 0; i < verts.length; i++) {
-            const v1 = verts[i];
-            const v2 = verts[(i + 1) % verts.length];
-            const cross = v1.x * v2.y - v2.x * v1.y;
-            area += cross;
-            cx += (v1.x + v2.x) * cross;
-            cy += (v1.y + v2.y) * cross;
-          }
-
-          area *= 0.5;
-          cx /= (6 * area);
-          cy /= (6 * area);
-
-          // translate vertices relative to proper centroid
-          const translatedVerts = verts.map(v => ({ x: v.x - cx, y: v.y - cy }));
-
           try {
-            const fillBody = Matter.Bodies.fromVertices(cx, cy, [translatedVerts], fillBodyOptions, true);
+            let area = 0;
+            for (let i = 0; i < verts.length; i++) {
+              const v = verts[i];
+              const vn = verts[(i + 1) % verts.length];
+              area += (v.x * vn.y - vn.x * v.y) / 2;
+            }
+
+            let cx = 0, cy = 0;
+            for (let i = 0; i < verts.length; i++) {
+              const v = verts[i];
+              const vn = verts[(i + 1) % verts.length];
+              const cross = v.x * vn.y - vn.x * v.y;
+              cx += (v.x + vn.x) * cross / (6 * area);
+              cy += (v.y + vn.y) * cross / (6 * area);
+            }
+
+            const geometricCenter = { x: cx, y: cy };
+
+            const relativeVertices = verts.map(v => ({
+              x: v.x - geometricCenter.x,
+              y: v.y - geometricCenter.y
+            }));
+
+            const fillBody = Matter.Bodies.fromVertices(
+              geometricCenter.x,
+              geometricCenter.y,
+              [relativeVertices],
+              fillBodyOptions
+            );
+
+            const inputBounds = {
+              minX: Math.min(...verts.map(v => v.x)),
+              minY: Math.min(...verts.map(v => v.y)),
+              maxX: Math.max(...verts.map(v => v.x)),
+              maxY: Math.max(...verts.map(v => v.y))
+            };
+
             if (fillBody && fillBody.vertices && fillBody.vertices.length > 0) {
+              const boundsOffset = {
+                x: inputBounds.minX - fillBody.bounds.min.x,
+                y: inputBounds.minY - fillBody.bounds.min.y
+              };
+
+              const newPosition = {
+                x: fillBody.position.x + boundsOffset.x,
+                y: fillBody.position.y + boundsOffset.y
+              }
+
+              Matter.Body.setPosition(fillBody, newPosition, true);
+              Matter.Body.setVelocity(fillBody, { x: 0, y: 0 });
+
               fillBody.label = 'shape-fill';
               this.currentTrackBodies.push(fillBody);
             } else {
-              console.warn('Failed to create fill collision body - decomposition may have failed for concave polygon');
+              console.warn('something went wrong when creating fill collision for a shape');
             }
           } catch (error) {
-            console.error('Error creating fill collision body:', error);
+            console.error('something went wrong when creating fill collision for a shape', error);
           }
         }
 

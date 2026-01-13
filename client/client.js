@@ -3396,7 +3396,6 @@
       }
     }
 
-    // Third pass: Draw shape borders (on top of area effects)
     if (mapToUse && Array.isArray(mapToUse.shapes)) {
       for (const shape of mapToUse.shapes) {
         if (Array.isArray(shape.vertices)) {

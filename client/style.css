@@ -57,8 +57,9 @@ html, body {
 }
 
 #menu .title {
-  font-family: 'Nunito', serif;
+  font-family: 'Nunito';
   font-size: 10rem;
+  font-weight: bolder;
   margin-bottom: 1rem;
   color: #ffffff;
   letter-spacing: 5px;
@@ -2074,7 +2075,7 @@ input[type="number"]:focus {
   max-width: 300px;
   backdrop-filter: blur(10px);
   z-index: 100;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, serif;
+  font-family: 'Nunito', Tahoma, Geneva, Verdana, serif;
   font-size: 12px;
   color: #ffffff;
   transition: top 0.3s ease-out;
@@ -2091,7 +2092,7 @@ input[type="number"]:focus {
   margin-bottom: 8px;
   font-size: 1rem;
   text-transform: uppercase;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, serif;
+  font-family: 'Nunito', Tahoma, Geneva, Verdana, serif;
   letter-spacing: 1px;
 }
 
@@ -2425,7 +2426,7 @@ input[type="number"]:focus {
   color: #ffffff;
   cursor: pointer;
   transition: all 0.3s ease;
-  font-family: 'Segoe UI', serif;
+  font-family: 'Nunito', serif;
 }
 
 .auth-option-btn:hover {
@@ -3122,7 +3123,7 @@ select.property-input {
   width: 350px;
   max-height: 250px;
   z-index: 15;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, serif;
+  font-family: 'Nunito', Tahoma, Geneva, Verdana, serif;
 }
 
 .chat-messages {
