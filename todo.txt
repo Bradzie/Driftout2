@@ -59,3 +59,5 @@ X (client) feature where if the cursor is far enough away from the spectator men
 - (client) only send cursor input if outside of center by 25~ pixels (allows players to stop moving completely)
 - (server) we have two room update loops, one for heartbeats and one for actual gamestate. can we merge these? it will reduce bandwidth by up to 50% hopefully
 - (client) set meta/website description
+- (client/server) kill button on the toolbar to self-crash car and go back to menu
+- (client/server) one player per room can be a host, they can switch maps when they want

@@ -36,9 +36,29 @@ class UserDatabase {
         FOREIGN KEY (author_id) REFERENCES users (id) ON DELETE SET NULL
       )
     `);
-    
+
+    const createTimeTrialRecordsTable = this.db.prepare(`
+      CREATE TABLE IF NOT EXISTS time_trial_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        map_id TEXT NOT NULL,
+        map_category TEXT NOT NULL CHECK(map_category IN ('official', 'community')),
+        lap_time INTEGER NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+        UNIQUE(user_id, map_id, map_category)
+      )
+    `);
+
     createUsersTable.run();
     createMapsTable.run();
+    createTimeTrialRecordsTable.run();
+
+    // Create index for fast leaderboard queries
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_time_trial_map_time
+      ON time_trial_records(map_id, map_category, lap_time)
+    `);
 
     const columns = this.db.prepare(`PRAGMA table_info(users)`).all();
 
@@ -386,11 +406,113 @@ class UserDatabase {
         UPDATE maps SET download_count = download_count + 1
         WHERE id = ?
       `);
-      
+
       updateDownloads.run(mapId);
       return true;
     } catch (error) {
       console.error('Increment download count error:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Save or update a user's best lap time for a specific map
+   * Only updates if the new time is better than existing time
+   */
+  saveLapTime(userId, mapId, mapCategory, lapTime) {
+    try {
+      const stmt = this.db.prepare(`
+        INSERT INTO time_trial_records (user_id, map_id, map_category, lap_time)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(user_id, map_id, map_category)
+        DO UPDATE SET
+          lap_time = CASE
+            WHEN excluded.lap_time < lap_time THEN excluded.lap_time
+            ELSE lap_time
+          END,
+          created_at = CASE
+            WHEN excluded.lap_time < lap_time THEN CURRENT_TIMESTAMP
+            ELSE created_at
+          END
+      `);
+
+      const result = stmt.run(userId, mapId, mapCategory, lapTime);
+      return result.changes > 0;
+    } catch (error) {
+      console.error('Save lap time error:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get leaderboard for a specific map
+   * Returns top N users with their best times
+   */
+  getMapLeaderboard(mapId, mapCategory, limit = 100) {
+    try {
+      const stmt = this.db.prepare(`
+        SELECT
+          u.id,
+          u.username,
+          t.lap_time,
+          t.created_at,
+          ROW_NUMBER() OVER (ORDER BY t.lap_time ASC) as rank
+        FROM time_trial_records t
+        JOIN users u ON t.user_id = u.id
+        WHERE t.map_id = ? AND t.map_category = ?
+        ORDER BY t.lap_time ASC
+        LIMIT ?
+      `);
+
+      return stmt.all(mapId, mapCategory, limit);
+    } catch (error) {
+      console.error('Get map leaderboard error:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get a user's rank and time for a specific map
+   */
+  getUserMapRank(userId, mapId, mapCategory) {
+    try {
+      const stmt = this.db.prepare(`
+        SELECT
+          rank,
+          lap_time,
+          created_at
+        FROM (
+          SELECT
+            user_id,
+            lap_time,
+            created_at,
+            ROW_NUMBER() OVER (ORDER BY lap_time ASC) as rank
+          FROM time_trial_records
+          WHERE map_id = ? AND map_category = ?
+        )
+        WHERE user_id = ?
+      `);
+
+      return stmt.get(mapId, mapCategory, userId);
+    } catch (error) {
+      console.error('Get user map rank error:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Check if a user has completed time trial on this map
+   */
+  hasCompletedTimeTrialOnMap(userId, mapId, mapCategory) {
+    try {
+      const stmt = this.db.prepare(`
+        SELECT 1 FROM time_trial_records
+        WHERE user_id = ? AND map_id = ? AND map_category = ?
+      `);
+
+      return !!stmt.get(userId, mapId, mapCategory);
+    } catch (error) {
+      console.error('Check time trial completion error:', error);
       return false;
     }
   }

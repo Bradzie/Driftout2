@@ -184,6 +184,7 @@
   const createRoomName = document.getElementById('createRoomName');
   const selectedMapDisplay = document.getElementById('selectedMapDisplay');
   const browseMapButton = document.getElementById('browseMapButton');
+  const createRoomGamemode = document.getElementById('createRoomGamemode');
   const createRoomMaxPlayers = document.getElementById('createRoomMaxPlayers');
 
   const mapEditorButton = document.getElementById('mapEditorButton');
@@ -198,7 +199,13 @@
   const globalLeaderboardTableBody = document.getElementById('globalLeaderboardTableBody');
   const currentUserRow = document.getElementById('currentUserRow');
   const currentUserLeaderboardBody = document.getElementById('currentUserLeaderboardBody');
-  
+
+  const timeTrialLeaderboardModal = document.getElementById('timeTrialLeaderboardModal');
+  const closeTimeTrialLeaderboard = document.getElementById('closeTimeTrialLeaderboard');
+  const timeTrialMapName = document.getElementById('timeTrialMapName');
+  const timeTrialLeaderboardTableBody = document.getElementById('timeTrialLeaderboardTableBody');
+  const userBestTimeDisplay = document.getElementById('userBestTimeDisplay');
+
   const carRadioInput = document.querySelector('input[name="car"]');
   const carName = document.getElementById('carName');
   const carAbility = document.getElementById('carAbility');
@@ -718,6 +725,19 @@
     }
   });
 
+  // close time trial leaderboard
+  if (closeTimeTrialLeaderboard) {
+    closeTimeTrialLeaderboard.addEventListener('click', closeTimeTrialLeaderboardModal);
+  }
+
+  if (timeTrialLeaderboardModal) {
+    timeTrialLeaderboardModal.addEventListener('click', (e) => {
+      if (e.target === timeTrialLeaderboardModal) {
+        closeTimeTrialLeaderboardModal();
+      }
+    });
+  }
+
   // close browse map dialog when clicking outside or ESC
   const browseMapModal = document.getElementById('browseMapModal');
   const closeBrowseModalBtn = document.getElementById('closeBrowseModal');
@@ -742,6 +762,27 @@
   
   createRoomMaxPlayers.addEventListener('input', (e) => {
     maxPlayersValue.textContent = e.target.value;
+  });
+
+  // Gamemode dropdown event listener
+  createRoomGamemode.addEventListener('change', (e) => {
+    const gamemode = e.target.value;
+
+    if (gamemode === 'time_trial') {
+      // Time Trial: lock to 1 player
+      createRoomMaxPlayers.value = 1;
+      maxPlayersValue.textContent = '1';
+      createRoomMaxPlayers.disabled = true;
+      createRoomMaxPlayers.classList.add('disabled');
+    } else {
+      // Standard: enable player selection
+      createRoomMaxPlayers.disabled = false;
+      createRoomMaxPlayers.classList.remove('disabled');
+      if (createRoomMaxPlayers.value === '1') {
+        createRoomMaxPlayers.value = 8;
+        maxPlayersValue.textContent = '8';
+      }
+    }
   });
 
   const ctx = gameCanvas.getContext('2d');
@@ -1317,6 +1358,58 @@
     hide(globalLeaderboardModal);
   }
 
+  async function showTimeTrialLeaderboard(mapKey, mapCategory, mapName) {
+    if (!timeTrialLeaderboardModal) return;
+
+    timeTrialMapName.textContent = `Time Trial - ${mapName}`;
+
+    try {
+      const response = await fetch(`/api/time-trial/leaderboard/${mapCategory}/${mapKey}`);
+      const data = await response.json();
+
+      let userRank = null;
+      try {
+        const rankResponse = await fetch(`/api/time-trial/rank/${mapCategory}/${mapKey}`);
+        if (rankResponse.ok) {
+          userRank = await rankResponse.json();
+        }
+      } catch (e) {}
+
+      if (userRank && userRank.hasRecord) {
+        userBestTimeDisplay.innerHTML = `
+          <div class="user-rank-badge">Your Best: #${userRank.rank}</div>
+          <div class="user-time">${formatTime(userRank.lapTime)}</div>
+        `;
+        userBestTimeDisplay.classList.remove('hidden');
+      } else {
+        userBestTimeDisplay.innerHTML = '<div class="no-record">No record yet - Complete a lap to set your time!</div>';
+        userBestTimeDisplay.classList.remove('hidden');
+      }
+
+      timeTrialLeaderboardTableBody.innerHTML = data.leaderboard.map(entry => {
+        const isCurrentUser = userRank && userRank.rank === entry.rank;
+        const rowClass = isCurrentUser ? 'current-user-row' : '';
+        return `
+          <tr class="${rowClass}">
+            <td class="rank-cell">#${entry.rank}</td>
+            <td class="player-name">${escapeHtml(entry.username)}</td>
+            <td class="time-cell">${formatTime(entry.lap_time)}</td>
+            <td class="date-cell">${new Date(entry.created_at).toLocaleDateString()}</td>
+          </tr>
+        `;
+      }).join('');
+
+      show(timeTrialLeaderboardModal);
+    } catch (error) {
+      console.error('Failed to load time trial leaderboard:', error);
+      alert('Failed to load leaderboard');
+    }
+  }
+
+  function closeTimeTrialLeaderboardModal() {
+    hide(timeTrialLeaderboardModal);
+  }
+
   function loadGlobalLeaderboard() {
     fetch('/api/leaderboard')
       .then(res => res.json())
@@ -1434,8 +1527,45 @@
       const author = map.author || (category === 'official' ? 'Official' : 'Community');
       const previewImageUrl = map.id ? `/previews/${map.id}.png` : `/previews/${map.key.replace(/\//g, '_')}.png`;
 
+      // Parse map key to get category and mapKey for leaderboard
+      const mapKeyParts = map.key.split('/');
+      const mapCategory = mapKeyParts[0];
+      const mapKey = mapKeyParts[1];
+
+      // Build leaderboard section HTML
+      let leaderboardHTML = '';
+      if (map.worldRecord) {
+        const formattedTime = formatTime(map.worldRecord.time);
+        leaderboardHTML = `
+          <div class="map-leaderboard-section">
+            <div class="map-leaderboard-content">
+              <div class="map-leaderboard-text">
+                <div class="map-best-time">Best Time: ${formattedTime}</div>
+                <div class="map-record-holder">by ${escapeHtml(map.worldRecord.username)}</div>
+              </div>
+              <button class="leaderboard-btn" onclick="event.stopPropagation(); showTimeTrialLeaderboard('${mapKey}', '${mapCategory}', '${escapeHtml(map.name)}');" title="View Leaderboard">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
+                  <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path>
+                  <path d="M4 22h16"></path>
+                  <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path>
+                  <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path>
+                  <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+        `;
+      } else {
+        leaderboardHTML = `
+          <div class="map-leaderboard-section">
+            <div class="no-records-text">No records yet</div>
+          </div>
+        `;
+      }
+
       return `
-        <div class="map-entry" data-map-key="${map.key}" onclick="selectMapForRoom('${map.key}', '${map.name}')">
+        <div class="map-entry" data-map-key="${map.key}" onclick="selectMapForRoom('${map.key}', '${escapeHtml(map.name)}')">
           <div class="map-preview">
             <img src="${previewImageUrl}" alt="${map.name} preview" class="preview-image"
                  onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
@@ -1446,6 +1576,7 @@
             <p class="map-author">Author: ${author}</p>
             <p class="map-category">${category.charAt(0).toUpperCase() + category.slice(1)}</p>
           </div>
+          ${leaderboardHTML}
         </div>
       `;
     }).join('');
@@ -1584,32 +1715,33 @@
     const mapKey = selectedMapForRoom?.key;
     const maxPlayers = parseInt(createRoomMaxPlayers.value);
     const isPrivate = createRoomPrivate.checked;
-    
+    const gamemode = createRoomGamemode.value;
+
     // :TODO these alerts are not nice, replace with in-dialog error display that follows design
     if (!roomName) {
       alert('Please enter a room name');
       return;
     }
-    
+
     if (!selectedMapForRoom) {
       alert('Please select a map');
       return;
     }
-    
+
     if (roomName.length > 50) {
       alert('Room name must be 50 characters or less');
       return;
     }
-    
+
     if (!mapKey) {
       alert('Please select a map');
       return;
     }
-    
+
     // disable button during creation
     createRoomButton.disabled = true;
     createRoomButton.textContent = 'Creating...';
-    
+
     try {
       const response = await fetch('/api/rooms/create', {
         method: 'POST',
@@ -1620,7 +1752,8 @@
           name: roomName,
           mapKey: mapKey,
           maxPlayers: maxPlayers,
-          isPrivate: isPrivate
+          isPrivate: isPrivate,
+          gamemode: gamemode
         })
       });
       
@@ -1634,10 +1767,13 @@
       createRoomName.value = '';
       selectedMapForRoom = null;
       updateSelectedMapDisplay();
+      createRoomGamemode.value = 'standard';
       createRoomMaxPlayers.value = 8;
+      createRoomMaxPlayers.disabled = false;
+      createRoomMaxPlayers.classList.remove('disabled');
       maxPlayersValue.textContent = '8';
       createRoomPrivate.checked = false;
-      
+
       // close create room dialog
       closeCreateRoomModal();
       // refresh room list
@@ -2110,6 +2246,24 @@
 
   socket.on('killFeedMessage', ({ text, type }) => {
     addKillFeedMessage(text, type);
+  });
+
+  socket.on('timeTrialRecord', (data) => {
+    const { lapTime, isNewBest, rank, totalPlayers, isFirstCompletion } = data;
+
+    if (isFirstCompletion) {
+      addKillFeedMessage(`First time trial on this map! Time: ${formatTime(lapTime)}`, 'info');
+    } else if (isNewBest) {
+      addKillFeedMessage(`New best lap! ${formatTime(lapTime)} - Rank #${rank}/${totalPlayers}`, 'win');
+    }
+
+    // Update best lap time display
+    if (bestLapTime === null || lapTime < bestLapTime) {
+      bestLapTime = lapTime;
+      if (bestLapTimeSpan) {
+        bestLapTimeSpan.textContent = formatTime(bestLapTime);
+      }
+    }
   });
 
   socket.on('spectatorState', (data) => {

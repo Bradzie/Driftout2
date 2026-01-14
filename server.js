@@ -203,14 +203,32 @@ app.get('/api/carTypes', (req, res) => {
 app.get('/api/maps', (req, res) => {
   try {
     const maps = mapManager.getAllMaps();
-    const mapList = maps.map(map => ({
-      key: `${map.category}/${map.key}`,
-      name: map.name,
-      description: map.description || '',
-      category: map.category,
-      author: map.author,
-      id: map.id
-    }));
+    const mapList = maps.map(map => {
+      // Get world record for this map
+      let worldRecord = null;
+      try {
+        const leaderboard = userDb.getMapLeaderboard(map.key, map.category, 1);
+        if (leaderboard && leaderboard.length > 0) {
+          worldRecord = {
+            time: leaderboard[0].lap_time,
+            username: leaderboard[0].username
+          };
+        }
+      } catch (error) {
+        // Silently fail for individual map records
+        console.error(`Failed to get world record for ${map.category}/${map.key}:`, error);
+      }
+
+      return {
+        key: `${map.category}/${map.key}`,
+        name: map.name,
+        description: map.description || '',
+        category: map.category,
+        author: map.author,
+        id: map.id,
+        worldRecord: worldRecord
+      };
+    });
     res.json(mapList);
   } catch (error) {
     console.error('Error getting maps:', error);
@@ -552,7 +570,8 @@ app.get('/api/rooms', (req, res) => {
       isPrivate: room.isPrivate,
       isOfficial: room.isOfficial,
       isJoinable: room.isJoinable,
-      playerCount: room.activePlayerCount
+      playerCount: room.activePlayerCount,
+      gamemode: room.gamemode
     };
   });
   res.json(roomList);
@@ -560,15 +579,14 @@ app.get('/api/rooms', (req, res) => {
 
 app.post('/api/rooms/create', roomCreationLimiter, express.json(), (req, res) => {
   try {
-    const { name, mapKey, maxPlayers, isPrivate } = req.body;
-    
+    const { name, mapKey, maxPlayers, isPrivate, gamemode } = req.body;
+
     if (name && name.length > 50) {
       return sendError(res, 400, 'Room name too long');
     }
     if (mapKey) {
-      // Parse category/key format if present
       const { category: categoryToCheck, key: keyToCheck } = HELPERS.parseMapKey(mapKey);
-      
+
       if (!mapManager.mapExists(keyToCheck, categoryToCheck)) {
         return sendError(res, 400, 'Invalid map');
       }
@@ -576,16 +594,31 @@ app.post('/api/rooms/create', roomCreationLimiter, express.json(), (req, res) =>
     if (maxPlayers && (maxPlayers < 1 || maxPlayers > 16)) {
       return sendError(res, 400, 'Invalid max players (1-16)');
     }
-    
+
+    if (gamemode && !['standard', 'time_trial'].includes(gamemode)) {
+      return sendError(res, 400, 'Invalid gamemode');
+    }
+
+    if (gamemode === 'time_trial') {
+      if (maxPlayers && maxPlayers !== 1) {
+        return sendError(res, 400, 'Time Trial mode requires exactly 1 player');
+      }
+    }
+
     const roomId = uuidv4();
     const room = new Room(roomId, mapKey || null);
-    
+
     if (name) room.name = name;
     if (maxPlayers) room.maxPlayers = maxPlayers;
     if (typeof isPrivate === 'boolean') room.isPrivate = isPrivate;
-    
+    if (gamemode) room.gamemode = gamemode;
+
+    if (room.gamemode === 'time_trial') {
+      room.maxPlayers = 1;
+    }
+
     rooms.push(room);
-    
+
     res.json({
       id: room.id,
       name: room.name,
@@ -597,7 +630,8 @@ app.post('/api/rooms/create', roomCreationLimiter, express.json(), (req, res) =>
       isPrivate: room.isPrivate,
       isOfficial: room.isOfficial,
       isJoinable: room.isJoinable,
-      playerCount: room.activePlayerCount
+      playerCount: room.activePlayerCount,
+      gamemode: room.gamemode
     });
   } catch (error) {
     console.error('Error creating room:', error);
@@ -866,6 +900,65 @@ app.get('/api/leaderboard', (req, res) => {
   } catch (error) {
     console.error('Leaderboard error:', error);
     res.status(500).json({ error: 'Failed to load leaderboard' });
+  }
+});
+
+app.get('/api/time-trial/leaderboard/:category/:mapKey', (req, res) => {
+  try {
+    const { category, mapKey } = req.params;
+    const limit = parseInt(req.query.limit) || 100;
+
+    if (!['official', 'community'].includes(category)) {
+      return sendError(res, 400, 'Invalid category');
+    }
+
+    if (!mapManager.mapExists(mapKey, category)) {
+      return sendError(res, 404, 'Map not found');
+    }
+
+    const leaderboard = userDb.getMapLeaderboard(mapKey, category, limit);
+
+    res.json({
+      mapKey: mapKey,
+      category: category,
+      leaderboard: leaderboard
+    });
+  } catch (error) {
+    console.error('Time trial leaderboard error:', error);
+    sendError(res, 500, 'Failed to retrieve leaderboard');
+  }
+});
+
+app.get('/api/time-trial/rank/:category/:mapKey', requireAuth, (req, res) => {
+  try {
+    const { category, mapKey } = req.params;
+    const userId = req.session.userId;
+
+    if (!['official', 'community'].includes(category)) {
+      return sendError(res, 400, 'Invalid category');
+    }
+
+    const rankInfo = userDb.getUserMapRank(userId, mapKey, category);
+
+    if (!rankInfo) {
+      return res.json({
+        hasRecord: false,
+        message: 'No time trial record for this map'
+      });
+    }
+
+    const totalPlayers = userDb.getMapLeaderboard(mapKey, category, 1000).length;
+
+    res.json({
+      hasRecord: true,
+      rank: rankInfo.rank,
+      lapTime: rankInfo.lap_time,
+      recordDate: rankInfo.created_at,
+      totalPlayers: totalPlayers
+    });
+  } catch (error) {
+    console.error('Time trial rank error:', error);
+    sendError(res, 500, 'Failed to retrieve rank');
   }
 });
 
@@ -1578,6 +1671,12 @@ class Car {
       insideStart = HELPERS.pointInPolygon(this.body.position.x, this.body.position.y, mapDef.start.vertices)
     }
 
+    if (!insideStart && !this.hasLeftStartSinceLap) {
+      if (this.currentLapStartTime === 0) {
+        this.currentLapStartTime = Date.now();
+      }
+    }
+
     if (!insideStart) this.hasLeftStartSinceLap = true
 
     const checkpoints = mapDef?.checkpoints || []
@@ -1587,6 +1686,39 @@ class Car {
       checkpoints.length > 0 &&
       checkpoints.every(cp => this.checkpointsVisited.has(cp.id))
     ) {
+      const lapTime = this.currentLapStartTime > 0 ? Date.now() - this.currentLapStartTime : null;
+      if (lapTime && (!this.bestLapTime || lapTime < this.bestLapTime)) {
+        this.bestLapTime = lapTime;
+        this.saveStatsToRoom();
+
+        if (this.room && this.room.gamemode === 'time_trial') {
+          const socket = io.sockets.sockets.get(this.socketId);
+          if (socket && socket.request.session && socket.request.session.userId && !socket.request.session.isGuest) {
+            const userId = socket.request.session.userId;
+
+            try {
+              const hadPreviousTime = userDb.hasCompletedTimeTrialOnMap(userId, mapKey, mapCategory);
+              const saved = userDb.saveLapTime(userId, mapKey, mapCategory, lapTime);
+
+              if (saved) {
+                const rankInfo = userDb.getUserMapRank(userId, mapKey, mapCategory);
+                const leaderboard = userDb.getMapLeaderboard(mapKey, mapCategory, 1000);
+                socket.emit('timeTrialRecord', {
+                  lapTime: lapTime,
+                  isNewBest: true,
+                  rank: rankInfo?.rank || null,
+                  totalPlayers: leaderboard.length,
+                  isFirstCompletion: !hadPreviousTime
+                });
+              }
+            } catch (error) {
+              console.error('Failed to save time trial record:', error);
+            }
+          }
+        }
+      }
+
+      this.currentLapStartTime = Date.now();
       this.laps += 1
       this.upgradePoints += 1
       this.currentHealth = this.stats.maxHealth;
@@ -1770,9 +1902,9 @@ class Car {
 class Room {
   constructor(id, mapKey = null, isOfficial = false) {
     this.id = id;
-    this.name = `Room ${id.substring(0, 8)}`; // Default name using first 8 chars of UUID
+    this.name = `Room ${id.substring(0, 8)}`; // first 8 chars of uuid
     this.players = new Map(); // socket.id -> Car (active players)
-    this.carIdMap = new Map(); // car.id -> Car (for O(1) lookups)
+    this.carIdMap = new Map(); // car.id -> Car
     this.carBodyMap = new Map(); // car.body -> Car (for collision detection)
     this.spectators = new Map(); // socket.id -> socket (spectators)
     this.allMembers = new Map(); // socket.id -> {socket, state, joinedAt} (all connected users)
@@ -1780,15 +1912,16 @@ class Room {
     this.maxPlayers = 8;
     this.isPrivate = false;
     this.isOfficial = isOfficial;
-    
+    this.gamemode = 'standard'; // 'standard' or 'time_trial'
+
     this.engine = Matter.Engine.create();
     this.engine.gravity.x = 0;
     this.engine.gravity.y = 0;
     this.world = this.engine.world;
     
     this.gameState = {
-      abilityObjects: [], // Spike traps, etc.
-      activeEffects: []   // Ghost modes, shields, etc.
+      abilityObjects: [],
+      activeEffects: []
     };
     
     const mapKeys = mapManager.getAllMapKeys();

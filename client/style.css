@@ -112,7 +112,6 @@ html, body {
   position: relative;
   overflow: hidden;
   min-width: 350px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .car-header {
@@ -236,7 +235,6 @@ html, body {
   font-family: 'Nunito', serif;
   background: #ffffff;
   color: #333;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
   transition: all 0.3s ease;
   box-sizing: border-box;
   text-align: center;
@@ -245,7 +243,6 @@ html, body {
 #nameInput:focus {
   outline: none;
   border-color: #8a4fd3;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
   transform: translateY(-2px);
 }
 
@@ -269,7 +266,6 @@ html, body {
   color: #ffffff;
   cursor: pointer;
   transition: all 0.3s ease;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
   width: 80px;
   height: 60px;
   display: flex;
@@ -279,7 +275,6 @@ html, body {
 
 .nav-button:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
   background: #993939;
 }
 
@@ -568,7 +563,6 @@ html, body {
   font-family: 'Nunito', serif;
   max-width: 500px; /* Limit width for better readability */
   width: 90%; /* Responsive width */
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3); /* Add shadow for better visibility */
 }
 
 .disconnect-title {
@@ -748,13 +742,11 @@ html, body {
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
 .upgrade-card:hover {
   transform: translateY(-5px) scale(1.05);
   background: rgba(30, 30, 30, 0.98);
-  box-shadow: 0 4px 20px rgba(255, 95, 95, 0.4);
 }
 
 .upgrade-card:active {
@@ -776,7 +768,6 @@ html, body {
   font-size: 0.7em;
   font-weight: bold;
   font-family: 'Nunito', serif;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .upgrade-name {
@@ -816,16 +807,6 @@ html, body {
   animation-delay: 0.2s;
 }
 
-
-@keyframes upgradePulse {
-  0%, 100% {
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-  }
-  50% {
-    box-shadow: 0 4px 20px rgba(255, 95, 95, 0.6);
-  }
-}
-
 /* Maxed upgrade cards */
 .upgrade-card.maxed {
   border-color: #666;
@@ -837,7 +818,6 @@ html, body {
 .upgrade-card.maxed:hover {
   transform: none;
   border-color: #666;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
   background: rgba(60, 60, 60, 0.95);
 }
 
@@ -984,7 +964,6 @@ html, body {
   font-family: ''Nunito'', serif;
   font-size: 0.85em;
   backdrop-filter: blur(10px);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
   z-index: 1000;
   transition: all 0.3s ease;
 }
@@ -1200,7 +1179,6 @@ input[type="number"]:focus {
   color: #ffffff;
   cursor: pointer;
   transition: all 0.3s ease;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1210,7 +1188,6 @@ input[type="number"]:focus {
 
 .settings-button:hover {
   transform: translateY(-2px) rotate(45deg);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
   background: #993939;
   color: #ffffff;
 }
@@ -1238,7 +1215,6 @@ input[type="number"]:focus {
 
 .settings-content {
   background: #ffffff;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
   width: 90%;
   max-width: 500px;
   max-height: 80vh;
@@ -1375,7 +1351,6 @@ input[type="number"]:focus {
   background-color: white;
   border-radius: 50%;
   transition: all 0.3s ease;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
 }
 
 .toggle-input:checked + .toggle-slider {
@@ -1384,10 +1359,6 @@ input[type="number"]:focus {
 
 .toggle-input:checked + .toggle-slider:before {
   transform: translateX(25px);
-}
-
-.toggle-slider:hover {
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
 /* Performance Overlay Styles */
@@ -1485,7 +1456,6 @@ input[type="number"]:focus {
   max-width: 800px;
   max-height: 90vh;
   overflow: hidden;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
 }
 
 .room-browser-header {
@@ -1770,6 +1740,28 @@ input[type="number"]:focus {
   transform: scale(1.1);
 }
 
+.form-slider:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.form-slider.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.form-slider:disabled::-webkit-slider-thumb,
+.form-slider.disabled::-webkit-slider-thumb {
+  cursor: not-allowed;
+  background: #666666;
+}
+
+.form-slider:disabled::-webkit-slider-thumb:hover,
+.form-slider.disabled::-webkit-slider-thumb:hover {
+  background: #666666;
+  transform: none;
+}
+
 .form-checkbox-label {
   display: flex;
   align-items: center;
@@ -1849,7 +1841,6 @@ input[type="number"]:focus {
   max-width: 500px;
   max-height: 90vh;
   overflow: hidden;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
 }
 
 .create-room-header {
@@ -2691,7 +2682,6 @@ input[type="number"]:focus {
   z-index: 2001;
   transform: translateY(-100%);
   transition: transform 0.3s ease-out;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
 .top-toolbar.visible {
@@ -3274,7 +3264,6 @@ select.property-input {
   margin-top: 5vh;
   min-width: 400px;
   max-width: 500px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
   animation: modalSlideIn 0.3s ease;
 }
 
@@ -3440,7 +3429,6 @@ select.property-input {
   max-width: 1000px;
   max-height: 90vh;
   overflow: hidden;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
 }
 
 .map-browser-header {
@@ -3578,7 +3566,6 @@ select.property-input {
 .map-entry:hover {
   border-color: #ff5f5f;
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(255, 95, 95, 0.2);
 }
 
 .map-category {
@@ -3624,6 +3611,76 @@ select.property-input {
   margin: 4px 0;
   color: #ccc;
   font-size: 14px;
+}
+
+/* Map Leaderboard Section */
+.map-leaderboard-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #444;
+}
+
+.map-leaderboard-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.map-leaderboard-text {
+  flex: 1;
+}
+
+.map-best-time {
+  color: #ff5f5f;
+  font-size: 14px;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+  margin-bottom: 4px;
+}
+
+.map-record-holder {
+  color: #aaa;
+  font-size: 12px;
+  font-style: italic;
+}
+
+.no-records-text {
+  color: #777;
+  font-size: 13px;
+  font-style: italic;
+  text-align: center;
+  padding: 4px 0;
+}
+
+.leaderboard-btn {
+  background: #3a3a3a;
+  border: 2px solid #555;
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.leaderboard-btn:hover {
+  background: #ff5f5f;
+  border-color: #ff5f5f;
+  transform: scale(1.05);
+}
+
+.leaderboard-btn svg {
+  color: #ccc;
+  transition: color 0.2s ease;
+}
+
+.leaderboard-btn:hover svg {
+  color: white;
 }
 
 .no-maps-message {
@@ -3699,7 +3756,6 @@ select.property-input {
   background: #2a2a2a;
   border: 1px solid #444;
   border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
   min-width: 150px;
   font-size: 13px;
 }
@@ -3749,7 +3805,6 @@ select.property-input {
   background: #2a2a2a;
   border: 1px solid #444;
   border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
   min-width: 100px;
   font-size: 13px;
   display: flex;
@@ -3813,7 +3868,6 @@ select.property-input {
   background: rgba(20, 20, 20, 0.9);
   border: 4px solid #ff5f5f;
   border-radius: 50%;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
 }
 
 .joystick-knob {
@@ -3827,12 +3881,10 @@ select.property-input {
   border-radius: 50%;
   transform: translate(-50%, -50%);
   transition: background 0.1s ease;
-  box-shadow: 0 2px 10px rgba(255, 95, 95, 0.4);
 }
 
 .joystick-knob.active {
   background: rgba(255, 95, 95, 1);
-  box-shadow: 0 4px 15px rgba(255, 95, 95, 0.6);
 }
 
 /* Mobile Boost Button */
@@ -3853,13 +3905,11 @@ select.property-input {
   touch-action: none;
   user-select: none;
   transition: all 0.2s ease;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
 }
 
 .mobile-boost-button:active {
   transform: scale(0.95);
   background: rgba(30, 30, 30, 0.98);
-  box-shadow: 0 4px 20px rgba(255, 95, 95, 0.4);
 }
 
 .boost-icon {
@@ -3895,7 +3945,6 @@ select.property-input {
   touch-action: none;
   user-select: none;
   transition: all 0.2s ease;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
 }
 
 .mobile-ability-button:active {
@@ -3957,7 +4006,6 @@ select.property-input {
 .menu-grid-button:hover:not(:disabled) {
   background: #ff7f7f;
   transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
 .menu-grid-button:disabled {
@@ -3996,7 +4044,6 @@ select.property-input {
   max-width: 800px;
   max-height: 90vh;
   overflow: hidden;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
 }
 
 /* maybe a search feature in future? */
@@ -4033,4 +4080,110 @@ select.property-input {
 .current-user-leaderboard-row .leaderboard-table tbody tr {
   background: rgba(255, 95, 95, 0.2);
   border: 2px solid #ff5f5f;
+}
+
+/* Time Trial Leaderboard Modal */
+.time-trial-leaderboard-content {
+  background: #2f2f2f;
+  width: 90%;
+  max-width: 900px;
+  max-height: 90vh;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.time-trial-leaderboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 30px;
+  background: #3a3a3a;
+  border-bottom: 2px solid #ff5f5f;
+}
+
+.time-trial-leaderboard-header h2 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 1.5rem;
+}
+
+.time-trial-leaderboard-close-btn {
+  background: white;
+  border: none;
+  color: #ff5f5f;
+  font-size: 2rem;
+  cursor: pointer;
+  padding-bottom: 5px;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.3s ease;
+  border-radius: 4px;
+}
+
+.time-trial-leaderboard-close-btn:hover {
+  background: #ff5f5f;
+  color: white;
+}
+
+.time-trial-leaderboard-body {
+  padding: 20px 30px;
+  overflow-y: auto;
+  max-height: calc(90vh - 100px);
+}
+
+.user-best-time {
+  background: rgba(255, 95, 95, 0.1);
+  border: 2px solid #ff5f5f;
+  border-radius: 6px;
+  padding: 15px 20px;
+  margin-bottom: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.user-rank-badge {
+  background: #ff5f5f;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-weight: bold;
+  font-size: 1.1rem;
+}
+
+.user-time {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #ffffff;
+  font-family: 'Courier New', monospace;
+}
+
+.no-record {
+  text-align: center;
+  color: #bbbbbb;
+  font-size: 1rem;
+  padding: 10px;
+}
+
+.current-user-row {
+  background: rgba(255, 95, 95, 0.2) !important;
+  border-left: 4px solid #ff5f5f !important;
+}
+
+.rank-cell {
+  font-weight: bold;
+  color: #ff5f5f;
+}
+
+.time-cell {
+  font-family: 'Courier New', monospace;
+  font-weight: bold;
+}
+
+.date-cell {
+  color: #aaaaaa;
+  font-size: 0.9rem;
 }

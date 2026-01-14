@@ -400,8 +400,15 @@
             </div>
           </div>
           <div class="form-row">
+            <label class="form-label">Gamemode</label>
+            <select id="createRoomGamemode" class="form-select">
+              <option value="standard">Standard</option>
+              <option value="time_trial">Time Trial</option>
+            </select>
+          </div>
+          <div class="form-row">
             <label class="form-label">Max Players: <span id="maxPlayersValue">8</span></label>
-            <input type="range" id="createRoomMaxPlayers" class="form-slider" min="2" max="16" value="8">
+            <input type="range" id="createRoomMaxPlayers" class="form-slider" min="1" max="16" value="8">
           </div>
           <div class="form-row">
             <label class="form-checkbox-label">
@@ -707,6 +714,32 @@
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="timeTrialLeaderboardModal" class="modal hidden">
+    <div class="time-trial-leaderboard-content">
+      <div class="time-trial-leaderboard-header">
+        <h2 id="timeTrialMapName">Time Trial Leaderboard</h2>
+        <button class="time-trial-leaderboard-close-btn" id="closeTimeTrialLeaderboard">×</button>
+      </div>
+      <div class="time-trial-leaderboard-body">
+        <div class="user-best-time" id="userBestTimeDisplay">
+          <!-- Shows current user's rank and time -->
+        </div>
+        <table class="leaderboard-table">
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Player</th>
+              <th>Time</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody id="timeTrialLeaderboardTableBody">
+          </tbody>
+        </table>
       </div>
     </div>
   </div>
