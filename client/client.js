@@ -3285,20 +3285,6 @@
       showCheckpoints: false,
       showAbilityObjects: true
     });
-    
-    // if no players on the map, show waiting message
-    if (!spectatorState.players || spectatorState.players.length === 0) {
-      spectatorCtx.font = '22px Nunito';
-      spectatorCtx.textAlign = 'center';
-      
-      // black outline
-      spectatorCtx.lineWidth = 3;
-      spectatorCtx.strokeStyle = '#000000';
-      spectatorCtx.strokeText('Waiting for players...', spectatorCanvas.width / 2, spectatorCanvas.height - 50);
-      
-      spectatorCtx.fillStyle = 'rgba(255, 255, 255, 1)';
-      spectatorCtx.fillText('Waiting for players...', spectatorCanvas.width / 2, spectatorCanvas.height - 50);
-    }
   }
 
   function renderLoop() {
