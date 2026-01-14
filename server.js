@@ -1720,7 +1720,11 @@ class Car {
 
       this.currentLapStartTime = Date.now();
       this.laps += 1
-      this.upgradePoints += 1
+
+      if (!this.room || this.room.gamemode !== 'time_trial') {
+        this.upgradePoints += 1
+      }
+
       this.currentHealth = this.stats.maxHealth;
       this.checkpointsVisited.clear()
       this.hasLeftStartSinceLap = false
@@ -3275,11 +3279,12 @@ io.on('connection', (socket) => {
       }
       
       currentRoom = targetRoom;
-      socket.emit('joined', { 
-        roomId: currentRoom.id, 
+      socket.emit('joined', {
+        roomId: currentRoom.id,
         carId: myCar.id,
         roomName: currentRoom.name,
         currentMap: currentRoom.currentMapKey,
+        gamemode: currentRoom.gamemode,
         binarySupport: true // Signal that server supports binary encoding
       });
     } catch (error) {
@@ -3796,7 +3801,7 @@ function gameLoop() {
 
       for (const [sid, car] of room.players.entries()) {
         car.update(timeStep);
-        if (!roundWinner && car.laps >= car.maxLaps) {
+        if (room.gamemode !== 'time_trial' && !roundWinner && car.laps >= car.maxLaps) {
           roundWinner = car;
         }
         if (car.crashedAt && now - car.crashedAt > CRASH_CLEANUP_DELAY_MS) {
@@ -4061,6 +4066,7 @@ function broadcastToSpectators() {
       map: roomMapData, // Always send current map
       roomId: room ? room.id : null,
       roomName: room ? room.name : null,
+      gamemode: room ? room.gamemode : 'standard',
       timestamp: Date.now()
     };
     

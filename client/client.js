@@ -1,5 +1,4 @@
 (() => {
-  // DOM helper functions
   function show(element) {
     if (element) element.classList.remove('hidden');
   }
@@ -12,6 +11,7 @@
     if (element) element.classList.toggle('hidden', !visible);
   }
 
+  // configs because i am a boss
   const DEFAULT_FAKE_PING_LATENCY = 100;
   const PING_ONE_WAY_DIVISOR = 2;
   const BASE_XP_LEVEL_1 = 10;
@@ -224,10 +224,10 @@
       
       if (data.authenticated) {
         if (data.user.isGuest) {
-          // guests need to re-authenticate every session
+          // guests need to re-authenticate every session because they are not a boss
           currentUser = null;
         } else {
-          // auto-login if registered
+          // auto-login if registered (we are bosses)
           currentUser = data.user;
           refreshSocketSession();
           showMainMenu();
@@ -255,7 +255,6 @@
     show(menu);
     show(miniLeaderboard);
     
-    // Hide map editor button for guest users
     if (currentUser && currentUser.isGuest) {
       mapEditorButton.disabled = true;
     } else {
@@ -789,6 +788,7 @@
   let players = [];
   let mySocketId = null;
   let currentRoomId = null;
+  let currentRoomGamemode = 'standard';
   let gameStates = [];
   // ms behind server for smoother interpolation
   let interpolationDelay = 20;
@@ -1405,6 +1405,7 @@
       alert('Failed to load leaderboard');
     }
   }
+  window.showTimeTrialLeaderboard = showTimeTrialLeaderboard;
 
   function closeTimeTrialLeaderboardModal() {
     hide(timeTrialLeaderboardModal);
@@ -1987,7 +1988,8 @@
   socket.on('joined', (data) => {
     stopSpectating();
     currentRoomId = data.roomId;
-    
+    currentRoomGamemode = data.gamemode || 'standard';
+
     // try binary encoding if decided by server
     if (data.binarySupport) {
       useBinaryEncoding = true;
@@ -2268,11 +2270,13 @@
 
   socket.on('spectatorState', (data) => {
     spectatorState = data;
-    
+
     if (data.roomId && data.roomId !== currentRoomId) {
       currentRoomId = data.roomId;
     }
-    
+
+    currentRoomGamemode = data.gamemode || 'standard';
+
     updateRoomNameDisplay(data.roomName, data.map);
 
     if (data.map) {
@@ -4127,7 +4131,12 @@
     });
 
     if (showHUD && centerPlayer && mode === 'player') {
-      lapsSpan.textContent = `Lap ${centerPlayer.laps + 1} / ${centerPlayer.maxLaps}`;
+      // Show infinity symbol for Time Trial mode
+      if (currentRoomGamemode === 'time_trial') {
+        lapsSpan.textContent = `Lap ${centerPlayer.laps + 1} / ∞`;
+      } else {
+        lapsSpan.textContent = `Lap ${centerPlayer.laps + 1} / ${centerPlayer.maxLaps}`;
+      }
       
       const upgradePointsCounter = document.getElementById('upgradePointsCounter');
       if (upgradePointsCounter) {
