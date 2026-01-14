@@ -128,6 +128,7 @@
   const levelProgressFill = document.getElementById('levelProgressFill');
   const toolbarLevelInfo = document.getElementById('toolbarLevelInfo');
   const toolbarBackBtn = document.getElementById('toolbarBackBtn');
+  const toolbarKillBtn = document.getElementById('toolbarKillBtn');
   const toolbarLogoutBtn = document.getElementById('toolbarLogoutBtn');
   const toolbarSettingsBtn = document.getElementById('toolbarSettingsBtn');
 
@@ -510,6 +511,7 @@
 
 
   toolbarBackBtn.addEventListener('click', handleBackToGame);
+  toolbarKillBtn.addEventListener('click', handleKillCar);
   toolbarLogoutBtn.addEventListener('click', handleLogout);
   toolbarSettingsBtn.addEventListener('click', openSettings);
 
@@ -1031,6 +1033,7 @@
     lastKnownPlayers = [];
     playerCrashTime = null;
     mySocketId = null;
+    hide(toolbarKillBtn);
     hide(loadingScreen);
 
     // Hide mobile controls when returning to menu
@@ -1041,6 +1044,10 @@
 
   function returnToMenuAfterCrash() {
     returnToMenu();
+  }
+
+  function handleKillCar() {
+    socket.emit('killCar');
   }
 
   function formatTime(milliseconds) {
@@ -2019,6 +2026,7 @@
     show(loadingScreen);
     gameCanvas.style.display = 'block';
     hud.style.display = 'flex';
+    show(toolbarKillBtn);
     
     const selectedCar = document.querySelector('input[name="car"]:checked');
     if (selectedCar && CAR_TYPES[selectedCar.value]) {
@@ -4131,7 +4139,6 @@
     });
 
     if (showHUD && centerPlayer && mode === 'player') {
-      // Show infinity symbol for Time Trial mode
       if (currentRoomGamemode === 'time_trial') {
         lapsSpan.textContent = `Lap ${centerPlayer.laps + 1} / ∞`;
       } else {
@@ -4146,7 +4153,6 @@
       const now = Date.now();
       
       if (centerPlayer.laps > previousLapCount) {
-        // A lap was just completed
         if (currentLapStartTime > 0) {
           const lapTime = now - currentLapStartTime;
           if (!bestLapTime || lapTime < bestLapTime) {
@@ -4209,7 +4215,7 @@
   }
 
   function drawGame() {
-    // hold off on rendering until we get that first state
+    // hold off on rendering until we get that juicy first state
     if (!hasReceivedFirstState) {
       return;
     }

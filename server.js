@@ -3462,6 +3462,13 @@ io.on('connection', (socket) => {
       myCar.boostActive = data.boostActive && myCar.currentBoost > 0;
     }
   });
+
+  socket.on('killCar', () => {
+    if (!myCar) return;
+    myCar.currentHealth = 0;
+    myCar.justCrashed = true;
+  });
+
   socket.on('upgrade', (data) => {
     if (!myCar || !data || typeof data.stat !== 'string') return;
 
