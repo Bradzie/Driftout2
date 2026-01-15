@@ -580,6 +580,8 @@ app.get('/api/rooms', (req, res) => {
 app.post('/api/rooms/create', roomCreationLimiter, express.json(), (req, res) => {
   try {
     const { name, mapKey, maxPlayers, isPrivate, gamemode } = req.body;
+    console.log(req.body)
+    console.log(mapKey)
 
     if (name && name.length > 50) {
       return sendError(res, 400, 'Room name too long');
@@ -595,13 +597,13 @@ app.post('/api/rooms/create', roomCreationLimiter, express.json(), (req, res) =>
       return sendError(res, 400, 'Invalid max players (1-16)');
     }
 
-    if (gamemode && !['standard', 'time_trial'].includes(gamemode)) {
+    if (gamemode && !['standard', 'time_trial', 'tutorial'].includes(gamemode)) {
       return sendError(res, 400, 'Invalid gamemode');
     }
 
-    if (gamemode === 'time_trial') {
+    if (gamemode === 'time_trial' || gamemode === 'tutorial') {
       if (maxPlayers && maxPlayers !== 1) {
-        return sendError(res, 400, 'Time Trial mode requires exactly 1 player');
+        return sendError(res, 400, `${gamemode === 'time_trial' ? 'Time Trial' : 'Tutorial'} mode requires exactly 1 player`);
       }
     }
 
@@ -613,7 +615,7 @@ app.post('/api/rooms/create', roomCreationLimiter, express.json(), (req, res) =>
     if (typeof isPrivate === 'boolean') room.isPrivate = isPrivate;
     if (gamemode) room.gamemode = gamemode;
 
-    if (room.gamemode === 'time_trial') {
+    if (room.gamemode === 'time_trial' || room.gamemode === 'tutorial') {
       room.maxPlayers = 1;
     }
 
@@ -1721,7 +1723,7 @@ class Car {
       this.currentLapStartTime = Date.now();
       this.laps += 1
 
-      if (!this.room || this.room.gamemode !== 'time_trial') {
+      if (!this.room || (this.room.gamemode !== 'time_trial')) {
         this.upgradePoints += 1
       }
 

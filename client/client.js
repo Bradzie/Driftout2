@@ -201,6 +201,8 @@
   const currentUserRow = document.getElementById('currentUserRow');
   const currentUserLeaderboardBody = document.getElementById('currentUserLeaderboardBody');
 
+  const tutorialButton = document.getElementById('tutorialButton');
+
   const timeTrialLeaderboardModal = document.getElementById('timeTrialLeaderboardModal');
   const closeTimeTrialLeaderboard = document.getElementById('closeTimeTrialLeaderboard');
   const timeTrialMapName = document.getElementById('timeTrialMapName');
@@ -705,6 +707,34 @@
   globalLeaderboardButton.addEventListener('click', openGlobalLeaderboard);
   closeGlobalLeaderboard.addEventListener('click', closeGlobalLeaderboardModal);
 
+  tutorialButton.addEventListener('click', async () => {
+    try {
+      const response = await fetch('/api/rooms/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Tutorial',
+          mapKey: 'official/00000000-0000-0000-0000-000000000000',
+          maxPlayers: 1,
+          isPrivate: false,
+          gamemode: 'tutorial'
+        })
+      });
+
+      if (response.ok) {
+        const room = await response.json();
+        joinSpecificRoom(room.id);
+        console.log(room)
+      } else {
+        const errorData = await response.json();
+        alert(errorData.error || 'Failed to create tutorial room');
+      }
+    } catch (error) {
+      console.error('Tutorial room creation error:', error);
+      alert('Failed to create tutorial room');
+    }
+  });
+
   // close room browser when clicking outside
   roomBrowserModal.addEventListener('click', (e) => {
     if (e.target === roomBrowserModal) {
@@ -769,8 +799,8 @@
   createRoomGamemode.addEventListener('change', (e) => {
     const gamemode = e.target.value;
 
-    if (gamemode === 'time_trial') {
-      // Time Trial: lock to 1 player
+    if (gamemode === 'time_trial' || gamemode === 'tutorial') {
+      // Time Trial or Tutorial: lock to 1 player
       createRoomMaxPlayers.value = 1;
       maxPlayersValue.textContent = '1';
       createRoomMaxPlayers.disabled = true;
@@ -3627,6 +3657,35 @@
       }
     }
 
+    // map text (only in the tutorial level for now)
+    if (currentRoomGamemode === 'tutorial' && mapToUse && Array.isArray(mapToUse.textAnnotations)) {
+      for (const annotation of mapToUse.textAnnotations) {
+        const screenX = centerX + (annotation.x - focusX) * scale;
+        const screenY = centerY - (annotation.y - focusY) * scale;
+
+        const fontSize = (annotation.fontSize || 24) * scale;
+        const fontFamily = annotation.fontFamily || "'Nunito', sans-serif";
+        const textAlign = annotation.textAlign || 'center';
+        const textBaseline = annotation.textBaseline || 'middle';
+        const strokeColor = annotation.strokeColor || '#000000';
+        const fillColor = annotation.fillColor || '#ffffff';
+        const strokeWidth = (annotation.strokeWidth || 3) * scale;
+
+        ctx.save();
+        ctx.font = `bold ${fontSize}px ${fontFamily}`;
+        ctx.textAlign = textAlign;
+        ctx.textBaseline = textBaseline;
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = strokeWidth;
+        ctx.lineJoin = 'round';
+        ctx.strokeText(annotation.text, screenX, screenY);
+        ctx.fillStyle = fillColor;
+        ctx.fillText(annotation.text, screenX, screenY);
+
+        ctx.restore();
+      }
+    }
+
     // dynamic objects
     dynamicObjects.forEach((obj) => {
       if (obj.vertices && obj.vertices.length) {
@@ -4125,7 +4184,7 @@
     });
 
     if (showHUD && centerPlayer && mode === 'player') {
-      if (currentRoomGamemode === 'time_trial') {
+      if (currentRoomGamemode === 'tutorial') {
         lapsSpan.textContent = `Lap ${centerPlayer.laps + 1} / ∞`;
       } else {
         lapsSpan.textContent = `Lap ${centerPlayer.laps + 1} / ${centerPlayer.maxLaps}`;

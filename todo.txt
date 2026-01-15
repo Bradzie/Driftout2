@@ -61,3 +61,5 @@ X (client) feature where if the cursor is far enough away from the spectator men
 - (client) set meta/website description
 X (client/server) kill button on the toolbar to self-crash car and go back to menu
 - (client/server) one player per room can be a host, they can switch maps when they want
+- (client/server/map editor) test/fix the health property of the dynamic objects
+- (map editor) finish tutorial level

@@ -1,0 +1,190 @@
+{
+  "id": "8e604ee9-3733-48fe-bc23-ca2afa0f2ed9",
+  "displayName": "Tutorial",
+  "scale": {
+    "player": 0.002,
+    "spectator": 0.0005
+  },
+  "start": {
+    "type": "polygon",
+    "vertices": [
+      {
+        "x": 0,
+        "y": -25
+      },
+      {
+        "x": 50,
+        "y": -25
+      },
+      {
+        "x": 50,
+        "y": 200
+      },
+      {
+        "x": 0,
+        "y": 200
+      }
+    ]
+  },
+  "shapes": [
+    {
+      "vertices": [
+        {
+          "x": -325,
+          "y": -50
+        },
+        {
+          "x": 1800,
+          "y": -50
+        },
+        {
+          "x": 1800,
+          "y": 1275
+        },
+        {
+          "x": -325,
+          "y": 1275
+        }
+      ],
+      "fillColor": [
+        128,
+        128,
+        128
+      ],
+      "borderColors": [
+        "#ff4d4d",
+        "#ffffff"
+      ],
+      "borderWidth": 20,
+      "fillCollision": false,
+      "borderCollision": true
+    },
+    {
+      "vertices": [
+        {
+          "x": -25,
+          "y": 225
+        },
+        {
+          "x": -25,
+          "y": 1025
+        },
+        {
+          "x": 1500,
+          "y": 1025
+        },
+        {
+          "x": 1500,
+          "y": 225
+        }
+      ],
+      "fillColor": [
+        97,
+        97,
+        97
+      ],
+      "borderColors": [
+        "#ff4d4d",
+        "#ffffff"
+      ],
+      "borderWidth": 20,
+      "fillCollision": false,
+      "borderCollision": true
+    }
+  ],
+  "checkpoints": [],
+  "areaEffects": [],
+  "dynamicObjects": [
+    {
+      "id": "dynamicBox1",
+      "vertices": [
+        {
+          "x": 1775,
+          "y": -25
+        },
+        {
+          "x": 1775,
+          "y": 200
+        },
+        {
+          "x": 1750,
+          "y": 200
+        },
+        {
+          "x": 1750,
+          "y": -25
+        }
+      ],
+      "isStatic": false,
+      "density": 0.3,
+      "friction": 0.3,
+      "frictionAir": 0.2,
+      "restitution": 0.1,
+      "damageScale": 0,
+      "fillColor": [
+        110,
+        110,
+        110
+      ],
+      "strokeColor": [
+        72,
+        72,
+        72
+      ],
+      "strokeWidth": 4,
+      "collision": true
+    },
+    {
+      "id": "dynamicBox2",
+      "vertices": [
+        {
+          "x": -275,
+          "y": 1025,
+          "_originalX": -125,
+          "_originalY": 975
+        },
+        {
+          "x": -275,
+          "y": 1250,
+          "_originalX": -125,
+          "_originalY": 1200
+        },
+        {
+          "x": -300,
+          "y": 1250,
+          "_originalX": -150,
+          "_originalY": 1200
+        },
+        {
+          "x": -300,
+          "y": 1025,
+          "_originalX": -150,
+          "_originalY": 975
+        }
+      ],
+      "isStatic": false,
+      "density": 0.3,
+      "friction": 0.3,
+      "frictionAir": 0.2,
+      "restitution": 0.1,
+      "damageScale": 0,
+      "fillColor": [
+        110,
+        110,
+        110
+      ],
+      "strokeColor": [
+        72,
+        72,
+        72
+      ],
+      "strokeWidth": 4,
+      "collision": true
+    }
+  ],
+  "author": "Bradzie",
+  "created_at": "2026-01-15T12:44:54.545Z",
+  "updated_at": "2026-01-15T12:44:54.545Z",
+  "author_id": 1,
+  "category": "official"
+}
