@@ -580,8 +580,6 @@ app.get('/api/rooms', (req, res) => {
 app.post('/api/rooms/create', roomCreationLimiter, express.json(), (req, res) => {
   try {
     const { name, mapKey, maxPlayers, isPrivate, gamemode } = req.body;
-    console.log(req.body)
-    console.log(mapKey)
 
     if (name && name.length > 50) {
       return sendError(res, 400, 'Room name too long');
@@ -3287,6 +3285,7 @@ io.on('connection', (socket) => {
         roomName: currentRoom.name,
         currentMap: currentRoom.currentMapKey,
         gamemode: currentRoom.gamemode,
+        isOfficial: currentRoom.isOfficial,
         binarySupport: true // Signal that server supports binary encoding
       });
     } catch (error) {
@@ -4076,6 +4075,7 @@ function broadcastToSpectators() {
       roomId: room ? room.id : null,
       roomName: room ? room.name : null,
       gamemode: room ? room.gamemode : 'standard',
+      isOfficial: room ? room.isOfficial : false,
       timestamp: Date.now()
     };
     

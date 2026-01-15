@@ -257,13 +257,14 @@
     hide(authScreen);
     show(menu);
     show(miniLeaderboard);
-    
-    if (currentUser && currentUser.isGuest) {
-      mapEditorButton.disabled = true;
+
+    // Show Map Editor button only for non-guest users in non-official rooms
+    if (currentUser && !currentUser.isGuest && !currentRoomIsOfficial) {
+      mapEditorButton.style.display = 'block';
     } else {
-      mapEditorButton.disabled = false;
+      mapEditorButton.style.display = 'none';
     }
-    
+
     loadSettings();
   }
   
@@ -795,18 +796,15 @@
     maxPlayersValue.textContent = e.target.value;
   });
 
-  // Gamemode dropdown event listener
   createRoomGamemode.addEventListener('change', (e) => {
     const gamemode = e.target.value;
 
     if (gamemode === 'time_trial' || gamemode === 'tutorial') {
-      // Time Trial or Tutorial: lock to 1 player
       createRoomMaxPlayers.value = 1;
       maxPlayersValue.textContent = '1';
       createRoomMaxPlayers.disabled = true;
       createRoomMaxPlayers.classList.add('disabled');
     } else {
-      // Standard: enable player selection
       createRoomMaxPlayers.disabled = false;
       createRoomMaxPlayers.classList.remove('disabled');
       if (createRoomMaxPlayers.value === '1') {
@@ -821,6 +819,7 @@
   let mySocketId = null;
   let currentRoomId = null;
   let currentRoomGamemode = 'standard';
+  let currentRoomIsOfficial = false;
   let gameStates = [];
   // ms behind server for smoother interpolation
   let interpolationDelay = 20;
@@ -2026,6 +2025,7 @@
     stopSpectating();
     currentRoomId = data.roomId;
     currentRoomGamemode = data.gamemode || 'standard';
+    currentRoomIsOfficial = data.isOfficial || false;
 
     // try binary encoding if decided by server
     if (data.binarySupport) {
@@ -2314,6 +2314,16 @@
     }
 
     currentRoomGamemode = data.gamemode || 'standard';
+    currentRoomIsOfficial = data.isOfficial || false;
+
+    // Update Map Editor button visibility based on room type
+    if (mapEditorButton) {
+      if (currentUser && !currentUser.isGuest && !currentRoomIsOfficial) {
+        mapEditorButton.style.display = 'block';
+      } else {
+        mapEditorButton.style.display = 'none';
+      }
+    }
 
     updateRoomNameDisplay(data.roomName, data.map);
 
@@ -3060,6 +3070,9 @@
     hide(boostDisplay);
     // reset clock synchronization
     clockOffset = 0;
+    // reset room state
+    currentRoomIsOfficial = false;
+    currentRoomId = null;
     // show disconnection info
     showDisconnectionOverlay();
   });
@@ -3118,11 +3131,11 @@
     joinButton.style.display = 'block';
     roomBrowserButton.style.display = 'block';
     
-    // show Map Editor button for non-guest users
-    if (currentUser && currentUser.isGuest) {
-      mapEditorButton.style.display = 'none';
-    } else {
+    // show Map Editor button only for non-guest users in non-official rooms
+    if (currentUser && !currentUser.isGuest && !currentRoomIsOfficial) {
       mapEditorButton.style.display = 'block';
+    } else {
+      mapEditorButton.style.display = 'none';
     }
     
     // finally, hide warning template
