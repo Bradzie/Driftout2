@@ -206,11 +206,9 @@
   const hostOptionsModal = document.getElementById('hostOptionsModal');
   const hostOptionsButton = document.getElementById('hostOptionsButton');
   const closeHostOptions = document.getElementById('closeHostOptions');
-  const currentHostMapDisplay = document.getElementById('currentHostMapDisplay');
-  const currentHostMapName = document.getElementById('currentHostMapName');
-  const hostSelectedMapDisplay = document.getElementById('hostSelectedMapDisplay');
-  const hostBrowseMapButton = document.getElementById('hostBrowseMapButton');
-  const removeMapButton = document.getElementById('removeMapButton');
+  const hostMapInput = document.getElementById('hostMapInput');
+  const hostMapInputText = document.getElementById('hostMapInputText');
+  const hostMapClearBtn = document.getElementById('hostMapClearBtn');
   const applyMapChangeButton = document.getElementById('applyMapChangeButton');
   let isHost = false;
   let hostSelectedMap = null;
@@ -754,9 +752,21 @@
 
   hostOptionsButton.addEventListener('click', openHostOptions);
   closeHostOptions.addEventListener('click', closeHostOptionsModal);
-  removeMapButton.addEventListener('click', handleRemoveMap);
   applyMapChangeButton.addEventListener('click', handleApplyMapChange);
-  hostBrowseMapButton.addEventListener('click', openMapBrowserForHost);
+
+  // Host map input click - open map browser
+  hostMapInput.addEventListener('click', (e) => {
+    // Don't open browser if clicking the clear button
+    if (e.target !== hostMapClearBtn) {
+      openMapBrowserForHost();
+    }
+  });
+
+  // Host map clear button
+  hostMapClearBtn.addEventListener('click', (e) => {
+    e.stopPropagation(); // Prevent opening map browser
+    handleClearMap();
+  });
 
   hostOptionsModal.addEventListener('click', (e) => {
     if (e.target === hostOptionsModal) {
@@ -1425,30 +1435,33 @@
 
   function openHostOptions() {
     show(hostOptionsModal);
-    updateHostMapDisplay();
+    updateHostMapInput();
   }
 
   function closeHostOptionsModal() {
     hide(hostOptionsModal);
     hostSelectedMap = null;
-    updateHostSelectedMapDisplay();
+    updateHostMapInput();
   }
 
-  function updateHostMapDisplay() {
-    if (spectatorState?.map) {
-      currentHostMapName.textContent = spectatorState.map.displayName || spectatorState.map.name || 'Unknown Map';
-    } else {
-      currentHostMapName.textContent = 'No map selected';
-    }
-  }
+  function updateHostMapInput() {
+    const mapToShow = hostSelectedMap || spectatorState?.map;
 
-  function updateHostSelectedMapDisplay() {
-    if (hostSelectedMap && hostSelectedMap.key) {
-      hostSelectedMapDisplay.innerHTML = `<span class="map-name">${escapeHtml(hostSelectedMap.name)}</span>`;
+    if (mapToShow && mapToShow.key !== null) {
+      const displayName = mapToShow.displayName || mapToShow.name || 'Unknown Map';
+      hostMapInputText.textContent = displayName;
+      hostMapInputText.classList.add('has-map');
+      hostMapClearBtn.classList.remove('hidden');
     } else if (hostSelectedMap && hostSelectedMap.key === null) {
-      hostSelectedMapDisplay.innerHTML = `<span class="map-name" style="color: #ff5f5f;">Remove current map</span>`;
+      hostMapInputText.textContent = 'Remove current map';
+      hostMapInputText.classList.add('has-map');
+      hostMapInputText.style.color = '#ff5f5f';
+      hostMapClearBtn.classList.remove('hidden');
     } else {
-      hostSelectedMapDisplay.innerHTML = `<span class="no-map-selected">Select new map</span>`;
+      hostMapInputText.textContent = 'Select map';
+      hostMapInputText.classList.remove('has-map');
+      hostMapInputText.style.color = '';
+      hostMapClearBtn.classList.add('hidden');
     }
   }
 
@@ -1467,9 +1480,9 @@
       });
   }
 
-  function handleRemoveMap() {
+  function handleClearMap() {
     hostSelectedMap = { key: null, name: 'No Map' };
-    updateHostSelectedMapDisplay();
+    updateHostMapInput();
   }
 
   function handleApplyMapChange() {
@@ -1710,7 +1723,7 @@
   function selectMapForRoom(key, name) {
     if (browseMapContext === 'host') {
       hostSelectedMap = { key, name };
-      updateHostSelectedMapDisplay();
+      updateHostMapInput();
     } else {
       selectedMapForRoom = { key, name };
       updateSelectedMapDisplay();
@@ -1913,7 +1926,6 @@
     }
   }
   
-  // Utility function to escape HTML
   function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;

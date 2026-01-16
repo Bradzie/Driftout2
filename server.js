@@ -2568,7 +2568,6 @@ class Room {
       Matter.World.add(this.world, this.currentTrackBodies)
     }
     if (this.currentDynamicBodies.length > 0) {
-      // Only add dynamic bodies that have collision enabled
       const collisionEnabledBodies = this.currentDynamicBodies.filter(body => !body.noCollision)
       if (collisionEnabledBodies.length > 0) {
         Matter.World.add(this.world, collisionEnabledBodies)
@@ -2579,15 +2578,12 @@ class Room {
   addMember(socket, state = Room.USER_STATES.SPECTATING) {
     const isExistingMember = this.allMembers.has(socket.id);
 
-    // Only check capacity for NEW members, not state changes
     if (!isExistingMember && this.availableSlots <= 0) {
       throw new Error('Room is full');
     }
 
-    // Set first member as host (only for non-official rooms)
     if (!this.isOfficial && !this.hostSocketId && !isExistingMember) {
       this.hostSocketId = socket.id;
-      console.log(`Room ${this.id}: ${socket.id} is now the host`);
     }
 
     this.allMembers.set(socket.id, {
@@ -2628,7 +2624,6 @@ class Room {
     this.allMembers.delete(socketId);
     this.playerIdMap.delete(socketId);
 
-    // Transfer host if needed (only for non-official rooms)
     if (!this.isOfficial && wasHost && this.allMembers.size > 0) {
       this.transferHost();
     }
@@ -3585,8 +3580,6 @@ io.on('connection', (socket) => {
         return;
       }
     }
-
-    console.log(`Room ${currentRoom.id}: Host ${socket.id} changing map to ${mapKey || 'none'}`);
 
     currentRoom.changeMap(mapKey);
 
