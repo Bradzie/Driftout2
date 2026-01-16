@@ -3288,6 +3288,70 @@ function updateMapAndRender() {
   renderEditor();
 }
 
+// Drag and drop state
+let draggedItem = null;
+
+function handleDragStart(e, type, index) {
+  draggedItem = { type, index };
+  e.target.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+
+function handleDragOver(e, type, index) {
+  e.preventDefault();
+
+  // Only allow drop if same type
+  if (draggedItem && draggedItem.type === type) {
+    e.dataTransfer.dropEffect = 'move';
+    e.target.classList.add('drag-over');
+  }
+}
+
+function handleDragLeave(e) {
+  e.target.classList.remove('drag-over');
+}
+
+function handleDrop(e, targetType, targetIndex) {
+  e.preventDefault();
+  e.target.classList.remove('drag-over');
+
+  // Only process if same type and different index
+  if (draggedItem && draggedItem.type === targetType && draggedItem.index !== targetIndex) {
+    saveToHistory();
+
+    const array = getObjectArray(targetType);
+    if (!array) return;
+
+    // Remove from old position
+    const item = array.splice(draggedItem.index, 1)[0];
+
+    // Insert at new position
+    // If moving down, target index needs adjustment
+    const newIndex = draggedItem.index < targetIndex ? targetIndex : targetIndex;
+    array.splice(newIndex, 0, item);
+
+    // Update selection if the dragged item was selected
+    if (selectedObject?.type === targetType && selectedObject?.index === draggedItem.index) {
+      selectedObject.index = newIndex;
+    }
+
+    updateLayersPanel();
+    renderEditor();
+  }
+
+  draggedItem = null;
+}
+
+function handleDragEnd(e) {
+  e.target.classList.remove('dragging');
+  draggedItem = null;
+
+  // Clean up any remaining drag-over classes
+  document.querySelectorAll('.drag-over').forEach(el => {
+    el.classList.remove('drag-over');
+  });
+}
+
 function updateLayersPanel() {
   const panel = document.getElementById('layersPanel');
   let html = '';
@@ -3296,7 +3360,16 @@ function updateLayersPanel() {
     if (editorMap.shapes) {
       editorMap.shapes.forEach((shape, i) => {
         const isSelected = selectedObject?.type === 'shape' && selectedObject?.index === i;
-        html += `<div class="layer-item ${isSelected ? 'selected' : ''}" onclick="selectObject('shape', ${i})">
+        html += `<div class="layer-item ${isSelected ? 'selected' : ''}"
+          draggable="true"
+          data-type="shape"
+          data-index="${i}"
+          onclick="selectObject('shape', ${i})"
+          ondragstart="handleDragStart(event, 'shape', ${i})"
+          ondragover="handleDragOver(event, 'shape', ${i})"
+          ondragleave="handleDragLeave(event)"
+          ondrop="handleDrop(event, 'shape', ${i})"
+          ondragend="handleDragEnd(event)">
           Shape ${i + 1}
         </div>`;
       });
@@ -3305,7 +3378,16 @@ function updateLayersPanel() {
     if (editorMap.checkpoints) {
       editorMap.checkpoints.forEach((checkpoint, i) => {
         const isSelected = selectedObject?.type === 'checkpoint' && selectedObject?.index === i;
-        html += `<div class="layer-item ${isSelected ? 'selected' : ''}" onclick="selectObject('checkpoint', ${i})">
+        html += `<div class="layer-item ${isSelected ? 'selected' : ''}"
+          draggable="true"
+          data-type="checkpoint"
+          data-index="${i}"
+          onclick="selectObject('checkpoint', ${i})"
+          ondragstart="handleDragStart(event, 'checkpoint', ${i})"
+          ondragover="handleDragOver(event, 'checkpoint', ${i})"
+          ondragleave="handleDragLeave(event)"
+          ondrop="handleDrop(event, 'checkpoint', ${i})"
+          ondragend="handleDragEnd(event)">
           ${checkpoint.id || `Checkpoint ${i + 1}`}
         </div>`;
       });
@@ -3314,7 +3396,16 @@ function updateLayersPanel() {
     if (editorMap.areaEffects) {
       editorMap.areaEffects.forEach((area, i) => {
         const isSelected = selectedObject?.type === 'areaEffect' && selectedObject?.index === i;
-        html += `<div class="layer-item ${isSelected ? 'selected' : ''}" onclick="selectObject('areaEffect', ${i})">
+        html += `<div class="layer-item ${isSelected ? 'selected' : ''}"
+          draggable="true"
+          data-type="areaEffect"
+          data-index="${i}"
+          onclick="selectObject('areaEffect', ${i})"
+          ondragstart="handleDragStart(event, 'areaEffect', ${i})"
+          ondragover="handleDragOver(event, 'areaEffect', ${i})"
+          ondragleave="handleDragLeave(event)"
+          ondrop="handleDrop(event, 'areaEffect', ${i})"
+          ondragend="handleDragEnd(event)">
           Area Effect ${i + 1}
         </div>`;
       });
@@ -3323,7 +3414,16 @@ function updateLayersPanel() {
     if (editorMap.dynamicObjects) {
       editorMap.dynamicObjects.forEach((obj, i) => {
         const isSelected = selectedObject?.type === 'dynamicObject' && selectedObject?.index === i;
-        html += `<div class="layer-item ${isSelected ? 'selected' : ''}" onclick="selectObject('dynamicObject', ${i})">
+        html += `<div class="layer-item ${isSelected ? 'selected' : ''}"
+          draggable="true"
+          data-type="dynamicObject"
+          data-index="${i}"
+          onclick="selectObject('dynamicObject', ${i})"
+          ondragstart="handleDragStart(event, 'dynamicObject', ${i})"
+          ondragover="handleDragOver(event, 'dynamicObject', ${i})"
+          ondragleave="handleDragLeave(event)"
+          ondrop="handleDrop(event, 'dynamicObject', ${i})"
+          ondragend="handleDragEnd(event)">
           ${obj.id || `Dynamic ${i + 1}`}
         </div>`;
       });
@@ -3771,6 +3871,8 @@ async function executeSave(mapName, directory, author, key = null, generatePrevi
     if (key) {
       payload.key = key;
     }
+
+    console.log(payload)
     
     const response = await fetch('/api/maps', {
       method: 'POST',
@@ -3978,3 +4080,8 @@ window.moveToFront = moveToFront;
 window.moveToBack = moveToBack;
 window.moveUp = moveUp;
 window.moveDown = moveDown;
+window.handleDragStart = handleDragStart;
+window.handleDragOver = handleDragOver;
+window.handleDragLeave = handleDragLeave;
+window.handleDrop = handleDrop;
+window.handleDragEnd = handleDragEnd;

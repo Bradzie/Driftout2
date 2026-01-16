@@ -1,5 +1,4 @@
 (() => {
-  // DOM helper functions
   function show(element) {
     if (element) element.classList.remove('hidden');
   }
@@ -12,6 +11,7 @@
     if (element) element.classList.toggle('hidden', !visible);
   }
 
+  // configs because i am a boss
   const DEFAULT_FAKE_PING_LATENCY = 100;
   const PING_ONE_WAY_DIVISOR = 2;
   const BASE_XP_LEVEL_1 = 10;
@@ -128,6 +128,7 @@
   const levelProgressFill = document.getElementById('levelProgressFill');
   const toolbarLevelInfo = document.getElementById('toolbarLevelInfo');
   const toolbarBackBtn = document.getElementById('toolbarBackBtn');
+  const toolbarKillBtn = document.getElementById('toolbarKillBtn');
   const toolbarLogoutBtn = document.getElementById('toolbarLogoutBtn');
   const toolbarSettingsBtn = document.getElementById('toolbarSettingsBtn');
 
@@ -184,6 +185,7 @@
   const createRoomName = document.getElementById('createRoomName');
   const selectedMapDisplay = document.getElementById('selectedMapDisplay');
   const browseMapButton = document.getElementById('browseMapButton');
+  const createRoomGamemode = document.getElementById('createRoomGamemode');
   const createRoomMaxPlayers = document.getElementById('createRoomMaxPlayers');
 
   const mapEditorButton = document.getElementById('mapEditorButton');
@@ -198,7 +200,25 @@
   const globalLeaderboardTableBody = document.getElementById('globalLeaderboardTableBody');
   const currentUserRow = document.getElementById('currentUserRow');
   const currentUserLeaderboardBody = document.getElementById('currentUserLeaderboardBody');
-  
+
+  const tutorialButton = document.getElementById('tutorialButton');
+
+  const hostOptionsModal = document.getElementById('hostOptionsModal');
+  const hostOptionsButton = document.getElementById('hostOptionsButton');
+  const closeHostOptions = document.getElementById('closeHostOptions');
+  const hostMapInput = document.getElementById('hostMapInput');
+  const hostMapInputText = document.getElementById('hostMapInputText');
+  const hostMapClearBtn = document.getElementById('hostMapClearBtn');
+  const applyMapChangeButton = document.getElementById('applyMapChangeButton');
+  let isHost = false;
+  let hostSelectedMap = null;
+
+  const timeTrialLeaderboardModal = document.getElementById('timeTrialLeaderboardModal');
+  const closeTimeTrialLeaderboard = document.getElementById('closeTimeTrialLeaderboard');
+  const timeTrialMapName = document.getElementById('timeTrialMapName');
+  const timeTrialLeaderboardTableBody = document.getElementById('timeTrialLeaderboardTableBody');
+  const userBestTimeDisplay = document.getElementById('userBestTimeDisplay');
+
   const carRadioInput = document.querySelector('input[name="car"]');
   const carName = document.getElementById('carName');
   const carAbility = document.getElementById('carAbility');
@@ -217,10 +237,10 @@
       
       if (data.authenticated) {
         if (data.user.isGuest) {
-          // guests need to re-authenticate every session
+          // guests need to re-authenticate every session because they are not a boss
           currentUser = null;
         } else {
-          // auto-login if registered
+          // auto-login if registered (we are bosses)
           currentUser = data.user;
           refreshSocketSession();
           showMainMenu();
@@ -247,14 +267,14 @@
     hide(authScreen);
     show(menu);
     show(miniLeaderboard);
-    
-    // Hide map editor button for guest users
-    if (currentUser && currentUser.isGuest) {
-      mapEditorButton.disabled = true;
+
+    // Show Map Editor button only for non-guest users in non-official rooms
+    if (currentUser && !currentUser.isGuest && !currentRoomIsOfficial) {
+      mapEditorButton.style.display = 'block';
     } else {
-      mapEditorButton.disabled = false;
+      mapEditorButton.style.display = 'none';
     }
-    
+
     loadSettings();
   }
   
@@ -504,6 +524,7 @@
 
 
   toolbarBackBtn.addEventListener('click', handleBackToGame);
+  toolbarKillBtn.addEventListener('click', handleKillCar);
   toolbarLogoutBtn.addEventListener('click', handleLogout);
   toolbarSettingsBtn.addEventListener('click', openSettings);
 
@@ -679,7 +700,11 @@
   
   createRoomCloseBtn.addEventListener('click', closeCreateRoomModal);
   createRoomButton.addEventListener('click', handleCreateRoom);
-  browseMapButton.addEventListener('click', openMapBrowserForRoom);
+
+  // Browse map button was removed from create room modal (map selection now in Host Options)
+  if (browseMapButton) {
+    browseMapButton.addEventListener('click', openMapBrowserForRoom);
+  }
 
   mapEditorButton.addEventListener('click', () => {
     if (socket && socket.connected) {
@@ -696,6 +721,58 @@
 
   globalLeaderboardButton.addEventListener('click', openGlobalLeaderboard);
   closeGlobalLeaderboard.addEventListener('click', closeGlobalLeaderboardModal);
+
+  tutorialButton.addEventListener('click', async () => {
+    try {
+      const response = await fetch('/api/rooms/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Tutorial',
+          mapKey: 'official/00000000-0000-0000-0000-000000000000',
+          maxPlayers: 1,
+          isPrivate: false,
+          gamemode: 'tutorial'
+        })
+      });
+
+      if (response.ok) {
+        const room = await response.json();
+        joinSpecificRoom(room.id);
+        console.log(room)
+      } else {
+        const errorData = await response.json();
+        alert(errorData.error || 'Failed to create tutorial room');
+      }
+    } catch (error) {
+      console.error('Tutorial room creation error:', error);
+      alert('Failed to create tutorial room');
+    }
+  });
+
+  hostOptionsButton.addEventListener('click', openHostOptions);
+  closeHostOptions.addEventListener('click', closeHostOptionsModal);
+  applyMapChangeButton.addEventListener('click', handleApplyMapChange);
+
+  // Host map input click - open map browser
+  hostMapInput.addEventListener('click', (e) => {
+    // Don't open browser if clicking the clear button
+    if (e.target !== hostMapClearBtn) {
+      openMapBrowserForHost();
+    }
+  });
+
+  // Host map clear button
+  hostMapClearBtn.addEventListener('click', (e) => {
+    e.stopPropagation(); // Prevent opening map browser
+    handleClearMap();
+  });
+
+  hostOptionsModal.addEventListener('click', (e) => {
+    if (e.target === hostOptionsModal) {
+      closeHostOptionsModal();
+    }
+  });
 
   // close room browser when clicking outside
   roomBrowserModal.addEventListener('click', (e) => {
@@ -717,6 +794,19 @@
       closeGlobalLeaderboardModal();
     }
   });
+
+  // close time trial leaderboard
+  if (closeTimeTrialLeaderboard) {
+    closeTimeTrialLeaderboard.addEventListener('click', closeTimeTrialLeaderboardModal);
+  }
+
+  if (timeTrialLeaderboardModal) {
+    timeTrialLeaderboardModal.addEventListener('click', (e) => {
+      if (e.target === timeTrialLeaderboardModal) {
+        closeTimeTrialLeaderboardModal();
+      }
+    });
+  }
 
   // close browse map dialog when clicking outside or ESC
   const browseMapModal = document.getElementById('browseMapModal');
@@ -744,10 +834,30 @@
     maxPlayersValue.textContent = e.target.value;
   });
 
+  createRoomGamemode.addEventListener('change', (e) => {
+    const gamemode = e.target.value;
+
+    if (gamemode === 'time_trial' || gamemode === 'tutorial') {
+      createRoomMaxPlayers.value = 1;
+      maxPlayersValue.textContent = '1';
+      createRoomMaxPlayers.disabled = true;
+      createRoomMaxPlayers.classList.add('disabled');
+    } else {
+      createRoomMaxPlayers.disabled = false;
+      createRoomMaxPlayers.classList.remove('disabled');
+      if (createRoomMaxPlayers.value === '1') {
+        createRoomMaxPlayers.value = 8;
+        maxPlayersValue.textContent = '8';
+      }
+    }
+  });
+
   const ctx = gameCanvas.getContext('2d');
   let players = [];
   let mySocketId = null;
   let currentRoomId = null;
+  let currentRoomGamemode = 'standard';
+  let currentRoomIsOfficial = false;
   let gameStates = [];
   // ms behind server for smoother interpolation
   let interpolationDelay = 20;
@@ -756,7 +866,7 @@
   // to stop any rendering before first state packet
   let hasReceivedFirstState = false;
 
-  // Mobile detection and controls
+  // mobile
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
     || ('ontouchstart' in window)
     || (window.matchMedia && window.matchMedia("(max-width: 768px)").matches);
@@ -764,15 +874,9 @@
   let joystickStartPos = { x: 0, y: 0 };
   let joystickCurrentPos = { x: 0, y: 0 };
 
-  // Function to show/hide mobile controls based on game state
   function updateMobileControlsVisibility() {
     const mobileControls = document.getElementById('mobileControls');
     if (!mobileControls) return;
-
-    // Show mobile controls only when:
-    // - Device is mobile
-    // - Player is actively in game (sendInputInterval is running)
-    // - Chat is not focused
     if (isMobile && sendInputInterval !== null && !isChatFocused) {
       mobileControls.classList.remove('hidden');
     } else {
@@ -784,7 +888,7 @@
   let inputSequenceNumber = 0;
   // some inputs can be sent on execution (e.g. boost) so it responds slightly faster and isn't bound to the standard input frequency
   let lastInputSendTime = 0;
-  const MIN_INPUT_INTERVAL = 1000 / 120; // ~8.33ms max 120Hz
+  const MIN_INPUT_INTERVAL = 1000 / 60; // 16ms, 60hz
 
   function encodeBinaryInput(inputData) {
     const buffer = new ArrayBuffer(21);
@@ -996,6 +1100,7 @@
     lastKnownPlayers = [];
     playerCrashTime = null;
     mySocketId = null;
+    hide(toolbarKillBtn);
     hide(loadingScreen);
 
     // Hide mobile controls when returning to menu
@@ -1006,6 +1111,10 @@
 
   function returnToMenuAfterCrash() {
     returnToMenu();
+  }
+
+  function handleKillCar() {
+    socket.emit('killCar');
   }
 
   function formatTime(milliseconds) {
@@ -1283,7 +1392,8 @@
   let roomsRefreshInterval = null;
   let availableRooms = [];
   let selectedMapForRoom = null;
-  
+  let browseMapContext = 'room'; // 'room' or 'host'
+
   function openRoomBrowser() {
     show(roomBrowserModal);
     loadRooms();
@@ -1321,6 +1431,121 @@
 
   function closeGlobalLeaderboardModal() {
     hide(globalLeaderboardModal);
+  }
+
+  function openHostOptions() {
+    show(hostOptionsModal);
+    updateHostMapInput();
+  }
+
+  function closeHostOptionsModal() {
+    hide(hostOptionsModal);
+    hostSelectedMap = null;
+    updateHostMapInput();
+  }
+
+  function updateHostMapInput() {
+    const mapToShow = hostSelectedMap || spectatorState?.map;
+
+    if (mapToShow && mapToShow.key !== null) {
+      const displayName = mapToShow.displayName || mapToShow.name || 'Unknown Map';
+      hostMapInputText.textContent = displayName;
+      hostMapInputText.classList.add('has-map');
+      hostMapClearBtn.classList.remove('hidden');
+    } else if (hostSelectedMap && hostSelectedMap.key === null) {
+      hostMapInputText.textContent = 'Remove current map';
+      hostMapInputText.classList.add('has-map');
+      hostMapInputText.style.color = '#ff5f5f';
+      hostMapClearBtn.classList.remove('hidden');
+    } else {
+      hostMapInputText.textContent = 'Select map';
+      hostMapInputText.classList.remove('has-map');
+      hostMapInputText.style.color = '';
+      hostMapClearBtn.classList.add('hidden');
+    }
+  }
+
+  function openMapBrowserForHost() {
+    browseMapContext = 'host';
+    show(browseMapModal);
+    fetch('/api/maps')
+      .then(res => res.json())
+      .then(maps => {
+        allMapsData = maps;
+        setupMapFilters();
+        displayMapsForRoomCreation(maps);
+      })
+      .catch(errorr => {
+        document.getElementById('mapsGrid').innerHTML = '<p class="no-maps-message">Error loading maps</p>';
+      });
+  }
+
+  function handleClearMap() {
+    hostSelectedMap = { key: null, name: 'No Map' };
+    updateHostMapInput();
+  }
+
+  function handleApplyMapChange() {
+    if (!hostSelectedMap) {
+      alert('No changes to apply');
+      return;
+    }
+
+    socket.emit('changeMap', { mapKey: hostSelectedMap.key });
+    closeHostOptionsModal();
+  }
+
+  async function showTimeTrialLeaderboard(mapKey, mapCategory, mapName) {
+    if (!timeTrialLeaderboardModal) return;
+
+    timeTrialMapName.textContent = `Time Trial - ${mapName}`;
+
+    try {
+      const response = await fetch(`/api/time-trial/leaderboard/${mapCategory}/${mapKey}`);
+      const data = await response.json();
+
+      let userRank = null;
+      try {
+        const rankResponse = await fetch(`/api/time-trial/rank/${mapCategory}/${mapKey}`);
+        if (rankResponse.ok) {
+          userRank = await rankResponse.json();
+        }
+      } catch (e) {}
+
+      if (userRank && userRank.hasRecord) {
+        userBestTimeDisplay.innerHTML = `
+          <div class="user-rank-badge">Your Best: #${userRank.rank}</div>
+          <div class="user-time">${formatTime(userRank.lapTime)}</div>
+        `;
+        userBestTimeDisplay.classList.remove('hidden');
+      } else {
+        userBestTimeDisplay.innerHTML = '<div class="no-record">No record yet - Complete a lap to set your time!</div>';
+        userBestTimeDisplay.classList.remove('hidden');
+      }
+
+      timeTrialLeaderboardTableBody.innerHTML = data.leaderboard.map(entry => {
+        const isCurrentUser = userRank && userRank.rank === entry.rank;
+        const rowClass = isCurrentUser ? 'current-user-row' : '';
+        return `
+          <tr class="${rowClass}">
+            <td class="rank-cell">#${entry.rank}</td>
+            <td class="player-name">${escapeHtml(entry.username)}</td>
+            <td class="time-cell">${formatTime(entry.lap_time)}</td>
+            <td class="date-cell">${new Date(entry.created_at).toLocaleDateString()}</td>
+          </tr>
+        `;
+      }).join('');
+
+      show(timeTrialLeaderboardModal);
+    } catch (error) {
+      console.error('Failed to load time trial leaderboard:', error);
+      alert('Failed to load leaderboard');
+    }
+  }
+  window.showTimeTrialLeaderboard = showTimeTrialLeaderboard;
+
+  function closeTimeTrialLeaderboardModal() {
+    hide(timeTrialLeaderboardModal);
   }
 
   function loadGlobalLeaderboard() {
@@ -1440,8 +1665,45 @@
       const author = map.author || (category === 'official' ? 'Official' : 'Community');
       const previewImageUrl = map.id ? `/previews/${map.id}.png` : `/previews/${map.key.replace(/\//g, '_')}.png`;
 
+      // Parse map key to get category and mapKey for leaderboard
+      const mapKeyParts = map.key.split('/');
+      const mapCategory = mapKeyParts[0];
+      const mapKey = mapKeyParts[1];
+
+      // Build leaderboard section HTML
+      let leaderboardHTML = '';
+      if (map.worldRecord) {
+        const formattedTime = formatTime(map.worldRecord.time);
+        leaderboardHTML = `
+          <div class="map-leaderboard-section">
+            <div class="map-leaderboard-content">
+              <div class="map-leaderboard-text">
+                <div class="map-best-time">Best Time: ${formattedTime}</div>
+                <div class="map-record-holder">by ${escapeHtml(map.worldRecord.username)}</div>
+              </div>
+              <button class="leaderboard-btn" onclick="event.stopPropagation(); showTimeTrialLeaderboard('${mapKey}', '${mapCategory}', '${escapeHtml(map.name)}');" title="View Leaderboard">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
+                  <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path>
+                  <path d="M4 22h16"></path>
+                  <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path>
+                  <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path>
+                  <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+        `;
+      } else {
+        leaderboardHTML = `
+          <div class="map-leaderboard-section">
+            <div class="no-records-text">No records yet</div>
+          </div>
+        `;
+      }
+
       return `
-        <div class="map-entry" data-map-key="${map.key}" onclick="selectMapForRoom('${map.key}', '${map.name}')">
+        <div class="map-entry" data-map-key="${map.key}" onclick="selectMapForRoom('${map.key}', '${escapeHtml(map.name)}')">
           <div class="map-preview">
             <img src="${previewImageUrl}" alt="${map.name} preview" class="preview-image"
                  onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
@@ -1452,18 +1714,28 @@
             <p class="map-author">Author: ${author}</p>
             <p class="map-category">${category.charAt(0).toUpperCase() + category.slice(1)}</p>
           </div>
+          ${leaderboardHTML}
         </div>
       `;
     }).join('');
   }
   
   function selectMapForRoom(key, name) {
-    selectedMapForRoom = { key, name };
-    updateSelectedMapDisplay();
+    if (browseMapContext === 'host') {
+      hostSelectedMap = { key, name };
+      updateHostMapInput();
+    } else {
+      selectedMapForRoom = { key, name };
+      updateSelectedMapDisplay();
+    }
     document.getElementById('browseMapModal').classList.add('hidden');
+    browseMapContext = 'room';
   }
   
   function updateSelectedMapDisplay() {
+    // selectedMapDisplay was removed from create room modal (map selection now in Host Options)
+    if (!selectedMapDisplay) return;
+
     if (selectedMapForRoom) {
       selectedMapDisplay.innerHTML = `
         <div class="selected-map-info">
@@ -1590,32 +1862,23 @@
     const mapKey = selectedMapForRoom?.key;
     const maxPlayers = parseInt(createRoomMaxPlayers.value);
     const isPrivate = createRoomPrivate.checked;
-    
+    const gamemode = createRoomGamemode.value;
+
     // :TODO these alerts are not nice, replace with in-dialog error display that follows design
     if (!roomName) {
       alert('Please enter a room name');
       return;
     }
-    
-    if (!selectedMapForRoom) {
-      alert('Please select a map');
-      return;
-    }
-    
+
     if (roomName.length > 50) {
       alert('Room name must be 50 characters or less');
       return;
     }
-    
-    if (!mapKey) {
-      alert('Please select a map');
-      return;
-    }
-    
+
     // disable button during creation
     createRoomButton.disabled = true;
     createRoomButton.textContent = 'Creating...';
-    
+
     try {
       const response = await fetch('/api/rooms/create', {
         method: 'POST',
@@ -1626,7 +1889,8 @@
           name: roomName,
           mapKey: mapKey,
           maxPlayers: maxPlayers,
-          isPrivate: isPrivate
+          isPrivate: isPrivate,
+          gamemode: gamemode
         })
       });
       
@@ -1640,10 +1904,13 @@
       createRoomName.value = '';
       selectedMapForRoom = null;
       updateSelectedMapDisplay();
+      createRoomGamemode.value = 'standard';
       createRoomMaxPlayers.value = 8;
+      createRoomMaxPlayers.disabled = false;
+      createRoomMaxPlayers.classList.remove('disabled');
       maxPlayersValue.textContent = '8';
       createRoomPrivate.checked = false;
-      
+
       // close create room dialog
       closeCreateRoomModal();
       // refresh room list
@@ -1659,7 +1926,6 @@
     }
   }
   
-  // Utility function to escape HTML
   function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
@@ -1857,7 +2123,9 @@
   socket.on('joined', (data) => {
     stopSpectating();
     currentRoomId = data.roomId;
-    
+    currentRoomGamemode = data.gamemode || 'standard';
+    currentRoomIsOfficial = data.isOfficial || false;
+
     // try binary encoding if decided by server
     if (data.binarySupport) {
       useBinaryEncoding = true;
@@ -1887,6 +2155,7 @@
     show(loadingScreen);
     gameCanvas.style.display = 'block';
     hud.style.display = 'flex';
+    show(toolbarKillBtn);
     
     const selectedCar = document.querySelector('input[name="car"]:checked');
     if (selectedCar && CAR_TYPES[selectedCar.value]) {
@@ -2118,13 +2387,67 @@
     addKillFeedMessage(text, type);
   });
 
+  socket.on('timeTrialRecord', (data) => {
+    const { lapTime, isNewBest, rank, totalPlayers, isFirstCompletion } = data;
+
+    if (isFirstCompletion) {
+      addKillFeedMessage(`First time trial on this map! Time: ${formatTime(lapTime)}`, 'info');
+    } else if (isNewBest) {
+      addKillFeedMessage(`New best lap! ${formatTime(lapTime)} - Rank #${rank}/${totalPlayers}`, 'win');
+    }
+
+    // Update best lap time display
+    if (bestLapTime === null || lapTime < bestLapTime) {
+      bestLapTime = lapTime;
+      if (bestLapTimeSpan) {
+        bestLapTimeSpan.textContent = formatTime(bestLapTime);
+      }
+    }
+  });
+
   socket.on('spectatorState', (data) => {
     spectatorState = data;
-    
+
     if (data.roomId && data.roomId !== currentRoomId) {
       currentRoomId = data.roomId;
     }
-    
+
+    currentRoomGamemode = data.gamemode || 'standard';
+    currentRoomIsOfficial = data.isOfficial || false;
+
+    if (mapEditorButton) {
+      if (currentUser && !currentUser.isGuest && !currentRoomIsOfficial) {
+        mapEditorButton.style.display = 'block';
+      } else {
+        mapEditorButton.style.display = 'none';
+      }
+    }
+
+    if (!data.map) {
+      carCard.style.display = 'none';
+      switchButton.style.display = 'none';
+      joinButton.style.display = 'none';
+    } else {
+      carCard.style.display = 'block';
+      switchButton.style.display = 'block';
+      joinButton.style.display = 'block';
+    }
+
+    // Update host button visibility (only for non-official rooms)
+    if (!currentRoomIsOfficial && data.roomMembers && socket && socket.id) {
+      const myMember = data.roomMembers.find(m => m.socketId === socket.id);
+      if (myMember && myMember.isHost) {
+        isHost = true;
+        show(hostOptionsButton);
+      } else {
+        isHost = false;
+        hide(hostOptionsButton);
+      }
+    } else {
+      isHost = false;
+      hide(hostOptionsButton);
+    }
+
     updateRoomNameDisplay(data.roomName, data.map);
 
     if (data.map) {
@@ -2142,6 +2465,41 @@
     
     updateMiniLeaderboard(data.players);
     updateDetailedLeaderboard(data.players, data.roomMembers);
+  });
+
+  socket.on('hostChanged', (data) => {
+    isHost = data.isYouHost;
+
+    // Only show host options in non-official rooms
+    if (isHost && !currentRoomIsOfficial) {
+      show(hostOptionsButton);
+      addKillFeedMessage('You are now the host', 'info');
+    } else {
+      hide(hostOptionsButton);
+    }
+  });
+
+  socket.on('mapChanged', (data) => {
+    spectatorState.map = data.mapData;
+    currentMapKey = data.mapKey;
+
+    updateRoomNameDisplay(spectatorState.roomName, data.mapData);
+
+    if (!data.mapData) {
+      carCard.style.display = 'none';
+      switchButton.style.display = 'none';
+      joinButton.style.display = 'none';
+    } else {
+      carCard.style.display = 'block';
+      switchButton.style.display = 'block';
+      joinButton.style.display = 'block';
+    }
+
+    addKillFeedMessage('Map changed by host', 'info');
+  });
+
+  socket.on('changeMapError', (data) => {
+    alert(data.error);
   });
 
   socket.on('returnToMenu', ({ winner, crashed }) => {
@@ -2181,9 +2539,14 @@
     const rect = gameCanvas.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
-    inputState.cursor.x = e.clientX - cx;
-    inputState.cursor.y = e.clientY - cy;
-    // instant input send
+
+    const rawX = e.clientX - cx;
+    const rawY = e.clientY - cy;
+    const normalizeRadius = Math.min(rect.width, rect.height) / 2;
+    const CURSOR_MAX = 100;
+
+    inputState.cursor.x = (rawX / normalizeRadius) * CURSOR_MAX;
+    inputState.cursor.y = (rawY / normalizeRadius) * CURSOR_MAX;
     if (typeof sendInput === 'function') sendInput();
   });
 
@@ -2865,6 +3228,9 @@
     hide(boostDisplay);
     // reset clock synchronization
     clockOffset = 0;
+    // reset room state
+    currentRoomIsOfficial = false;
+    currentRoomId = null;
     // show disconnection info
     showDisconnectionOverlay();
   });
@@ -2923,11 +3289,11 @@
     joinButton.style.display = 'block';
     roomBrowserButton.style.display = 'block';
     
-    // show Map Editor button for non-guest users
-    if (currentUser && currentUser.isGuest) {
-      mapEditorButton.style.display = 'none';
-    } else {
+    // show Map Editor button only for non-guest users in non-official rooms
+    if (currentUser && !currentUser.isGuest && !currentRoomIsOfficial) {
       mapEditorButton.style.display = 'block';
+    } else {
+      mapEditorButton.style.display = 'none';
     }
     
     // finally, hide warning template
@@ -3120,20 +3486,6 @@
       showCheckpoints: false,
       showAbilityObjects: true
     });
-    
-    // if no players on the map, show waiting message
-    if (!spectatorState.players || spectatorState.players.length === 0) {
-      spectatorCtx.font = '22px Quicksilver';
-      spectatorCtx.textAlign = 'center';
-      
-      // black outline
-      spectatorCtx.lineWidth = 3;
-      spectatorCtx.strokeStyle = '#000000';
-      spectatorCtx.strokeText('Waiting for players...', spectatorCanvas.width / 2, spectatorCanvas.height - 50);
-      
-      spectatorCtx.fillStyle = 'rgba(255, 255, 255, 1)';
-      spectatorCtx.fillText('Waiting for players...', spectatorCanvas.width / 2, spectatorCanvas.height - 50);
-    }
   }
 
   function renderLoop() {
@@ -3296,9 +3648,15 @@
     const width = canvas.width;
     const height = canvas.height;
     ctx.clearRect(0, 0, width, height);
-    
+
     ctx.globalAlpha = alpha;
-    
+
+    if (mode === 'spectator' && !mapData) {
+      ctx.fillStyle = '#3a3a3a';
+      ctx.fillRect(0, 0, width, height);
+      return;
+    }
+
     // get map data default to current map TODO: does currentMap even work here?
     const mapToUse = mapData || currentMap;
     
@@ -3397,7 +3755,6 @@
       }
     }
 
-    // Third pass: Draw shape borders (on top of area effects)
     if (mapToUse && Array.isArray(mapToUse.shapes)) {
       for (const shape of mapToUse.shapes) {
         if (Array.isArray(shape.vertices)) {
@@ -3429,7 +3786,6 @@
             // Dual color mode: draw striped border
             else {
               const stripeLength = (shape.stripeLength || shape.borderWidth * 1.8 || 25) * scale;
-              let cumulativeStripeCount = 0;
 
               for (let i = 0; i < verts.length; i++) {
                 const a = verts[i];
@@ -3460,24 +3816,50 @@
                   ctx.lineTo(x0 - offsetX, y0 - offsetY);
                   ctx.closePath();
 
-                  const isLastStripe = s === steps - 1;
-                  ctx.fillStyle = isLastStripe
-                    ? baseColor
-                    : shape.borderColors[cumulativeStripeCount % shape.borderColors.length];
+                  // First and last stripe always use base color (red)
+                  const isEdgeStripe = s === 0 || s === steps - 1;
+                  ctx.fillStyle = isEdgeStripe ? baseColor : shape.borderColors[s % shape.borderColors.length];
                   ctx.fill();
-
-                  cumulativeStripeCount++;
                 }
 
-                const radius = lineWidth / 2;
+                // Draw corner circle in base color
                 ctx.beginPath();
-                ctx.arc(a.x, a.y, radius, 0, Math.PI * 2);
+                ctx.arc(a.x, a.y, lineWidth / 2, 0, Math.PI * 2);
                 ctx.fillStyle = baseColor;
                 ctx.fill();
               }
             }
           }
         }
+      }
+    }
+
+    // map text (only in the tutorial level for now)
+    if (currentRoomGamemode === 'tutorial' && mapToUse && Array.isArray(mapToUse.textAnnotations)) {
+      for (const annotation of mapToUse.textAnnotations) {
+        const screenX = centerX + (annotation.x - focusX) * scale;
+        const screenY = centerY - (annotation.y - focusY) * scale;
+
+        const fontSize = (annotation.fontSize || 24) * scale;
+        const fontFamily = annotation.fontFamily || "'Nunito', sans-serif";
+        const textAlign = annotation.textAlign || 'center';
+        const textBaseline = annotation.textBaseline || 'middle';
+        const strokeColor = annotation.strokeColor || '#000000';
+        const fillColor = annotation.fillColor || '#ffffff';
+        const strokeWidth = (annotation.strokeWidth || 3) * scale;
+
+        ctx.save();
+        ctx.font = `bold ${fontSize}px ${fontFamily}`;
+        ctx.textAlign = textAlign;
+        ctx.textBaseline = textBaseline;
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = strokeWidth;
+        ctx.lineJoin = 'round';
+        ctx.strokeText(annotation.text, screenX, screenY);
+        ctx.fillStyle = fillColor;
+        ctx.fillText(annotation.text, screenX, screenY);
+
+        ctx.restore();
       }
     }
 
@@ -3606,138 +3988,117 @@
           ctx.restore();
         }
 
-        if (obj.type === 'cannonball' && obj.vertices && obj.vertices.length) {
-          console.log('Rendering cannonball at', obj.position, 'angle:', obj.angle, 'vertices:', obj.vertices.length);
+        if (obj.type === 'cannonball') {
           ctx.save();
 
           const objX = obj.position.x;
           const objY = obj.position.y;
 
-          ctx.beginPath();
-          obj.vertices.forEach((v, i) => {
-            const cos = Math.cos(obj.angle);
-            const sin = Math.sin(obj.angle);
-            const rotatedX = v.x * cos - v.y * sin;
-            const rotatedY = v.x * sin + v.y * cos;
-
-            const worldX = objX + rotatedX;
-            const worldY = objY + rotatedY;
-
-            const screenX = centerX + (worldX - focusX) * scale;
-            const screenY = centerY - (worldY - focusY) * scale;
-
-            if (i === 0) {
-              console.log('First vertex screenX:', screenX, 'screenY:', screenY, 'centerX:', centerX, 'centerY:', centerY, 'scale:', scale);
-              ctx.moveTo(screenX, screenY);
-            } else {
-              ctx.lineTo(screenX, screenY);
-            }
-          });
-          ctx.closePath();
-
-          ctx.fillStyle = obj.render?.fillStyle || '#2c3e50';
-          ctx.fill('evenodd');
-          ctx.strokeStyle = obj.render?.strokeStyle || '#34495e';
-          ctx.lineWidth = (obj.render?.lineWidth || 2) * scale;
-          ctx.lineJoin = 'round';
-          ctx.stroke();
-
-          ctx.restore();
-        }
-
-        // Portal projectile rendering
-        if (obj.type === 'portal-projectile' && obj.vertices && obj.vertices.length) {
-          ctx.save();
-
-          const objX = obj.position.x;
-          const objY = obj.position.y;
-
-          ctx.beginPath();
-          obj.vertices.forEach((v, i) => {
-            const cos = Math.cos(obj.angle);
-            const sin = Math.sin(obj.angle);
-            const rotatedX = v.x * cos - v.y * sin;
-            const rotatedY = v.x * sin + v.y * cos;
-
-            const worldX = objX + rotatedX;
-            const worldY = objY + rotatedY;
-
-            const screenX = centerX + (worldX - focusX) * scale;
-            const screenY = centerY - (worldY - focusY) * scale;
-
-            if (i === 0) {
-              ctx.moveTo(screenX, screenY);
-            } else {
-              ctx.lineTo(screenX, screenY);
-            }
-          });
-          ctx.closePath();
-
-          ctx.fillStyle = obj.render?.fillStyle || '#0088ff';
-          ctx.fill('evenodd');
-          ctx.strokeStyle = obj.render?.strokeStyle || '#64b4ff';
-          ctx.lineWidth = (obj.render?.lineWidth || 3) * scale;
-          ctx.lineJoin = 'round';
-          ctx.stroke();
-
-          ctx.restore();
-        }
-
-        // Explosion projectile rendering with transparent blast radius indicator
-        if (obj.type === 'explosion-projectile' && obj.vertices && obj.vertices.length) {
-          ctx.save();
-
-          const objX = obj.position.x;
-          const objY = obj.position.y;
-
-          // Render blast radius indicator
-          if (obj.explosionRadius) {
-            const radiusScreenX = centerX + (objX - focusX) * scale;
-            const radiusScreenY = centerY - (objY - focusY) * scale;
-            const radiusSize = obj.explosionRadius * scale;
-
-            ctx.beginPath();
-            ctx.arc(radiusScreenX, radiusScreenY, radiusSize, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(255, 136, 0, 0.15)';
-            ctx.fill();
-            ctx.strokeStyle = '#ff8800';
-            ctx.lineWidth = 2 * scale;
-            ctx.stroke();
+          let radius = 6;
+          if (obj.vertices && obj.vertices.length > 0) {
+            radius = Math.sqrt(obj.vertices[0].x * obj.vertices[0].x + obj.vertices[0].y * obj.vertices[0].y);
+          }
+          if (obj.radius) {
+            radius = obj.radius;
           }
 
-          // Render projectile body
+          const screenX = centerX + (objX - focusX) * scale;
+          const screenY = centerY - (objY - focusY) * scale;
+          const screenRadius = radius * scale;
+
           ctx.beginPath();
-          obj.vertices.forEach((v, i) => {
-            const cos = Math.cos(obj.angle);
-            const sin = Math.sin(obj.angle);
-            const rotatedX = v.x * cos - v.y * sin;
-            const rotatedY = v.x * sin + v.y * cos;
-
-            const worldX = objX + rotatedX;
-            const worldY = objY + rotatedY;
-
-            const screenX = centerX + (worldX - focusX) * scale;
-            const screenY = centerY - (worldY - focusY) * scale;
-
-            if (i === 0) {
-              ctx.moveTo(screenX, screenY);
-            } else {
-              ctx.lineTo(screenX, screenY);
-            }
-          });
-          ctx.closePath();
-
-          ctx.fillStyle = obj.render?.fillStyle || 'rgba(255, 136, 0, 0.4)';
-          ctx.fill('evenodd');
-          ctx.strokeStyle = obj.render?.strokeStyle || '#ff8800';
-          ctx.lineWidth = (obj.render?.lineWidth || 3) * scale;
-          ctx.lineJoin = 'round';
+          ctx.arc(screenX, screenY, screenRadius, 0, Math.PI * 2);
+          ctx.fillStyle = obj.render?.fillStyle || '#2c3e50';
+          ctx.fill();
+          ctx.strokeStyle = obj.render?.strokeStyle || '#34495e';
+          ctx.lineWidth = (obj.render?.lineWidth || 2) * scale;
           ctx.stroke();
 
           ctx.restore();
         }
 
-        // Portal orange rendering (static, no shadows/particles)
+        if (obj.type === 'portal-projectile') {
+          ctx.save();
+
+          const objX = obj.position.x;
+          const objY = obj.position.y;
+
+          let radius = 6; // default
+          if (obj.vertices && obj.vertices.length > 0) {
+            radius = Math.sqrt(obj.vertices[0].x * obj.vertices[0].x + obj.vertices[0].y * obj.vertices[0].y);
+          }
+          if (obj.radius) {
+            radius = obj.radius;
+          }
+
+          const screenX = centerX + (objX - focusX) * scale;
+          const screenY = centerY - (objY - focusY) * scale;
+          const screenRadius = radius * scale;
+
+          ctx.beginPath();
+          ctx.arc(screenX, screenY, screenRadius, 0, Math.PI * 2);
+          ctx.fillStyle = obj.render?.fillStyle || '#0088ff';
+          ctx.fill();
+          ctx.strokeStyle = obj.render?.strokeStyle || '#64b4ff';
+          ctx.lineWidth = (obj.render?.lineWidth || 3) * scale;
+          ctx.stroke();
+
+          ctx.restore();
+        }
+
+        if (obj.type === 'explosion-projectile') {
+          ctx.save();
+
+          const objX = obj.position.x;
+          const objY = obj.position.y;
+
+          let radius = 7;
+          if (obj.vertices && obj.vertices.length > 0) {
+            radius = Math.sqrt(obj.vertices[0].x * obj.vertices[0].x + obj.vertices[0].y * obj.vertices[0].y);
+          }
+          if (obj.radius) {
+            radius = obj.radius;
+          }
+
+          const screenX = centerX + (objX - focusX) * scale;
+          const screenY = centerY - (objY - focusY) * scale;
+          const screenRadius = radius * scale;
+
+          ctx.beginPath();
+          ctx.arc(screenX, screenY, screenRadius, 0, Math.PI * 2);
+          ctx.fillStyle = obj.render?.fillStyle || 'rgba(255, 136, 0, 0.5)';
+          ctx.fill();
+          ctx.strokeStyle = obj.render?.strokeStyle || '#ff8800';
+          ctx.lineWidth = (obj.render?.lineWidth || 3) * scale;
+          ctx.stroke();
+
+          ctx.restore();
+        }
+
+        if (obj.type === 'explosion-effect') {
+          ctx.save();
+
+          const objX = obj.position.x;
+          const objY = obj.position.y;
+          const radiusScreenX = centerX + (objX - focusX) * scale;
+          const radiusScreenY = centerY - (objY - focusY) * scale;
+          const radiusSize = obj.explosionRadius * scale;
+
+          const timeLeft = obj.expiresAt - Date.now();
+          const totalDuration = 400; // 0.4 seconds
+          const fadeProgress = Math.max(0, timeLeft / totalDuration);
+
+          ctx.beginPath();
+          ctx.arc(radiusScreenX, radiusScreenY, radiusSize, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255, 136, 0, ${0.3 * fadeProgress})`;
+          ctx.fill();
+          ctx.strokeStyle = `rgba(255, 136, 0, ${0.8 * fadeProgress})`;
+          ctx.lineWidth = Math.max(3, 4 * scale);
+          ctx.stroke();
+
+          ctx.restore();
+        }
+
         if (obj.type === 'portal_orange' && obj.vertices && obj.vertices.length) {
           ctx.save();
 
@@ -3937,7 +4298,7 @@
 
       // draw player name
       const fontSize = Math.max(6, 10 * scale);
-      ctx.font = `bold ${fontSize}px 'Tahoma', 'Arial', sans-serif`;
+      ctx.font = `bold ${fontSize}px 'Nunito', 'Tahoma', 'Arial', sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       
@@ -4000,7 +4361,11 @@
     });
 
     if (showHUD && centerPlayer && mode === 'player') {
-      lapsSpan.textContent = `Lap ${centerPlayer.laps + 1} / ${centerPlayer.maxLaps}`;
+      if (currentRoomGamemode === 'tutorial') {
+        lapsSpan.textContent = `Lap ${centerPlayer.laps + 1} / ∞`;
+      } else {
+        lapsSpan.textContent = `Lap ${centerPlayer.laps + 1} / ${centerPlayer.maxLaps}`;
+      }
       
       const upgradePointsCounter = document.getElementById('upgradePointsCounter');
       if (upgradePointsCounter) {
@@ -4010,7 +4375,6 @@
       const now = Date.now();
       
       if (centerPlayer.laps > previousLapCount) {
-        // A lap was just completed
         if (currentLapStartTime > 0) {
           const lapTime = now - currentLapStartTime;
           if (!bestLapTime || lapTime < bestLapTime) {
@@ -4073,7 +4437,7 @@
   }
 
   function drawGame() {
-    // hold off on rendering until we get that first state
+    // hold off on rendering until we get that juicy first state
     if (!hasReceivedFirstState) {
       return;
     }
@@ -4089,7 +4453,7 @@
     const me = players.find((p) => p.socketId === mySocketId);
 
     if (!me || !players.map(p => p.id).includes(me.id)) {
-      console.error("Can't find player, returning to menu")
+      // this is how most players return to menu from the game
       returnToMenu();
       return;
     }
@@ -4112,14 +4476,13 @@
     if (map.name) return map.name;
     if (map.key) return map.key;
     
-    // generate hash of map structure
     const mapString = JSON.stringify({
       shapes: map.shapes || [],
       checkpoints: map.checkpoints || [],
       dynamicObjects: map.dynamicObjects || []
     });
     
-    // simple but reliable hash
+    // hash
     let hash = 0;
     for (let i = 0; i < mapString.length; i++) {
       const char = mapString.charCodeAt(i);

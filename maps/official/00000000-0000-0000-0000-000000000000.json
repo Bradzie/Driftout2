@@ -1,6 +1,6 @@
 {
-  "id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
-  "displayName": "squareTwo",
+  "id": "00000000-0000-0000-0000-000000000000",
+  "displayName": "Tutorial",
   "scale": {
     "player": 0.002,
     "spectator": 0.0005
@@ -42,28 +42,36 @@
           "y": 100
         },
         {
-          "x": 800,
-          "y": 100
+          "x": 700,
+          "y": 150
         },
         {
-          "x": 800,
-          "y": 650
+          "x": 725,
+          "y": 250
+        },
+        {
+          "x": 725,
+          "y": 575
         },
         {
           "x": 650,
-          "y": 800
+          "y": 700
         },
         {
-          "x": 200,
-          "y": 800
+          "x": 500,
+          "y": 750
         },
         {
-          "x": -825,
-          "y": 800
+          "x": -350,
+          "y": 750
+        },
+        {
+          "x": -525,
+          "y": 675
         },
         {
           "x": -600,
-          "y": 450
+          "y": 500
         }
       ],
       "fillColor": [
@@ -162,12 +170,12 @@
           "y": 400
         },
         {
-          "x": 238.19660112501052,
-          "y": 282.4429495415054
+          "x": 400,
+          "y": 400
         },
         {
-          "x": 338.1966011250105,
-          "y": 209.7886967409693
+          "x": 400,
+          "y": 200
         },
         {
           "x": 461.80339887498945,
@@ -377,6 +385,29 @@
       "strokeWidth": 4
     }
   ],
+  "textAnnotations": [
+    {
+      "text": "Welcome to Driftout!",
+      "x": 500,
+      "y": 300,
+      "fontSize": 32,
+      "fontFamily": "'Nunito', sans-serif",
+      "textAlign": "center",
+      "textBaseline": "middle",
+      "strokeColor": "#000000",
+      "fillColor": "#ffffff",
+      "strokeWidth": 4
+    },
+    {
+      "text": "Use WASD or Arrow Keys to move",
+      "x": 500,
+      "y": 400,
+      "fontSize": 24,
+      "fillColor": "#ffff00",
+      "strokeColor": "#000000",
+      "strokeWidth": 3
+    }
+  ],
   "checkpoints": [
     {
       "type": "line",
@@ -415,7 +446,7 @@
         },
         {
           "x": 0,
-          "y": 750
+          "y": 770
         }
       ],
       "id": "checkpoint-3"
@@ -458,9 +489,10 @@
       ]
     }
   ],
+  "name": "Tutorial",
   "author": "Bradzie",
   "created_at": "2025-08-20T13:04:58.845Z",
   "category": "official",
-  "updated_at": "2026-01-12T13:31:32.313Z",
+  "updated_at": "2025-08-28T11:06:46.112Z",
   "author_id": 1
 }

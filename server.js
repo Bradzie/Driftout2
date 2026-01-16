@@ -25,7 +25,7 @@ const io = new Server(server, {
   maxHttpBufferSize: 1e6, // hex, 486
 });
 
-const DEBUG_MODE = true;
+const DEBUG_MODE = false;
 
 const userDb = new UserDatabase();
 
@@ -203,14 +203,32 @@ app.get('/api/carTypes', (req, res) => {
 app.get('/api/maps', (req, res) => {
   try {
     const maps = mapManager.getAllMaps();
-    const mapList = maps.map(map => ({
-      key: `${map.category}/${map.key}`,
-      name: map.name,
-      description: map.description || '',
-      category: map.category,
-      author: map.author,
-      id: map.id
-    }));
+    const mapList = maps.map(map => {
+      // Get world record for this map
+      let worldRecord = null;
+      try {
+        const leaderboard = userDb.getMapLeaderboard(map.key, map.category, 1);
+        if (leaderboard && leaderboard.length > 0) {
+          worldRecord = {
+            time: leaderboard[0].lap_time,
+            username: leaderboard[0].username
+          };
+        }
+      } catch (error) {
+        // Silently fail for individual map records
+        console.error(`Failed to get world record for ${map.category}/${map.key}:`, error);
+      }
+
+      return {
+        key: `${map.category}/${map.key}`,
+        name: map.name,
+        description: map.description || '',
+        category: map.category,
+        author: map.author,
+        id: map.id,
+        worldRecord: worldRecord
+      };
+    });
     res.json(mapList);
   } catch (error) {
     console.error('Error getting maps:', error);
@@ -552,7 +570,8 @@ app.get('/api/rooms', (req, res) => {
       isPrivate: room.isPrivate,
       isOfficial: room.isOfficial,
       isJoinable: room.isJoinable,
-      playerCount: room.activePlayerCount
+      playerCount: room.activePlayerCount,
+      gamemode: room.gamemode
     };
   });
   res.json(roomList);
@@ -560,15 +579,14 @@ app.get('/api/rooms', (req, res) => {
 
 app.post('/api/rooms/create', roomCreationLimiter, express.json(), (req, res) => {
   try {
-    const { name, mapKey, maxPlayers, isPrivate } = req.body;
-    
+    const { name, mapKey, maxPlayers, isPrivate, gamemode } = req.body;
+
     if (name && name.length > 50) {
       return sendError(res, 400, 'Room name too long');
     }
     if (mapKey) {
-      // Parse category/key format if present
       const { category: categoryToCheck, key: keyToCheck } = HELPERS.parseMapKey(mapKey);
-      
+
       if (!mapManager.mapExists(keyToCheck, categoryToCheck)) {
         return sendError(res, 400, 'Invalid map');
       }
@@ -576,16 +594,31 @@ app.post('/api/rooms/create', roomCreationLimiter, express.json(), (req, res) =>
     if (maxPlayers && (maxPlayers < 1 || maxPlayers > 16)) {
       return sendError(res, 400, 'Invalid max players (1-16)');
     }
-    
+
+    if (gamemode && !['standard', 'time_trial', 'tutorial'].includes(gamemode)) {
+      return sendError(res, 400, 'Invalid gamemode');
+    }
+
+    if (gamemode === 'time_trial' || gamemode === 'tutorial') {
+      if (maxPlayers && maxPlayers !== 1) {
+        return sendError(res, 400, `${gamemode === 'time_trial' ? 'Time Trial' : 'Tutorial'} mode requires exactly 1 player`);
+      }
+    }
+
     const roomId = uuidv4();
     const room = new Room(roomId, mapKey || null);
-    
+
     if (name) room.name = name;
     if (maxPlayers) room.maxPlayers = maxPlayers;
     if (typeof isPrivate === 'boolean') room.isPrivate = isPrivate;
-    
+    if (gamemode) room.gamemode = gamemode;
+
+    if (room.gamemode === 'time_trial' || room.gamemode === 'tutorial') {
+      room.maxPlayers = 1;
+    }
+
     rooms.push(room);
-    
+
     res.json({
       id: room.id,
       name: room.name,
@@ -597,7 +630,8 @@ app.post('/api/rooms/create', roomCreationLimiter, express.json(), (req, res) =>
       isPrivate: room.isPrivate,
       isOfficial: room.isOfficial,
       isJoinable: room.isJoinable,
-      playerCount: room.activePlayerCount
+      playerCount: room.activePlayerCount,
+      gamemode: room.gamemode
     });
   } catch (error) {
     console.error('Error creating room:', error);
@@ -869,6 +903,65 @@ app.get('/api/leaderboard', (req, res) => {
   }
 });
 
+app.get('/api/time-trial/leaderboard/:category/:mapKey', (req, res) => {
+  try {
+    const { category, mapKey } = req.params;
+    const limit = parseInt(req.query.limit) || 100;
+
+    if (!['official', 'community'].includes(category)) {
+      return sendError(res, 400, 'Invalid category');
+    }
+
+    if (!mapManager.mapExists(mapKey, category)) {
+      return sendError(res, 404, 'Map not found');
+    }
+
+    const leaderboard = userDb.getMapLeaderboard(mapKey, category, limit);
+
+    res.json({
+      mapKey: mapKey,
+      category: category,
+      leaderboard: leaderboard
+    });
+  } catch (error) {
+    console.error('Time trial leaderboard error:', error);
+    sendError(res, 500, 'Failed to retrieve leaderboard');
+  }
+});
+
+app.get('/api/time-trial/rank/:category/:mapKey', requireAuth, (req, res) => {
+  try {
+    const { category, mapKey } = req.params;
+    const userId = req.session.userId;
+
+    if (!['official', 'community'].includes(category)) {
+      return sendError(res, 400, 'Invalid category');
+    }
+
+    const rankInfo = userDb.getUserMapRank(userId, mapKey, category);
+
+    if (!rankInfo) {
+      return res.json({
+        hasRecord: false,
+        message: 'No time trial record for this map'
+      });
+    }
+
+    const totalPlayers = userDb.getMapLeaderboard(mapKey, category, 1000).length;
+
+    res.json({
+      hasRecord: true,
+      rank: rankInfo.rank,
+      lapTime: rankInfo.lap_time,
+      recordDate: rankInfo.created_at,
+      totalPlayers: totalPlayers
+    });
+  } catch (error) {
+    console.error('Time trial rank error:', error);
+    sendError(res, 500, 'Failed to retrieve rank');
+  }
+});
+
 if (DEBUG_MODE) {
   // Restrict debug endpoint to localhost only for security
   app.get('/api/debug/sessions', requireLocalhost, (req, res) => {
@@ -1055,6 +1148,8 @@ function applyMotorForces(room) {
 
 function applyAreaEffects(room) {
   try {
+    if (!room.currentMapParsed) return;
+
     const { category: categoryToGet, key: keyToGet } = room.currentMapParsed;
     const map = mapManager.getMap(keyToGet, categoryToGet);
 
@@ -1578,6 +1673,12 @@ class Car {
       insideStart = HELPERS.pointInPolygon(this.body.position.x, this.body.position.y, mapDef.start.vertices)
     }
 
+    if (!insideStart && !this.hasLeftStartSinceLap) {
+      if (this.currentLapStartTime === 0) {
+        this.currentLapStartTime = Date.now();
+      }
+    }
+
     if (!insideStart) this.hasLeftStartSinceLap = true
 
     const checkpoints = mapDef?.checkpoints || []
@@ -1587,8 +1688,45 @@ class Car {
       checkpoints.length > 0 &&
       checkpoints.every(cp => this.checkpointsVisited.has(cp.id))
     ) {
+      const lapTime = this.currentLapStartTime > 0 ? Date.now() - this.currentLapStartTime : null;
+      if (lapTime && (!this.bestLapTime || lapTime < this.bestLapTime)) {
+        this.bestLapTime = lapTime;
+        this.saveStatsToRoom();
+
+        if (this.room && this.room.gamemode === 'time_trial') {
+          const socket = io.sockets.sockets.get(this.socketId);
+          if (socket && socket.request.session && socket.request.session.userId && !socket.request.session.isGuest) {
+            const userId = socket.request.session.userId;
+
+            try {
+              const hadPreviousTime = userDb.hasCompletedTimeTrialOnMap(userId, mapKey, mapCategory);
+              const saved = userDb.saveLapTime(userId, mapKey, mapCategory, lapTime);
+
+              if (saved) {
+                const rankInfo = userDb.getUserMapRank(userId, mapKey, mapCategory);
+                const leaderboard = userDb.getMapLeaderboard(mapKey, mapCategory, 1000);
+                socket.emit('timeTrialRecord', {
+                  lapTime: lapTime,
+                  isNewBest: true,
+                  rank: rankInfo?.rank || null,
+                  totalPlayers: leaderboard.length,
+                  isFirstCompletion: !hadPreviousTime
+                });
+              }
+            } catch (error) {
+              console.error('Failed to save time trial record:', error);
+            }
+          }
+        }
+      }
+
+      this.currentLapStartTime = Date.now();
       this.laps += 1
-      this.upgradePoints += 1
+
+      if (!this.room || (this.room.gamemode !== 'time_trial')) {
+        this.upgradePoints += 1
+      }
+
       this.currentHealth = this.stats.maxHealth;
       this.checkpointsVisited.clear()
       this.hasLeftStartSinceLap = false
@@ -1639,7 +1777,19 @@ class Car {
   applyCollisionDamage(otherBody, relativeSpeed, damageScale = 1.0, collisionPair = null) {
     // Don't take damage if god mode is enabled
     if (this.godMode) return;
-    
+
+    // Check portal invulnerability (brief grace period after teleporting)
+    if (this.portalInvulnerable) {
+      const now = Date.now();
+      if (now < this.portalInvulnerableUntil) {
+        return; // Still invulnerable
+      } else {
+        // Invulnerability expired, clear the flag
+        this.portalInvulnerable = false;
+        this.portalInvulnerableUntil = 0;
+      }
+    }
+
     if (relativeSpeed < MIN_DAMAGE_VELOCITY) return;
     
     const otherDensity = otherBody.density || 0.001;
@@ -1734,17 +1884,14 @@ class Car {
     const minY = Math.min(...allVertices.map(v => v.y));
     const maxY = Math.max(...allVertices.map(v => v.y));
     
-    // Try to find a position that's likely to be in open space
-    // Use the center, but offset towards the top or bottom to avoid walls
     const mapWidth = maxX - minX;
     const mapHeight = maxY - minY;
     
-    // Offset from center towards what's likely to be open space
     let spawnX = avgX;
-    let spawnY = avgY - mapHeight * 0.2; // Offset towards top of map
+    let spawnY = avgY - mapHeight * 0.2;
     
     if (spawnY < minY + 50) {
-      spawnY = avgY + mapHeight * 0.2; // Try bottom
+      spawnY = avgY + mapHeight * 0.2;
     }
     
     spawnX = Math.max(minX + 100, Math.min(maxX - 100, spawnX));
@@ -1758,9 +1905,9 @@ class Car {
 class Room {
   constructor(id, mapKey = null, isOfficial = false) {
     this.id = id;
-    this.name = `Room ${id.substring(0, 8)}`; // Default name using first 8 chars of UUID
+    this.name = `Room ${id.substring(0, 8)}`; // first 8 chars of uuid
     this.players = new Map(); // socket.id -> Car (active players)
-    this.carIdMap = new Map(); // car.id -> Car (for O(1) lookups)
+    this.carIdMap = new Map(); // car.id -> Car
     this.carBodyMap = new Map(); // car.body -> Car (for collision detection)
     this.spectators = new Map(); // socket.id -> socket (spectators)
     this.allMembers = new Map(); // socket.id -> {socket, state, joinedAt} (all connected users)
@@ -1768,36 +1915,36 @@ class Room {
     this.maxPlayers = 8;
     this.isPrivate = false;
     this.isOfficial = isOfficial;
-    
+    this.gamemode = 'standard'; // 'standard' or 'time_trial'
+    this.hostSocketId = null; // first lucky fella gets to be host
+
     this.engine = Matter.Engine.create();
     this.engine.gravity.x = 0;
     this.engine.gravity.y = 0;
     this.world = this.engine.world;
     
     this.gameState = {
-      abilityObjects: [], // Spike traps, etc.
-      activeEffects: []   // Ghost modes, shields, etc.
+      abilityObjects: [],
+      activeEffects: []
     };
     
     const mapKeys = mapManager.getAllMapKeys();
     this.currentMapIndex = 0;
-    this.currentMapKey = mapKey || mapKeys[this.currentMapIndex] || 'square';
-    this.currentMapParsed = HELPERS.parseMapKey(this.currentMapKey);
+    this.currentMapKey = mapKey !== null ? (mapKey || mapKeys[this.currentMapIndex] || 'square') : null;
+    this.currentMapParsed = this.currentMapKey ? HELPERS.parseMapKey(this.currentMapKey) : null;
     this.currentTrackBodies = [];
     this.currentDynamicBodies = [];
     this.currentConstraints = [];
-
     this.playerIdMap = new Map();
     this.nextPlayerId = 1;
-
     this.winMessageSent = false;
-    
-    // Per-map statistics tracking (preserved until map changes)
-    this.mapStats = new Map(); // socketId -> { kills, deaths, bestLapTime }
-    
+    this.mapStats = new Map();
+
     this.setupCollisionDetection();
-    
-    this.setTrackBodies(this.currentMapKey);
+
+    if (this.currentMapKey) {
+      this.setTrackBodies(this.currentMapKey);
+    }
   }
   
   static USER_STATES = {
@@ -1806,7 +1953,7 @@ class Room {
     LOBBY: 'lobby'
   }
   
-  // Computed properties for occupancy tracking
+  // computed properties because they dont do it like i do (iamaboss)
   get activePlayerCount() {
     return this.players.size;
   }
@@ -1833,20 +1980,16 @@ class Room {
   
   get activityScore() {
     if (!this.isJoinable) return -1;
-    if (!this.isOfficial) return -1; // Never auto-assign to non-official rooms
+    if (!this.isOfficial) return -1;
     
     const occupancyPercent = (this.totalOccupancy / this.maxPlayers) * 100;
-    const idealPercent = 50; // Target 50% capacity for good activity
-    
-    // Score based on how close to ideal capacity (0-100 scale)
+    const idealPercent = 75; // works out to like 6/8 players in a server
     let score = Math.max(0, 100 - Math.abs(occupancyPercent - idealPercent) * 2);
-    
-    // Bonus for rooms with active players (not just spectators)
+
     if (this.activePlayerCount > 0) {
       score += 20;
     }
     
-    // Penalty for very empty rooms (less than 10% capacity)
     if (occupancyPercent < 10) {
       score -= 30;
     }
@@ -1933,7 +2076,6 @@ class Room {
           }
         }
 
-        // Portal projectile collisions - create portals on ANY collision
         if (isPortalProjectileA) {
           const projectile = this.gameState.abilityObjects.find(obj => obj.body === bodyA)
           if (projectile) {
@@ -1947,7 +2089,6 @@ class Room {
           }
         }
 
-        // Explosion projectile collisions - create explosion on ANY collision
         if (isExplosionProjectileA) {
           const projectile = this.gameState.abilityObjects.find(obj => obj.body === bodyA)
           if (projectile) {
@@ -2028,7 +2169,25 @@ class Room {
   // Move collision damage methods from global scope to Room scope
   applyMutualCollisionDamage(carA, carB, relativeSpeed, collisionPair = null) {
     if (!carA || !carB || carA.godMode || carB.godMode || carA.isGhost || carB.isGhost) return;
-    
+
+    // Check portal invulnerability for both cars
+    const now = Date.now();
+    const carAInvulnerable = carA.portalInvulnerable && now < carA.portalInvulnerableUntil;
+    const carBInvulnerable = carB.portalInvulnerable && now < carB.portalInvulnerableUntil;
+
+    // Clear expired invulnerability
+    if (carA.portalInvulnerable && now >= carA.portalInvulnerableUntil) {
+      carA.portalInvulnerable = false;
+      carA.portalInvulnerableUntil = 0;
+    }
+    if (carB.portalInvulnerable && now >= carB.portalInvulnerableUntil) {
+      carB.portalInvulnerable = false;
+      carB.portalInvulnerableUntil = 0;
+    }
+
+    // If either car is invulnerable, skip mutual damage
+    if (carAInvulnerable || carBInvulnerable) return;
+
     if (relativeSpeed < MIN_DAMAGE_VELOCITY) return;
     
     const carAInitialHealth = carA.currentHealth;
@@ -2254,41 +2413,68 @@ class Room {
         const verts = shape.vertices
         if (verts.length < 3) continue
 
-        // Create fill collision body if fillCollision is enabled
         if (shape.fillCollision === true) {
           const fillBodyOptions = HELPERS.getBodyOptionsFromShape(shape)
 
-          // Calculate the PROPER centroid using signed area method (not just vertex average!)
-          // This is critical for irregular and concave polygons
-          let area = 0;
-          let cx = 0, cy = 0;
-
-          for (let i = 0; i < verts.length; i++) {
-            const v1 = verts[i];
-            const v2 = verts[(i + 1) % verts.length];
-            const cross = v1.x * v2.y - v2.x * v1.y;
-            area += cross;
-            cx += (v1.x + v2.x) * cross;
-            cy += (v1.y + v2.y) * cross;
-          }
-
-          area *= 0.5;
-          cx /= (6 * area);
-          cy /= (6 * area);
-
-          // translate vertices relative to proper centroid
-          const translatedVerts = verts.map(v => ({ x: v.x - cx, y: v.y - cy }));
-
           try {
-            const fillBody = Matter.Bodies.fromVertices(cx, cy, [translatedVerts], fillBodyOptions, true);
+            let area = 0;
+            for (let i = 0; i < verts.length; i++) {
+              const v = verts[i];
+              const vn = verts[(i + 1) % verts.length];
+              area += (v.x * vn.y - vn.x * v.y) / 2;
+            }
+
+            let cx = 0, cy = 0;
+            for (let i = 0; i < verts.length; i++) {
+              const v = verts[i];
+              const vn = verts[(i + 1) % verts.length];
+              const cross = v.x * vn.y - vn.x * v.y;
+              cx += (v.x + vn.x) * cross / (6 * area);
+              cy += (v.y + vn.y) * cross / (6 * area);
+            }
+
+            const geometricCenter = { x: cx, y: cy };
+
+            const relativeVertices = verts.map(v => ({
+              x: v.x - geometricCenter.x,
+              y: v.y - geometricCenter.y
+            }));
+
+            const fillBody = Matter.Bodies.fromVertices(
+              geometricCenter.x,
+              geometricCenter.y,
+              [relativeVertices],
+              fillBodyOptions
+            );
+
+            const inputBounds = {
+              minX: Math.min(...verts.map(v => v.x)),
+              minY: Math.min(...verts.map(v => v.y)),
+              maxX: Math.max(...verts.map(v => v.x)),
+              maxY: Math.max(...verts.map(v => v.y))
+            };
+
             if (fillBody && fillBody.vertices && fillBody.vertices.length > 0) {
+              const boundsOffset = {
+                x: inputBounds.minX - fillBody.bounds.min.x,
+                y: inputBounds.minY - fillBody.bounds.min.y
+              };
+
+              const newPosition = {
+                x: fillBody.position.x + boundsOffset.x,
+                y: fillBody.position.y + boundsOffset.y
+              }
+
+              Matter.Body.setPosition(fillBody, newPosition, true);
+              Matter.Body.setVelocity(fillBody, { x: 0, y: 0 });
+
               fillBody.label = 'shape-fill';
               this.currentTrackBodies.push(fillBody);
             } else {
-              console.warn('Failed to create fill collision body - decomposition may have failed for concave polygon');
+              console.warn('something went wrong when creating fill collision for a shape');
             }
           } catch (error) {
-            console.error('Error creating fill collision body:', error);
+            console.error('something went wrong when creating fill collision for a shape', error);
           }
         }
 
@@ -2382,7 +2568,6 @@ class Room {
       Matter.World.add(this.world, this.currentTrackBodies)
     }
     if (this.currentDynamicBodies.length > 0) {
-      // Only add dynamic bodies that have collision enabled
       const collisionEnabledBodies = this.currentDynamicBodies.filter(body => !body.noCollision)
       if (collisionEnabledBodies.length > 0) {
         Matter.World.add(this.world, collisionEnabledBodies)
@@ -2392,12 +2577,15 @@ class Room {
   
   addMember(socket, state = Room.USER_STATES.SPECTATING) {
     const isExistingMember = this.allMembers.has(socket.id);
-    
-    // Only check capacity for NEW members, not state changes
+
     if (!isExistingMember && this.availableSlots <= 0) {
       throw new Error('Room is full');
     }
-    
+
+    if (!this.isOfficial && !this.hostSocketId && !isExistingMember) {
+      this.hostSocketId = socket.id;
+    }
+
     this.allMembers.set(socket.id, {
       socket: socket,
       state: state,
@@ -2417,6 +2605,8 @@ class Room {
     const member = this.allMembers.get(socketId);
     if (!member) return false;
 
+    const wasHost = (this.hostSocketId === socketId);
+
     this.spectators.delete(socketId);
     if (this.players.has(socketId)) {
       const car = this.players.get(socketId);
@@ -2434,7 +2624,95 @@ class Room {
     this.allMembers.delete(socketId);
     this.playerIdMap.delete(socketId);
 
+    if (!this.isOfficial && wasHost && this.allMembers.size > 0) {
+      this.transferHost();
+    }
+
     return true;
+  }
+
+  transferHost() {
+    if (this.players.size > 0) {
+      this.hostSocketId = this.players.keys().next().value;
+    }
+    else if (this.spectators.size > 0) {
+      this.hostSocketId = this.spectators.keys().next().value;
+    }
+    else if (this.allMembers.size > 0) {
+      this.hostSocketId = this.allMembers.keys().next().value;
+    } else {
+      this.hostSocketId = null;
+    }
+
+    if (this.hostSocketId) {
+      console.log(`Room ${this.id}: Host transferred to ${this.hostSocketId}`);
+      this.broadcastHostChange();
+    }
+  }
+
+  broadcastHostChange() {
+    if (!this.hostSocketId) return;
+
+    const hostSocket = io.sockets.sockets.get(this.hostSocketId);
+    const hostName = hostSocket?.request?.session?.username || 'Unknown';
+
+    for (const [socketId, member] of this.allMembers) {
+      member.socket.emit('hostChanged', {
+        hostSocketId: this.hostSocketId,
+        hostName: hostName,
+        isYouHost: socketId === this.hostSocketId
+      });
+    }
+  }
+
+  changeMap(mapKey) {
+    this.currentMapKey = mapKey;
+
+    if (mapKey) {
+      this.currentMapParsed = HELPERS.parseMapKey(mapKey);
+      this.setTrackBodies(mapKey);
+    } else {
+      this.currentMapParsed = null;
+
+      for (const body of this.currentTrackBodies) {
+        Matter.World.remove(this.world, body);
+      }
+      this.currentTrackBodies = [];
+
+      for (const body of this.currentDynamicBodies) {
+        Matter.World.remove(this.world, body);
+      }
+      this.currentDynamicBodies = [];
+
+      if (this.currentConstraints) {
+        for (const constraint of this.currentConstraints) {
+          Matter.World.remove(this.world, constraint);
+        }
+        this.currentConstraints = [];
+      }
+
+      for (const obj of this.gameState.abilityObjects) {
+        if (obj.body) {
+          Matter.World.remove(this.world, obj.body);
+        }
+      }
+      this.gameState.abilityObjects = [];
+      this.gameState.activeEffects = [];
+    }
+
+    this.resetRound();
+  }
+
+  broadcastMapChange(mapKey) {
+    const { category, key } = mapKey ? HELPERS.parseMapKey(mapKey) : { category: null, key: null };
+    const mapData = mapKey ? mapManager.getMap(key, category) : null;
+
+    for (const [socketId, member] of this.allMembers) {
+      member.socket.emit('mapChanged', {
+        mapKey: mapKey,
+        mapData: mapData
+      });
+    }
   }
 
   getPlayerNumericId(socketId) {
@@ -2648,7 +2926,8 @@ class Room {
         kills: stats?.kills || 0,
         deaths: stats?.deaths || 0,
         bestLapTime: stats?.bestLapTime || null,
-        level: level // null for guests, level number for authenticated users
+        level: level, // null for guests, level number for authenticated users
+        isHost: socketId === this.hostSocketId
       });
     }
 
@@ -2662,11 +2941,18 @@ class Room {
         type: obj.type,
         position: obj.body.position,
         angle: obj.body.angle,
-        vertices: obj.body.vertices.map(v => ({ x: v.x - obj.body.position.x, y: v.y - obj.body.position.y })),
+        vertices: obj.body.vertices && obj.body.vertices.length > 0
+          ? obj.body.vertices.map(v => ({ x: v.x - obj.body.position.x, y: v.y - obj.body.position.y }))
+          : [],
         createdBy: obj.createdBy,
         expiresAt: obj.expiresAt,
         render: obj.body.render
       };
+
+      // Include explosion radius for explosion projectiles and effects
+      if (obj.explosionRadius !== undefined) {
+        serializedObj.explosionRadius = obj.explosionRadius;
+      }
 
       return serializedObj;
     });
@@ -2715,7 +3001,6 @@ function createOfficialRoom() {
   // Count existing official rooms for naming
   const officialRoomCount = rooms.filter(r => r.isOfficial).length;
   room.name = `Official Room ${officialRoomCount + 1}`;
-  
   rooms.push(room);
   return room;
 }
@@ -3061,13 +3346,18 @@ io.on('connection', (socket) => {
       // Auto-assign room (backwards compatibility)
       targetRoom = assignRoom();
     }
-    
+
+    if (!targetRoom.currentMapKey) {
+      socket.emit('joinError', { error: 'Cannot join - no map selected. Please wait for host to select a map.' });
+      return;
+    }
+
     for (const room of rooms) {
       if (room !== targetRoom && room.hasMember(socket.id)) {
         room.removeMember(socket.id);
       }
     }
-    
+
     try {
       if (targetRoom.canRejoinAsPlayer(socket.id)) {
         // User is spectating, promote them to player
@@ -3078,11 +3368,13 @@ io.on('connection', (socket) => {
       }
       
       currentRoom = targetRoom;
-      socket.emit('joined', { 
-        roomId: currentRoom.id, 
+      socket.emit('joined', {
+        roomId: currentRoom.id,
         carId: myCar.id,
         roomName: currentRoom.name,
         currentMap: currentRoom.currentMapKey,
+        gamemode: currentRoom.gamemode,
+        isOfficial: currentRoom.isOfficial,
         binarySupport: true // Signal that server supports binary encoding
       });
     } catch (error) {
@@ -3260,6 +3552,56 @@ io.on('connection', (socket) => {
       myCar.boostActive = data.boostActive && myCar.currentBoost > 0;
     }
   });
+
+  socket.on('killCar', () => {
+    if (!myCar) return;
+    myCar.currentHealth = 0;
+    myCar.justCrashed = true;
+  });
+
+  socket.on('changeMap', (data) => {
+    const { mapKey } = data;
+
+    // Only allow map changes in non-official rooms
+    if (!currentRoom || currentRoom.isOfficial) {
+      socket.emit('changeMapError', { error: 'Cannot change map in official rooms' });
+      return;
+    }
+
+    if (currentRoom.hostSocketId !== socket.id) {
+      socket.emit('changeMapError', { error: 'Only the host can change the map' });
+      return;
+    }
+
+    if (mapKey) {
+      const { category, key } = HELPERS.parseMapKey(mapKey);
+      if (!mapManager.mapExists(key, category)) {
+        socket.emit('changeMapError', { error: 'Invalid map' });
+        return;
+      }
+    }
+
+    currentRoom.changeMap(mapKey);
+
+    for (const [sid, car] of currentRoom.players.entries()) {
+      const playerSocket = io.sockets.sockets.get(sid);
+      if (playerSocket) {
+        playerSocket.emit('returnToMenu', { reason: 'Host changed map' });
+      }
+
+      if (car && car.body) {
+        Matter.World.remove(currentRoom.world, car.body);
+        car.body = null;
+      }
+    }
+
+    currentRoom.players.clear();
+    currentRoom.carIdMap.clear();
+    currentRoom.carBodyMap.clear();
+
+    currentRoom.broadcastMapChange(mapKey);
+  });
+
   socket.on('upgrade', (data) => {
     if (!myCar || !data || typeof data.stat !== 'string') return;
 
@@ -3599,7 +3941,7 @@ function gameLoop() {
 
       for (const [sid, car] of room.players.entries()) {
         car.update(timeStep);
-        if (!roundWinner && car.laps >= car.maxLaps) {
+        if (room.gamemode !== 'time_trial' && !roundWinner && car.laps >= car.maxLaps) {
           roundWinner = car;
         }
         if (car.crashedAt && now - car.crashedAt > CRASH_CLEANUP_DELAY_MS) {
@@ -3774,8 +4116,12 @@ setInterval(() => {
     for (const socketId of allSocketIds) {
       const socket = io.sockets.sockets.get(socketId);
       if (socket) {
-        const { category: categoryToGet, key: keyToGet } = room.currentMapParsed;
-        const map = mapManager.getMap(keyToGet, categoryToGet);
+        // Get map data, handle null case
+        let map = null;
+        if (room.currentMapParsed) {
+          const { category: categoryToGet, key: keyToGet } = room.currentMapParsed;
+          map = mapManager.getMap(keyToGet, categoryToGet);
+        }
         const clientAbilityObjects = room.serializeAbilityObjects();
         
         const clientDynamicObjects = room.serializeDynamicObjects();
@@ -3838,8 +4184,12 @@ function broadcastToSpectators() {
 
     const clientDynamicObjects = room.serializeDynamicObjects();
 
-    const { category: categoryToGet, key: keyToGet } = room.currentMapParsed;
-    const roomMapData = mapManager.getMap(keyToGet, categoryToGet);
+    // Get map data, handle null case
+    let roomMapData = null;
+    if (room.currentMapParsed) {
+      const { category: categoryToGet, key: keyToGet } = room.currentMapParsed;
+      roomMapData = mapManager.getMap(keyToGet, categoryToGet);
+    }
     
     const spectatorState = {
       players: room && room.players.size > 0 ? Array.from(room.players.values())
@@ -3864,6 +4214,8 @@ function broadcastToSpectators() {
       map: roomMapData, // Always send current map
       roomId: room ? room.id : null,
       roomName: room ? room.name : null,
+      gamemode: room ? room.gamemode : 'standard',
+      isOfficial: room ? room.isOfficial : false,
       timestamp: Date.now()
     };
     

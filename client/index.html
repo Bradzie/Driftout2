@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Driftz IO</title>
+  <title>Driftz.io</title>
   <link rel="icon" type="image/png" href="favicon.png" />
   <link rel="stylesheet" href="style.css" />
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
@@ -28,6 +28,15 @@
           <polyline points="15,18 9,12 15,6"></polyline>
         </svg>
       </button>
+      <button id="toolbarKillBtn" class="toolbar-kill-btn hidden" title="Crash Car (Suicide)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="5" r="3"></circle>
+          <path d="M3 21v-2a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2"></path>
+          <path d="M9 10l-1 11"></path>
+          <path d="M15 10l1 11"></path>
+          <line x1="9" y1="21" x2="15" y2="21"></line>
+        </svg>
+      </button>
       <button id="toolbarLogoutBtn" class="toolbar-logout-btn" title="Logout">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
@@ -46,8 +55,8 @@
 
   <div id="authScreen" class="auth-screen overlay">
     <div class="auth-container">
-      <h1 class="auth-title">DRIFTZ.IO</h1>
-
+      <!-- <h1 class="auth-title">DRIFTZ.IO</h1> -->
+      <img src="title.png" alt="Driftz.io" class="auth-title" />
       <div id="authSelection" class="auth-selection">
         <div class="auth-options-footer">
           <button id="showLoginBtn" class="auth-link-btn">Login</button>
@@ -113,7 +122,8 @@
   </div>
 
   <div id="menu" class="overlay hidden">
-    <h1 class="title">DRIFTZ.IO</h1>
+    <!-- <h1 class="title">DRIFTZ.IO</h1> -->
+    <img src="title.png" alt="Driftz.io" class="auth-title" />
     <div id="roomNameDisplay" class="room-name-display hidden">
       <span id="roomNameText" class="room-name-display-room" style="display: block;">-</span>
       <span id="roomMapText" style="display: block;">-</span>
@@ -156,10 +166,12 @@
       <button id="joinButton" class="nav-button play-button">➤</button>
     </div>
     <div class="menu-buttons-grid">
+      <button id="hostOptionsButton" class="menu-grid-button hidden">Host Options</button>
       <button id="roomBrowserButton" class="menu-grid-button">Browse Rooms</button>
       <button id="changelogButton" class="menu-grid-button">Changelog</button>
       <button id="mapEditorButton" class="menu-grid-button">Map Editor</button>
       <button id="globalLeaderboardButton" class="menu-grid-button">Leaderboard</button>
+      <button id="tutorialButton" class="menu-grid-button">Tutorial</button>
     </div>
   </div>
 
@@ -390,17 +402,15 @@
             <input type="text" id="createRoomName" class="form-input" placeholder="Name" maxlength="50">
           </div>
           <div class="form-row">
-            <label class="form-label">Map</label>
-            <div class="map-selection">
-              <div id="selectedMapDisplay" class="selected-map-display">
-                <span class="no-map-selected">No map selected</span>
-              </div>
-              <button type="button" id="browseMapButton" class="browse-map-button">Browse Maps</button>
-            </div>
+            <label class="form-label">Gamemode</label>
+            <select id="createRoomGamemode" class="form-select">
+              <option value="standard">Standard</option>
+              <option value="time_trial">Time Trial</option>
+            </select>
           </div>
           <div class="form-row">
             <label class="form-label">Max Players: <span id="maxPlayersValue">8</span></label>
-            <input type="range" id="createRoomMaxPlayers" class="form-slider" min="2" max="16" value="8">
+            <input type="range" id="createRoomMaxPlayers" class="form-slider" min="1" max="16" value="8">
           </div>
           <div class="form-row">
             <label class="form-checkbox-label">
@@ -705,6 +715,60 @@
             <tbody id="currentUserLeaderboardBody">
             </tbody>
           </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="timeTrialLeaderboardModal" class="modal hidden">
+    <div class="time-trial-leaderboard-content">
+      <div class="time-trial-leaderboard-header">
+        <h2 id="timeTrialMapName">Time Trial Leaderboard</h2>
+        <button class="time-trial-leaderboard-close-btn" id="closeTimeTrialLeaderboard">×</button>
+      </div>
+      <div class="time-trial-leaderboard-body">
+        <div class="user-best-time" id="userBestTimeDisplay">
+          <!-- Shows current user's rank and time -->
+        </div>
+        <table class="leaderboard-table">
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Player</th>
+              <th>Time</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody id="timeTrialLeaderboardTableBody">
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="hostOptionsModal" class="host-options-modal hidden">
+    <div class="host-options-content">
+      <div class="host-options-header">
+        <h2 class="host-options-title">Host Options</h2>
+        <button class="host-options-close-btn" id="closeHostOptions">×</button>
+      </div>
+      <div class="host-options-body">
+        <div class="host-options-section">
+          <h3 class="section-title">Map Selection</h3>
+          <div class="host-map-input-container">
+            <div class="host-map-input" id="hostMapInput">
+              <span id="hostMapInputText" class="host-map-input-text">Select map</span>
+              <button type="button" id="hostMapClearBtn" class="host-map-clear-btn hidden">×</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="host-options-section">
+          <button id="applyMapChangeButton" class="apply-map-change-button">Apply Changes</button>
+        </div>
+
+        <div class="host-warning">
+          <strong>Warning:</strong> Changing the map will return all players to the menu.
         </div>
       </div>
     </div>
