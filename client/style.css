@@ -1972,7 +1972,159 @@ input[type="number"]:focus {
   background: #cc3333;
 }
 
-/* Custom scrollbar for room browser */
+/* Host Options Modal */
+.host-options-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+}
+
+.host-options-content {
+  background: #2f2f2f;
+  width: 90%;
+  max-width: 600px;
+  max-height: 90vh;
+  overflow: hidden;
+}
+
+.host-options-header {
+  background: #ff5f5f;
+  color: white;
+  padding: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.host-options-title {
+  margin: 0;
+  font-size: 1.8rem;
+  font-weight: 700;
+}
+
+.host-options-close-btn {
+  background: white;
+  border: none;
+  color: #ff5f5f;
+  font-size: 2rem;
+  cursor: pointer;
+  padding-bottom: 5px;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.3s ease;
+}
+
+.host-options-close-btn:hover {
+  background: #ff5f5f;
+  color: white;
+}
+
+.host-options-body {
+  padding: 20px;
+  max-height: calc(90vh - 80px);
+  overflow-y: auto;
+}
+
+.host-options-section {
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #555;
+}
+
+.host-options-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.current-map-display {
+  min-height: 44px;
+  border: 2px solid #555;
+  background: #1a1a1a;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #ff5f5f;
+  font-weight: 600;
+  margin-top: 10px;
+}
+
+.remove-map-button,
+.apply-map-change-button {
+  padding: 12px 24px;
+  border: none;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.remove-map-button {
+  background: #555;
+  color: white;
+}
+
+.remove-map-button:hover {
+  background: #777;
+  transform: translateY(-1px);
+}
+
+.apply-map-change-button {
+  background: #ff5f5f;
+  color: white;
+}
+
+.apply-map-change-button:hover {
+  background: #993939;
+  transform: translateY(-1px);
+}
+
+.host-warning {
+  background: rgba(255, 95, 95, 0.1);
+  border: 1px solid #ff5f5f;
+  border-radius: 4px;
+  padding: 12px;
+  color: #ff9999;
+  font-size: 0.9rem;
+  margin-top: 10px;
+}
+
+.host-warning strong {
+  color: #ff5f5f;
+}
+
+.host-options-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.host-options-body::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+.host-options-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 95, 95, 0.6);
+  border-radius: 4px;
+}
+
+.host-options-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 95, 95, 0.8);
+}
+
 .room-browser-body::-webkit-scrollbar {
   width: 8px;
 }
@@ -1991,7 +2143,6 @@ input[type="number"]:focus {
   background: rgba(183, 130, 240, 0.8);
 }
 
-/* Responsive design for room browser */
 @media (max-width: 768px) {
   .room-browser-content {
     width: 95%;
@@ -3425,10 +3576,10 @@ select.property-input {
   transform: translateY(-1px);
 }
 
-/* Browse Modal Styles */
 #browseMapModal {
   background: rgba(0, 0, 0, 0.2);
   backdrop-filter: blur(2px);
+  z-index: 10001;
 }
 
 .browse-modal {

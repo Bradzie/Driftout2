@@ -65,3 +65,4 @@ X (client/server) kill button on the toolbar to self-crash car and go back to me
 - (map editor) finish tutorial level
 - (client/server) the private room options is broken, plus, we should add optional password protection for rooms as well as change private room to "unlisted room"
 - (client) when logging out, ping/fps display and chat are still visible?
+- (server) don't show the tutorial level 00000000-0000-0000-0000-000000000000 in the map browser

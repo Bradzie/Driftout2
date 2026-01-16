@@ -1455,7 +1455,16 @@
   function openMapBrowserForHost() {
     browseMapContext = 'host';
     show(browseMapModal);
-    loadMapsForBrowser();
+    fetch('/api/maps')
+      .then(res => res.json())
+      .then(maps => {
+        allMapsData = maps;
+        setupMapFilters();
+        displayMapsForRoomCreation(maps);
+      })
+      .catch(errorr => {
+        document.getElementById('mapsGrid').innerHTML = '<p class="no-maps-message">Error loading maps</p>';
+      });
   }
 
   function handleRemoveMap() {
@@ -3627,9 +3636,15 @@
     const width = canvas.width;
     const height = canvas.height;
     ctx.clearRect(0, 0, width, height);
-    
+
     ctx.globalAlpha = alpha;
-    
+
+    if (mode === 'spectator' && !mapData) {
+      ctx.fillStyle = '#3a3a3a';
+      ctx.fillRect(0, 0, width, height);
+      return;
+    }
+
     // get map data default to current map TODO: does currentMap even work here?
     const mapToUse = mapData || currentMap;
     

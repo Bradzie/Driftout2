@@ -746,21 +746,22 @@
     </div>
   </div>
 
-  <div id="hostOptionsModal" class="modal hidden">
+  <div id="hostOptionsModal" class="host-options-modal hidden">
     <div class="host-options-content">
       <div class="host-options-header">
-        <h2>Host Options</h2>
+        <h2 class="host-options-title">Host Options</h2>
         <button class="host-options-close-btn" id="closeHostOptions">×</button>
       </div>
       <div class="host-options-body">
-        <div class="form-row">
-          <label class="form-label">Current Map</label>
+        <div class="host-options-section">
+          <h3 class="section-title">Current Map</h3>
           <div id="currentHostMapDisplay" class="current-map-display">
             <span id="currentHostMapName">No map selected</span>
           </div>
         </div>
-        <div class="form-row">
-          <label class="form-label">Change Map</label>
+
+        <div class="host-options-section">
+          <h3 class="section-title">Change Map</h3>
           <div class="map-selection">
             <div id="hostSelectedMapDisplay" class="selected-map-display">
               <span class="no-map-selected">Select new map</span>
@@ -768,12 +769,12 @@
             <button type="button" id="hostBrowseMapButton" class="browse-map-button">Browse Maps</button>
           </div>
         </div>
-        <div class="form-row">
+
+        <div class="host-options-section">
           <button id="removeMapButton" class="remove-map-button">Remove Map</button>
-        </div>
-        <div class="form-row">
           <button id="applyMapChangeButton" class="apply-map-change-button">Apply Changes</button>
         </div>
+
         <div class="host-warning">
           <strong>Warning:</strong> Changing the map will return all players to the menu.
         </div>
