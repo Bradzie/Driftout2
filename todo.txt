@@ -63,3 +63,5 @@ X (client/server) kill button on the toolbar to self-crash car and go back to me
 - (client/server) one player per room can be a host, they can switch maps when they want
 - (client/server/map editor) test/fix the health property of the dynamic objects
 - (map editor) finish tutorial level
+- (client/server) the private room options is broken, plus, we should add optional password protection for rooms as well as change private room to "unlisted room"
+- (client) when logging out, ping/fps display and chat are still visible?

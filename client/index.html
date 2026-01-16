@@ -166,6 +166,7 @@
       <button id="joinButton" class="nav-button play-button">➤</button>
     </div>
     <div class="menu-buttons-grid">
+      <button id="hostOptionsButton" class="menu-grid-button hidden">Host Options</button>
       <button id="roomBrowserButton" class="menu-grid-button">Browse Rooms</button>
       <button id="changelogButton" class="menu-grid-button">Changelog</button>
       <button id="mapEditorButton" class="menu-grid-button">Map Editor</button>
@@ -399,15 +400,6 @@
           <div class="form-row">
             <label class="form-label">Room Name</label>
             <input type="text" id="createRoomName" class="form-input" placeholder="Name" maxlength="50">
-          </div>
-          <div class="form-row">
-            <label class="form-label">Map</label>
-            <div class="map-selection">
-              <div id="selectedMapDisplay" class="selected-map-display">
-                <span class="no-map-selected">No map selected</span>
-              </div>
-              <button type="button" id="browseMapButton" class="browse-map-button">Browse Maps</button>
-            </div>
           </div>
           <div class="form-row">
             <label class="form-label">Gamemode</label>
@@ -750,6 +742,41 @@
           <tbody id="timeTrialLeaderboardTableBody">
           </tbody>
         </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="hostOptionsModal" class="modal hidden">
+    <div class="host-options-content">
+      <div class="host-options-header">
+        <h2>Host Options</h2>
+        <button class="host-options-close-btn" id="closeHostOptions">×</button>
+      </div>
+      <div class="host-options-body">
+        <div class="form-row">
+          <label class="form-label">Current Map</label>
+          <div id="currentHostMapDisplay" class="current-map-display">
+            <span id="currentHostMapName">No map selected</span>
+          </div>
+        </div>
+        <div class="form-row">
+          <label class="form-label">Change Map</label>
+          <div class="map-selection">
+            <div id="hostSelectedMapDisplay" class="selected-map-display">
+              <span class="no-map-selected">Select new map</span>
+            </div>
+            <button type="button" id="hostBrowseMapButton" class="browse-map-button">Browse Maps</button>
+          </div>
+        </div>
+        <div class="form-row">
+          <button id="removeMapButton" class="remove-map-button">Remove Map</button>
+        </div>
+        <div class="form-row">
+          <button id="applyMapChangeButton" class="apply-map-change-button">Apply Changes</button>
+        </div>
+        <div class="host-warning">
+          <strong>Warning:</strong> Changing the map will return all players to the menu.
+        </div>
       </div>
     </div>
   </div>

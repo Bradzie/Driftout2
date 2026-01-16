@@ -203,6 +203,18 @@
 
   const tutorialButton = document.getElementById('tutorialButton');
 
+  const hostOptionsModal = document.getElementById('hostOptionsModal');
+  const hostOptionsButton = document.getElementById('hostOptionsButton');
+  const closeHostOptions = document.getElementById('closeHostOptions');
+  const currentHostMapDisplay = document.getElementById('currentHostMapDisplay');
+  const currentHostMapName = document.getElementById('currentHostMapName');
+  const hostSelectedMapDisplay = document.getElementById('hostSelectedMapDisplay');
+  const hostBrowseMapButton = document.getElementById('hostBrowseMapButton');
+  const removeMapButton = document.getElementById('removeMapButton');
+  const applyMapChangeButton = document.getElementById('applyMapChangeButton');
+  let isHost = false;
+  let hostSelectedMap = null;
+
   const timeTrialLeaderboardModal = document.getElementById('timeTrialLeaderboardModal');
   const closeTimeTrialLeaderboard = document.getElementById('closeTimeTrialLeaderboard');
   const timeTrialMapName = document.getElementById('timeTrialMapName');
@@ -690,7 +702,11 @@
   
   createRoomCloseBtn.addEventListener('click', closeCreateRoomModal);
   createRoomButton.addEventListener('click', handleCreateRoom);
-  browseMapButton.addEventListener('click', openMapBrowserForRoom);
+
+  // Browse map button was removed from create room modal (map selection now in Host Options)
+  if (browseMapButton) {
+    browseMapButton.addEventListener('click', openMapBrowserForRoom);
+  }
 
   mapEditorButton.addEventListener('click', () => {
     if (socket && socket.connected) {
@@ -733,6 +749,18 @@
     } catch (error) {
       console.error('Tutorial room creation error:', error);
       alert('Failed to create tutorial room');
+    }
+  });
+
+  hostOptionsButton.addEventListener('click', openHostOptions);
+  closeHostOptions.addEventListener('click', closeHostOptionsModal);
+  removeMapButton.addEventListener('click', handleRemoveMap);
+  applyMapChangeButton.addEventListener('click', handleApplyMapChange);
+  hostBrowseMapButton.addEventListener('click', openMapBrowserForHost);
+
+  hostOptionsModal.addEventListener('click', (e) => {
+    if (e.target === hostOptionsModal) {
+      closeHostOptionsModal();
     }
   });
 
@@ -1354,7 +1382,8 @@
   let roomsRefreshInterval = null;
   let availableRooms = [];
   let selectedMapForRoom = null;
-  
+  let browseMapContext = 'room'; // 'room' or 'host'
+
   function openRoomBrowser() {
     show(roomBrowserModal);
     loadRooms();
@@ -1392,6 +1421,56 @@
 
   function closeGlobalLeaderboardModal() {
     hide(globalLeaderboardModal);
+  }
+
+  function openHostOptions() {
+    show(hostOptionsModal);
+    updateHostMapDisplay();
+  }
+
+  function closeHostOptionsModal() {
+    hide(hostOptionsModal);
+    hostSelectedMap = null;
+    updateHostSelectedMapDisplay();
+  }
+
+  function updateHostMapDisplay() {
+    if (spectatorState?.map) {
+      currentHostMapName.textContent = spectatorState.map.displayName || spectatorState.map.name || 'Unknown Map';
+    } else {
+      currentHostMapName.textContent = 'No map selected';
+    }
+  }
+
+  function updateHostSelectedMapDisplay() {
+    if (hostSelectedMap && hostSelectedMap.key) {
+      hostSelectedMapDisplay.innerHTML = `<span class="map-name">${escapeHtml(hostSelectedMap.name)}</span>`;
+    } else if (hostSelectedMap && hostSelectedMap.key === null) {
+      hostSelectedMapDisplay.innerHTML = `<span class="map-name" style="color: #ff5f5f;">Remove current map</span>`;
+    } else {
+      hostSelectedMapDisplay.innerHTML = `<span class="no-map-selected">Select new map</span>`;
+    }
+  }
+
+  function openMapBrowserForHost() {
+    browseMapContext = 'host';
+    show(browseMapModal);
+    loadMapsForBrowser();
+  }
+
+  function handleRemoveMap() {
+    hostSelectedMap = { key: null, name: 'No Map' };
+    updateHostSelectedMapDisplay();
+  }
+
+  function handleApplyMapChange() {
+    if (!hostSelectedMap) {
+      alert('No changes to apply');
+      return;
+    }
+
+    socket.emit('changeMap', { mapKey: hostSelectedMap.key });
+    closeHostOptionsModal();
   }
 
   async function showTimeTrialLeaderboard(mapKey, mapCategory, mapName) {
@@ -1620,12 +1699,21 @@
   }
   
   function selectMapForRoom(key, name) {
-    selectedMapForRoom = { key, name };
-    updateSelectedMapDisplay();
+    if (browseMapContext === 'host') {
+      hostSelectedMap = { key, name };
+      updateHostSelectedMapDisplay();
+    } else {
+      selectedMapForRoom = { key, name };
+      updateSelectedMapDisplay();
+    }
     document.getElementById('browseMapModal').classList.add('hidden');
+    browseMapContext = 'room';
   }
   
   function updateSelectedMapDisplay() {
+    // selectedMapDisplay was removed from create room modal (map selection now in Host Options)
+    if (!selectedMapDisplay) return;
+
     if (selectedMapForRoom) {
       selectedMapDisplay.innerHTML = `
         <div class="selected-map-info">
@@ -1760,18 +1848,8 @@
       return;
     }
 
-    if (!selectedMapForRoom) {
-      alert('Please select a map');
-      return;
-    }
-
     if (roomName.length > 50) {
       alert('Room name must be 50 characters or less');
-      return;
-    }
-
-    if (!mapKey) {
-      alert('Please select a map');
       return;
     }
 
@@ -2316,13 +2394,37 @@
     currentRoomGamemode = data.gamemode || 'standard';
     currentRoomIsOfficial = data.isOfficial || false;
 
-    // Update Map Editor button visibility based on room type
     if (mapEditorButton) {
       if (currentUser && !currentUser.isGuest && !currentRoomIsOfficial) {
         mapEditorButton.style.display = 'block';
       } else {
         mapEditorButton.style.display = 'none';
       }
+    }
+
+    if (!data.map) {
+      carCard.style.display = 'none';
+      switchButton.style.display = 'none';
+      joinButton.style.display = 'none';
+    } else {
+      carCard.style.display = 'block';
+      switchButton.style.display = 'block';
+      joinButton.style.display = 'block';
+    }
+
+    // Update host button visibility (only for non-official rooms)
+    if (!currentRoomIsOfficial && data.roomMembers && socket && socket.id) {
+      const myMember = data.roomMembers.find(m => m.socketId === socket.id);
+      if (myMember && myMember.isHost) {
+        isHost = true;
+        show(hostOptionsButton);
+      } else {
+        isHost = false;
+        hide(hostOptionsButton);
+      }
+    } else {
+      isHost = false;
+      hide(hostOptionsButton);
     }
 
     updateRoomNameDisplay(data.roomName, data.map);
@@ -2342,6 +2444,41 @@
     
     updateMiniLeaderboard(data.players);
     updateDetailedLeaderboard(data.players, data.roomMembers);
+  });
+
+  socket.on('hostChanged', (data) => {
+    isHost = data.isYouHost;
+
+    // Only show host options in non-official rooms
+    if (isHost && !currentRoomIsOfficial) {
+      show(hostOptionsButton);
+      addKillFeedMessage('You are now the host', 'info');
+    } else {
+      hide(hostOptionsButton);
+    }
+  });
+
+  socket.on('mapChanged', (data) => {
+    spectatorState.map = data.mapData;
+    currentMapKey = data.mapKey;
+
+    updateRoomNameDisplay(spectatorState.roomName, data.mapData);
+
+    if (!data.mapData) {
+      carCard.style.display = 'none';
+      switchButton.style.display = 'none';
+      joinButton.style.display = 'none';
+    } else {
+      carCard.style.display = 'block';
+      switchButton.style.display = 'block';
+      joinButton.style.display = 'block';
+    }
+
+    addKillFeedMessage('Map changed by host', 'info');
+  });
+
+  socket.on('changeMapError', (data) => {
+    alert(data.error);
   });
 
   socket.on('returnToMenu', ({ winner, crashed }) => {

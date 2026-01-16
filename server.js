@@ -1148,6 +1148,8 @@ function applyMotorForces(room) {
 
 function applyAreaEffects(room) {
   try {
+    if (!room.currentMapParsed) return;
+
     const { category: categoryToGet, key: keyToGet } = room.currentMapParsed;
     const map = mapManager.getMap(keyToGet, categoryToGet);
 
@@ -1882,17 +1884,14 @@ class Car {
     const minY = Math.min(...allVertices.map(v => v.y));
     const maxY = Math.max(...allVertices.map(v => v.y));
     
-    // Try to find a position that's likely to be in open space
-    // Use the center, but offset towards the top or bottom to avoid walls
     const mapWidth = maxX - minX;
     const mapHeight = maxY - minY;
     
-    // Offset from center towards what's likely to be open space
     let spawnX = avgX;
-    let spawnY = avgY - mapHeight * 0.2; // Offset towards top of map
+    let spawnY = avgY - mapHeight * 0.2;
     
     if (spawnY < minY + 50) {
-      spawnY = avgY + mapHeight * 0.2; // Try bottom
+      spawnY = avgY + mapHeight * 0.2;
     }
     
     spawnX = Math.max(minX + 100, Math.min(maxX - 100, spawnX));
@@ -1917,6 +1916,7 @@ class Room {
     this.isPrivate = false;
     this.isOfficial = isOfficial;
     this.gamemode = 'standard'; // 'standard' or 'time_trial'
+    this.hostSocketId = null; // first lucky fella gets to be host
 
     this.engine = Matter.Engine.create();
     this.engine.gravity.x = 0;
@@ -1930,23 +1930,21 @@ class Room {
     
     const mapKeys = mapManager.getAllMapKeys();
     this.currentMapIndex = 0;
-    this.currentMapKey = mapKey || mapKeys[this.currentMapIndex] || 'square';
-    this.currentMapParsed = HELPERS.parseMapKey(this.currentMapKey);
+    this.currentMapKey = mapKey !== null ? (mapKey || mapKeys[this.currentMapIndex] || 'square') : null;
+    this.currentMapParsed = this.currentMapKey ? HELPERS.parseMapKey(this.currentMapKey) : null;
     this.currentTrackBodies = [];
     this.currentDynamicBodies = [];
     this.currentConstraints = [];
-
     this.playerIdMap = new Map();
     this.nextPlayerId = 1;
-
     this.winMessageSent = false;
-    
-    // Per-map statistics tracking (preserved until map changes)
-    this.mapStats = new Map(); // socketId -> { kills, deaths, bestLapTime }
-    
+    this.mapStats = new Map();
+
     this.setupCollisionDetection();
-    
-    this.setTrackBodies(this.currentMapKey);
+
+    if (this.currentMapKey) {
+      this.setTrackBodies(this.currentMapKey);
+    }
   }
   
   static USER_STATES = {
@@ -1955,7 +1953,7 @@ class Room {
     LOBBY: 'lobby'
   }
   
-  // Computed properties for occupancy tracking
+  // computed properties because they dont do it like i do (iamaboss)
   get activePlayerCount() {
     return this.players.size;
   }
@@ -1982,20 +1980,16 @@ class Room {
   
   get activityScore() {
     if (!this.isJoinable) return -1;
-    if (!this.isOfficial) return -1; // Never auto-assign to non-official rooms
+    if (!this.isOfficial) return -1;
     
     const occupancyPercent = (this.totalOccupancy / this.maxPlayers) * 100;
-    const idealPercent = 50; // Target 50% capacity for good activity
-    
-    // Score based on how close to ideal capacity (0-100 scale)
+    const idealPercent = 75; // works out to like 6/8 players in a server
     let score = Math.max(0, 100 - Math.abs(occupancyPercent - idealPercent) * 2);
-    
-    // Bonus for rooms with active players (not just spectators)
+
     if (this.activePlayerCount > 0) {
       score += 20;
     }
     
-    // Penalty for very empty rooms (less than 10% capacity)
     if (occupancyPercent < 10) {
       score -= 30;
     }
@@ -2082,7 +2076,6 @@ class Room {
           }
         }
 
-        // Portal projectile collisions - create portals on ANY collision
         if (isPortalProjectileA) {
           const projectile = this.gameState.abilityObjects.find(obj => obj.body === bodyA)
           if (projectile) {
@@ -2096,7 +2089,6 @@ class Room {
           }
         }
 
-        // Explosion projectile collisions - create explosion on ANY collision
         if (isExplosionProjectileA) {
           const projectile = this.gameState.abilityObjects.find(obj => obj.body === bodyA)
           if (projectile) {
@@ -2586,12 +2578,18 @@ class Room {
   
   addMember(socket, state = Room.USER_STATES.SPECTATING) {
     const isExistingMember = this.allMembers.has(socket.id);
-    
+
     // Only check capacity for NEW members, not state changes
     if (!isExistingMember && this.availableSlots <= 0) {
       throw new Error('Room is full');
     }
-    
+
+    // Set first member as host (only for non-official rooms)
+    if (!this.isOfficial && !this.hostSocketId && !isExistingMember) {
+      this.hostSocketId = socket.id;
+      console.log(`Room ${this.id}: ${socket.id} is now the host`);
+    }
+
     this.allMembers.set(socket.id, {
       socket: socket,
       state: state,
@@ -2611,6 +2609,8 @@ class Room {
     const member = this.allMembers.get(socketId);
     if (!member) return false;
 
+    const wasHost = (this.hostSocketId === socketId);
+
     this.spectators.delete(socketId);
     if (this.players.has(socketId)) {
       const car = this.players.get(socketId);
@@ -2628,7 +2628,96 @@ class Room {
     this.allMembers.delete(socketId);
     this.playerIdMap.delete(socketId);
 
+    // Transfer host if needed (only for non-official rooms)
+    if (!this.isOfficial && wasHost && this.allMembers.size > 0) {
+      this.transferHost();
+    }
+
     return true;
+  }
+
+  transferHost() {
+    if (this.players.size > 0) {
+      this.hostSocketId = this.players.keys().next().value;
+    }
+    else if (this.spectators.size > 0) {
+      this.hostSocketId = this.spectators.keys().next().value;
+    }
+    else if (this.allMembers.size > 0) {
+      this.hostSocketId = this.allMembers.keys().next().value;
+    } else {
+      this.hostSocketId = null;
+    }
+
+    if (this.hostSocketId) {
+      console.log(`Room ${this.id}: Host transferred to ${this.hostSocketId}`);
+      this.broadcastHostChange();
+    }
+  }
+
+  broadcastHostChange() {
+    if (!this.hostSocketId) return;
+
+    const hostSocket = io.sockets.sockets.get(this.hostSocketId);
+    const hostName = hostSocket?.request?.session?.username || 'Unknown';
+
+    for (const [socketId, member] of this.allMembers) {
+      member.socket.emit('hostChanged', {
+        hostSocketId: this.hostSocketId,
+        hostName: hostName,
+        isYouHost: socketId === this.hostSocketId
+      });
+    }
+  }
+
+  changeMap(mapKey) {
+    this.currentMapKey = mapKey;
+
+    if (mapKey) {
+      this.currentMapParsed = HELPERS.parseMapKey(mapKey);
+      this.setTrackBodies(mapKey);
+    } else {
+      this.currentMapParsed = null;
+
+      for (const body of this.currentTrackBodies) {
+        Matter.World.remove(this.world, body);
+      }
+      this.currentTrackBodies = [];
+
+      for (const body of this.currentDynamicBodies) {
+        Matter.World.remove(this.world, body);
+      }
+      this.currentDynamicBodies = [];
+
+      if (this.currentConstraints) {
+        for (const constraint of this.currentConstraints) {
+          Matter.World.remove(this.world, constraint);
+        }
+        this.currentConstraints = [];
+      }
+
+      for (const obj of this.gameState.abilityObjects) {
+        if (obj.body) {
+          Matter.World.remove(this.world, obj.body);
+        }
+      }
+      this.gameState.abilityObjects = [];
+      this.gameState.activeEffects = [];
+    }
+
+    this.resetRound();
+  }
+
+  broadcastMapChange(mapKey) {
+    const { category, key } = mapKey ? HELPERS.parseMapKey(mapKey) : { category: null, key: null };
+    const mapData = mapKey ? mapManager.getMap(key, category) : null;
+
+    for (const [socketId, member] of this.allMembers) {
+      member.socket.emit('mapChanged', {
+        mapKey: mapKey,
+        mapData: mapData
+      });
+    }
   }
 
   getPlayerNumericId(socketId) {
@@ -2842,7 +2931,8 @@ class Room {
         kills: stats?.kills || 0,
         deaths: stats?.deaths || 0,
         bestLapTime: stats?.bestLapTime || null,
-        level: level // null for guests, level number for authenticated users
+        level: level, // null for guests, level number for authenticated users
+        isHost: socketId === this.hostSocketId
       });
     }
 
@@ -2916,7 +3006,6 @@ function createOfficialRoom() {
   // Count existing official rooms for naming
   const officialRoomCount = rooms.filter(r => r.isOfficial).length;
   room.name = `Official Room ${officialRoomCount + 1}`;
-  
   rooms.push(room);
   return room;
 }
@@ -3262,13 +3351,18 @@ io.on('connection', (socket) => {
       // Auto-assign room (backwards compatibility)
       targetRoom = assignRoom();
     }
-    
+
+    if (!targetRoom.currentMapKey) {
+      socket.emit('joinError', { error: 'Cannot join - no map selected. Please wait for host to select a map.' });
+      return;
+    }
+
     for (const room of rooms) {
       if (room !== targetRoom && room.hasMember(socket.id)) {
         room.removeMember(socket.id);
       }
     }
-    
+
     try {
       if (targetRoom.canRejoinAsPlayer(socket.id)) {
         // User is spectating, promote them to player
@@ -3468,6 +3562,51 @@ io.on('connection', (socket) => {
     if (!myCar) return;
     myCar.currentHealth = 0;
     myCar.justCrashed = true;
+  });
+
+  socket.on('changeMap', (data) => {
+    const { mapKey } = data;
+
+    // Only allow map changes in non-official rooms
+    if (!currentRoom || currentRoom.isOfficial) {
+      socket.emit('changeMapError', { error: 'Cannot change map in official rooms' });
+      return;
+    }
+
+    if (currentRoom.hostSocketId !== socket.id) {
+      socket.emit('changeMapError', { error: 'Only the host can change the map' });
+      return;
+    }
+
+    if (mapKey) {
+      const { category, key } = HELPERS.parseMapKey(mapKey);
+      if (!mapManager.mapExists(key, category)) {
+        socket.emit('changeMapError', { error: 'Invalid map' });
+        return;
+      }
+    }
+
+    console.log(`Room ${currentRoom.id}: Host ${socket.id} changing map to ${mapKey || 'none'}`);
+
+    currentRoom.changeMap(mapKey);
+
+    for (const [sid, car] of currentRoom.players.entries()) {
+      const playerSocket = io.sockets.sockets.get(sid);
+      if (playerSocket) {
+        playerSocket.emit('returnToMenu', { reason: 'Host changed map' });
+      }
+
+      if (car && car.body) {
+        Matter.World.remove(currentRoom.world, car.body);
+        car.body = null;
+      }
+    }
+
+    currentRoom.players.clear();
+    currentRoom.carIdMap.clear();
+    currentRoom.carBodyMap.clear();
+
+    currentRoom.broadcastMapChange(mapKey);
   });
 
   socket.on('upgrade', (data) => {
@@ -3984,8 +4123,12 @@ setInterval(() => {
     for (const socketId of allSocketIds) {
       const socket = io.sockets.sockets.get(socketId);
       if (socket) {
-        const { category: categoryToGet, key: keyToGet } = room.currentMapParsed;
-        const map = mapManager.getMap(keyToGet, categoryToGet);
+        // Get map data, handle null case
+        let map = null;
+        if (room.currentMapParsed) {
+          const { category: categoryToGet, key: keyToGet } = room.currentMapParsed;
+          map = mapManager.getMap(keyToGet, categoryToGet);
+        }
         const clientAbilityObjects = room.serializeAbilityObjects();
         
         const clientDynamicObjects = room.serializeDynamicObjects();
@@ -4048,8 +4191,12 @@ function broadcastToSpectators() {
 
     const clientDynamicObjects = room.serializeDynamicObjects();
 
-    const { category: categoryToGet, key: keyToGet } = room.currentMapParsed;
-    const roomMapData = mapManager.getMap(keyToGet, categoryToGet);
+    // Get map data, handle null case
+    let roomMapData = null;
+    if (room.currentMapParsed) {
+      const { category: categoryToGet, key: keyToGet } = room.currentMapParsed;
+      roomMapData = mapManager.getMap(keyToGet, categoryToGet);
+    }
     
     const spectatorState = {
       players: room && room.players.size > 0 ? Array.from(room.players.values())
